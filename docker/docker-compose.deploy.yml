@@ -1,0 +1,87 @@
+name: ${COMPOSE_PROJECT_NAME:-treeschool}
+
+services:
+  ts-backend:
+    image: ts-backend
+    build:
+      context: ..
+      dockerfile: Dockerfile.backend
+    working_dir: /workspace
+    command:
+      [
+        "sh",
+        "-lc",
+        "bun install --frozen-lockfile && bun run --filter ts-backend build && bun run --filter ts-backend start"
+      ]
+    env_file:
+      - ../app/ts-backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    volumes:
+      - ..:/workspace
+    restart: unless-stopped
+
+  ts-frontend:
+    image: oven/bun:1.2.9
+    working_dir: /workspace
+    command:
+      [
+        "sh",
+        "-lc",
+        "bun install --frozen-lockfile && bun run --filter ts-frontend build && bun run --filter ts-frontend start"
+      ]
+    env_file:
+      - ../app/ts-frontend/.env.local
+    environment:
+      NODE_ENV: production
+      INTERNAL_BACKEND_URL: http://ts-backend:3001
+      NEXT_DIST_DIR: .next-build
+    ports:
+      - "${FRONTEND_PORT:-3100}:3100"
+    volumes:
+      - ..:/workspace
+    depends_on:
+      - ts-backend
+    restart: unless-stopped
+
+  ts-tasks:
+    image: ts-backend
+    build:
+      context: ..
+      dockerfile: Dockerfile.backend
+    working_dir: /workspace
+    command:
+      [
+        "sh",
+        "-lc",
+        "bun install --frozen-lockfile && bun run --filter ts-backend build && bun run --filter ts-backend task-worker"
+      ]
+    env_file:
+      - ../app/ts-backend/.env
+    environment:
+      NODE_ENV: production
+      TASK_POLL_INTERVAL_MS: ${TASK_POLL_INTERVAL_MS:-5000}
+    volumes:
+      - ..:/workspace
+    depends_on:
+      - ts-backend
+    restart: unless-stopped
+
+  ts-cron:
+    image: curlimages/curl:8.12.1
+    command:
+      [
+        "sh",
+        "-lc",
+        "while true; do curl -fsS -X POST http://ts-backend:3001/internal/maintenance/run -H \"x-maintenance-secret: $$MAINTENANCE_JOB_SECRET\" || true; sleep $${MAINTENANCE_INTERVAL_SECONDS:-300}; done"
+      ]
+    env_file:
+      - ../app/ts-backend/.env
+    environment:
+      MAINTENANCE_INTERVAL_SECONDS: ${MAINTENANCE_INTERVAL_SECONDS:-300}
+    depends_on:
+      - ts-backend
+    restart: unless-stopped

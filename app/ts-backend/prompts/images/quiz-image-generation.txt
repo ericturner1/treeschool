@@ -1,0 +1,17 @@
+Generate a single quiz support image as a PNG.
+
+Return one clean visual aid only.
+Do not add text, labels, answer markers, borders, watermarks, or page chrome.
+Use a pure white background only.
+The image should help the student answer the quiz question but should not reveal the answer directly.
+If the quiz implies an exact count, quantity, grouping, or color split, match it exactly. Never approximate counts.
+If exact counting matters, make each object individually visible and easy to count.
+Do not bunch, overlap, stack, crop, or hide count-critical objects.
+Prefer clear spacing between objects so the student can visually distinguish one object from another at a glance.
+
+Quiz context:
+- Question: {{QUESTION_PROMPT}}
+- Accessibility alt target: {{IMAGE_ALT}}
+
+Image prompt from lesson planner:
+{{IMAGE_PROMPT}}

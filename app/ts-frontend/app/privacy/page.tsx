@@ -1,0 +1,14 @@
+import { LegalLayout, LegalSection } from "../legal-layout";
+
+export default function PrivacyPage() {
+  return <LegalLayout title="Privacy Policy" intro="This policy explains what Treeschool collects, why we use it, and the choices available to parents.">
+    <LegalSection title="Information we collect"><p>We collect parent account details such as email address, student details supplied by the parent, curriculum files, planning instructions, generated plans, and service activity needed to operate Treeschool. Stripe processes payment details; Treeschool does not store complete card numbers.</p></LegalSection>
+    <LegalSection title="How we use information"><p>We use this information to authenticate parents, process purchases, analyze parent-provided curriculum, generate requested printable plans, provide support, secure the service, and meet legal obligations. We do not sell personal information or use student curriculum data for advertising.</p></LegalSection>
+    <LegalSection title="AI processing"><p>Files and planning instructions may be sent to contracted AI infrastructure solely to provide the requested analysis and planning features. Parents should avoid uploading unnecessary sensitive information.</p></LegalSection>
+    <LegalSection title="Children’s information"><p>Treeschool is purchased and controlled by a parent or guardian. Parents decide what student information to provide and are responsible for having authority to provide it. Students should not create their own parent accounts.</p></LegalSection>
+    <LegalSection title="Storage and retention"><p>Curriculum source files, generated plans, and account records are retained while needed to provide the service and support the purchase. A parent may request deletion. We may retain limited transaction, security, and compliance records where required.</p></LegalSection>
+    <LegalSection title="Service providers and transfers"><p>We use service providers including Vercel, Google Cloud, Supabase, Stripe, and email providers. They process information under their own contractual and security obligations, and processing may occur in countries outside the parent’s country.</p></LegalSection>
+    <LegalSection title="Your choices"><p>Parents may request access, correction, export, or deletion of their information by contacting support. We will verify the request before acting. Authentication and transaction emails are necessary service communications.</p></LegalSection>
+    <LegalSection title="Security and changes"><p>We use access controls, private file storage, encrypted transport, and limited service credentials. No service can promise absolute security. We may update this policy and will publish the effective date of material changes.</p></LegalSection>
+  </LegalLayout>;
+}

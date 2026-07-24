@@ -1,0 +1,21 @@
+Generate a single instructional slide asset as a PNG.
+
+Follow the slide spec exactly.
+Return one composable visual asset only.
+Do not add text, labels, speech bubbles, borders, watermarks, page chrome, or a full slide layout.
+The result should work when placed onto a separate 1920x1080 white lesson slide.
+Use a pure white background only.
+Keep the subject isolated and tightly framed with enough whitespace for compositing.
+If the lesson implies an exact count, quantity, grouping, or color split, match it exactly. Never approximate counts.
+If exact counting matters, make each object individually visible and easy to count.
+Do not bunch, overlap, stack, crop, or hide count-critical objects.
+Prefer clear spacing between objects so the student can visually distinguish one object from another at a glance.
+
+Slide context:
+- Lesson title: {{LESSON_TITLE}}
+- Slide title: {{SLIDE_TITLE}}
+- Slide instructional text: {{SLIDE_BODY}}
+- Accessibility alt target: {{IMAGE_ALT}}
+
+Image prompt from lesson planner:
+{{IMAGE_PROMPT}}

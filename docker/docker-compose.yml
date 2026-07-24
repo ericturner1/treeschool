@@ -1,0 +1,98 @@
+name: treeschool
+
+services:
+  ts-proxy:
+    image: nginx:1.27-alpine
+    container_name: ts-proxy
+    depends_on:
+      ts-frontend:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.dev-treehomeschool.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    restart: unless-stopped
+
+  ts-frontend:
+    image: oven/bun:1.2.9
+    container_name: ts-frontend
+    working_dir: /workspace
+    command:
+      [
+        "sh",
+        "-lc",
+        "bun install && bun run --filter ts-frontend dev --hostname 0.0.0.0"
+      ]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ..:/workspace
+    depends_on:
+      ts-backend:
+        condition: service_started
+    restart: unless-stopped
+
+  ts-backend:
+    image: ts-backend-local
+    build:
+      context: ..
+      dockerfile: Dockerfile.backend
+    container_name: ts-backend
+    working_dir: /workspace
+    command: ["sh", "-lc", "bun install && bun run --filter ts-backend dev"]
+    env_file:
+      - ../app/ts-backend/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
+      MAINTENANCE_JOB_SECRET: local-dev-maintenance-secret
+      MAINTENANCE_STALE_LESSON_MINUTES: 5
+      MAINTENANCE_ERROR_RETRY_MINUTES: 5
+    ports:
+      - "3001:3001"
+    volumes:
+      - ..:/workspace
+    restart: unless-stopped
+
+  ts-cron:
+    image: curlimages/curl:8.12.1
+    container_name: ts-cron
+    command:
+      [
+        "sh",
+        "-lc",
+        "while true; do curl -fsS -X POST http://ts-backend:3001/internal/maintenance/run -H \"x-maintenance-secret: $$MAINTENANCE_JOB_SECRET\" || true; sleep $${MAINTENANCE_INTERVAL_SECONDS:-300}; done"
+      ]
+    environment:
+      MAINTENANCE_JOB_SECRET: local-dev-maintenance-secret
+      MAINTENANCE_INTERVAL_SECONDS: 300
+    depends_on:
+      ts-backend:
+        condition: service_started
+    restart: unless-stopped
+
+  ts-tasks:
+    image: ts-backend-local
+    build:
+      context: ..
+      dockerfile: Dockerfile.backend
+    container_name: ts-tasks
+    working_dir: /workspace
+    command:
+      [
+        "sh",
+        "-lc",
+        "while true; do bun run --filter ts-backend task-worker; sleep $${TASK_POLL_INTERVAL_SECONDS:-5}; done"
+      ]
+    env_file:
+      - ../app/ts-backend/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
+      TASK_POLL_INTERVAL_SECONDS: 5
+    volumes:
+      - ..:/workspace
+    depends_on:
+      ts-backend:
+        condition: service_started
+    restart: unless-stopped

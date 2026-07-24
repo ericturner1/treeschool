@@ -1,0 +1,36 @@
+FROM oven/bun:1.2.9 AS build
+WORKDIR /workspace
+
+COPY package.json bun.lock ./
+COPY app/ts-backend/package.json app/ts-backend/package.json
+COPY app/ts-frontend/package.json app/ts-frontend/package.json
+COPY packages/ts-db/package.json packages/ts-db/package.json
+RUN bun install --frozen-lockfile
+
+COPY tsconfig.base.json ./
+COPY app/ts-backend app/ts-backend
+COPY packages/ts-db packages/ts-db
+RUN bun run --filter ts-backend build
+
+FROM oven/bun:1.2.9 AS runtime
+WORKDIR /workspace
+ENV NODE_ENV=production
+
+# Poppler renders the complete PDF MediaBox for publisher files that pdf-lib
+# cannot safely copy. Packet generation fails closed if it is unavailable.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends poppler-utils \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json bun.lock ./
+COPY app/ts-backend/package.json app/ts-backend/package.json
+COPY app/ts-frontend/package.json app/ts-frontend/package.json
+COPY packages/ts-db/package.json packages/ts-db/package.json
+RUN bun install --frozen-lockfile --production
+
+COPY --from=build /workspace/app/ts-backend/dist app/ts-backend/dist
+COPY --from=build /workspace/packages/ts-db packages/ts-db
+COPY app/ts-frontend/public/tree-icon.png app/ts-frontend/public/tree-icon.png
+
+EXPOSE 8080
+CMD ["bun", "run", "--filter", "ts-backend", "start"]

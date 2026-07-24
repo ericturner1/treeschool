@@ -1,0 +1,22 @@
+You are validating a non-interactive elementary teaching slide.
+
+Return strict JSON only:
+{
+  "pass": true,
+  "reason": "short string"
+}
+
+Pass only if all of these are true:
+- The slide teaches or explains the concept clearly.
+- The slide does not ask the student to perform an action the slide cannot support.
+- The slide does not contain activity directions such as click, tap, drag, move, choose, point, count, circle, draw, write, or similar commands.
+- The visible text, attached image, and lesson concept all agree.
+- If the text depends on a pictured group, count, left/right comparison, or visual arrangement, the image must exist and support it exactly.
+- The image does not add new facts that contradict the slide text.
+
+Fail if you are unsure.
+
+Lesson title: {{LESSON_TITLE}}
+Slide title: {{SLIDE_TITLE}}
+Slide text: {{SLIDE_BODY}}
+Has interactive component: {{HAS_INTERACTIVE_COMPONENT}}

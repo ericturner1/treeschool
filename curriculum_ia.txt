@@ -1,0 +1,310 @@
+Use Grade 1 Math as a tree, not a flat list. Based on the topic structure on IXL's grade-1 math page, the right shape is:
+
+- numbers and counting
+- comparison
+- addition
+- subtraction
+- mixed add/subtract
+- place value / numbers to 100 or 120
+- skip counting / equal groups
+- word problems
+- measurement / geometry / time / money later
+
+Source used:
+- https://www.ixl.com/math/grade-1
+
+Recommendation
+Model curriculum in 6 layers:
+
+1. Program
+- K-12
+
+2. Grade
+- 1st Grade
+
+3. Subject
+- Math
+
+4. Domain
+- big buckets like Numbers to 100, Addition to 20, Subtraction to 20, Word Problems
+
+5. Cluster
+- smaller instructional groups inside a domain
+- example: Understand Addition, Addition Strategies to 10, Addition Facts to 10
+
+6. Skill or Lesson Target
+- atomic teachable/checkable item
+- example: Add with pictures to 10
+
+That gives you stable IA for both curriculum authoring and student progress.
+
+Core entities
+I'd define these conceptually:
+
+- CurriculumNode
+  - generic tree node
+  - type: grade | subject | domain | cluster | skill
+  - title
+  - slug
+  - description
+  - parent
+  - order
+
+- Skill
+  - mastery unit
+  - short student-facing title
+  - internal learning objective
+  - difficulty
+  - estimated minutes
+  - mastery threshold
+  - prerequisite skills
+
+- Lesson
+  - one teaching experience for a skill
+  - warmup
+  - instruction
+  - guided practice
+  - independent practice
+  - extension
+  - offline activity
+
+- AssessmentItem
+  - question/task
+  - item type: multiple_choice | numeric | drag_drop | manipulative | word_problem
+  - prompt
+  - answer key
+  - hints
+  - explanation
+
+- SkillProgress
+  - per student, per skill
+  - status: not_started | in_progress | mastered | needs_review
+  - attempts
+  - accuracy
+  - last practiced
+
+- StandardAlignment
+  - map a skill to Common Core or your own treesckool standard
+  - important if you want a traditional US-quality education claim
+
+- Resource
+  - printable
+  - manipulatives list
+  - parent guide
+  - offline homestead extension
+
+For 1st grade math specifically
+Start with these domains:
+
+1. Counting and Number Sense
+- count to 20
+- count to 100
+- count to 120
+- forward/backward counting
+- number lines
+- number charts
+- even/odd
+- ordinal numbers
+
+2. Place Value and Number Structure
+- tens and ones
+- compare two-digit numbers
+- compose/decompose numbers
+- read/write numbers
+
+3. Comparison
+- more/fewer
+- greater/less/equal
+- compare sets
+- compare numbers with symbols
+
+4. Addition
+- understand addition with objects/pictures
+- addition sentences
+- number lines
+- counting on
+- make ten
+- doubles
+- facts to 10
+- facts to 20
+
+5. Subtraction
+- understand subtraction with objects/pictures
+- subtraction sentences
+- counting back
+- counting on
+- use addition to subtract
+- facts to 10
+- facts to 20
+
+6. Mixed Operations and Word Problems
+- choose add vs subtract
+- fact families
+- unknown addend
+- one-step word problems
+- represent problems with pictures/equations
+
+7. Skip Counting and Foundations for Multiplicative Thinking
+- count by 2s, 5s, 10s
+- equal groups
+- repeated addition
+- simple arrays
+
+I would not start with measurement, money, time, and geometry until the math core structure is stable.
+
+Suggested tree for v1
+For 1st Grade > Math:
+
+- 01-counting-number-sense
+  - counting-to-20
+  - counting-to-100
+  - counting-to-120
+  - number-lines
+  - number-charts
+  - even-and-odd
+
+- 02-comparing-numbers
+  - compare-sets
+  - compare-numerals
+  - greater-less-equal
+
+- 03-addition-to-10
+  - understand-addition
+  - addition-strategies
+  - addition-facts
+  - addition-word-problems
+
+- 04-subtraction-to-10
+  - understand-subtraction
+  - subtraction-strategies
+  - subtraction-facts
+  - subtraction-word-problems
+
+- 05-addition-subtraction-to-20
+  - addition-strategies-to-20
+  - addition-facts-to-20
+  - subtraction-strategies-to-20
+  - subtraction-facts-to-20
+  - mixed-word-problems
+
+- 06-place-value
+  - tens-and-ones
+  - compose-decompose-two-digit-numbers
+  - compare-two-digit-numbers
+
+- 07-skip-counting-equal-groups
+  - skip-count-by-2-5-10
+  - equal-groups
+  - repeated-addition
+  - arrays
+
+What a single skill should contain
+For example: Add with pictures to 10
+
+- title
+- objective
+- student outcome
+- prerequisites
+- instruction model
+- practice item bank
+- mastery rule
+- common mistakes
+- parent/offline extension
+- localization-ready copy
+
+That last point matters because content may exist in arbitrary languages.
+
+Localization-aware structure
+Do not put display text directly in the structural entity.
+
+Use:
+- stable structural IDs
+- localized content per locale
+
+Example conceptually:
+- skill id: math.g1.addition.understand.add-with-pictures-10
+- English content
+- Spanish content
+- Arabic content
+
+So structure stays fixed; only text/media change by locale.
+
+Support structures you will need
+Beyond curriculum itself:
+
+- PrerequisiteGraph
+  - not every skill is just parent/child
+  - example: make-ten supports both addition and subtraction fluency
+
+- MasteryPolicy
+  - define what mastered means
+  - example: 3 sessions, 90 percent accuracy, no hint dependence
+
+- PlacementEntryPoint
+  - lets a child start at the right cluster instead of lesson 1
+
+- PacingGuide
+  - recommended weekly sequence for parents
+
+- OfflineExtension
+  - important for treesckool
+  - example: count eggs, measure seed rows, compare harvest quantities
+
+- ParentNotes
+  - what to watch for
+  - when to slow down
+  - enrichment ideas
+
+What I would not do yet
+Do not start by modeling:
+- units, lessons, quizzes, standards, games, and printable packs as separate top-level silos
+- that becomes messy fast
+
+Start with:
+- curriculum tree
+- skill
+- lesson
+- assessment item
+- progress
+- localization content
+- standards mapping
+
+That is enough for a real MVP.
+
+Recommended first-grade math v1 scope
+For an MVP, I'd launch only:
+
+1. Counting and number sense
+2. Comparing numbers
+3. Addition to 10
+4. Subtraction to 10
+5. Mixed word problems to 10
+
+Then add:
+6. Addition/subtraction to 20
+7. Place value
+8. Skip counting/equal groups
+
+That gives you a coherent first-grade experience without overbuilding.
+
+Key product decision
+Decide now whether your atomic tracked unit is:
+
+- lesson
+or
+- skill
+
+I recommend skill.
+
+Reason:
+- lessons can vary by language, medium, and pedagogy
+- skills are the stable mastery object
+- student progress, placement, recommendations, and reporting work better on skills
+
+So:
+- skill is the tracked entity
+- lesson is one way to teach that skill
+
+-------------------- ADDITIONAL SUGGESTIONS ----------------------
+
+IA Enhancement: Scheduling, AI-Optimization, and Developmental Scaling1. Dynamic Scheduling & Adult OverridesEntity: NodeConfiguration: Create a per-student override table linked to CurriculumNode.Fields: Include isDisabled (boolean) to allow parents to skip specific clusters, and pacingMultiplier (float) to speed up or slow down the automated generation of lessons based on student performance.Logic: The PacingGuide should not be a static document but an executable algorithm that recalculates the student's daily "Tree Path" whenever an override is triggered.2. AI Generation MetadataEntity: LessonTemplate: Instead of static lesson content, store "AI Instruction Models" within the Lesson entity.Fields: Include pedagogicalTone (e.g., "Montessori-style," "Direct Instruction") and visualConstraint (e.g., "use forest-themed manipulatives") to guide the LLM in generating age-appropriate localized media.Assessment Loops: Link AssessmentItem "Hints" directly to SkillProgress statuses, allowing the AI to generate "remedial" content if a student remains in needs_review status.3. Developmental Branding Layers (K-12 Growth)Entity: UIThemeManifest: Map Program and Grade levels to specific UI/UX "Skins".Logic: For Grades K-5 (treesckool), use playful terminology like "Adventures" for lessons. For Grades 6-12 (Tree Academy), automatically transition the terminology to "Lectures" or "Modules" to reduce "homeschool" stigma and increase academic gravity.4. Engagement & Retention LogicEntity: ActivityPulse: Decouple "Streaks" from SkillProgress.Logic: Track daily engagement at the Student level to maintain a global "Learning Streak," providing a consistent gamification layer regardless of which Subject or Domain is being studied that day.

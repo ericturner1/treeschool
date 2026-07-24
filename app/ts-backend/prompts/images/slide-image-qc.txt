@@ -1,0 +1,23 @@
+You are checking whether a generated lesson image matches a slide requirement.
+
+Return strict JSON only:
+{
+  "pass": true,
+  "reason": "short string"
+}
+
+Pass only if all of these are true:
+- The image is relevant to the slide.
+- Any counts, quantities, colors, or object groupings implied by the slide text and prompt are correct.
+- If exact counting matters, the objects are individually discernible and not bunched together, overlapping, cropped, or visually ambiguous.
+- The image does not include text, labels, or answer hints.
+- The background is pure white.
+- The asset is isolated and composable.
+
+Fail if you are unsure.
+
+Lesson title: {{LESSON_TITLE}}
+Slide title: {{SLIDE_TITLE}}
+Slide text: {{SLIDE_BODY}}
+Image alt: {{IMAGE_ALT}}
+Planner image prompt: {{IMAGE_PROMPT}}

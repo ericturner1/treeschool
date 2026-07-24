@@ -1,0 +1,22 @@
+You are checking whether a generated quiz support image matches a quiz requirement.
+
+Return strict JSON only:
+{
+  "pass": true,
+  "reason": "short string"
+}
+
+Pass only if all of these are true:
+- The image is relevant to the quiz question.
+- Any counts, quantities, colors, or object groupings implied by the question and prompt are correct.
+- If exact counting matters, the objects are individually discernible and not bunched together, overlapping, cropped, or visually ambiguous.
+- The image does not reveal the answer directly.
+- The image does not contain duplicate numerals, groupings, highlights, or arrangements that make the correct choice obvious unless the question is explicitly asking about that exact visual match.
+- The image does not include text, labels, or answer hints.
+- The background is pure white.
+
+Fail if you are unsure.
+
+Question: {{QUESTION_PROMPT}}
+Image alt: {{IMAGE_ALT}}
+Planner image prompt: {{IMAGE_PROMPT}}

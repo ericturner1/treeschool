@@ -1,0 +1,37 @@
+Create a short slide lesson and quiz as strict JSON.
+
+Return JSON only with this exact shape:
+{{SCHEMA_JSON}}
+
+Requirements:
+- Produce exactly 3 slides.
+- Produce exactly 3 quiz questions.
+- Each quiz question must have exactly 3 answer choices.
+- correctChoiceIndex must be 0, 1, or 2.
+- Each slide must include imageSpec with:
+  - prompt
+  - alt
+  - placement: { x, y, width, height }
+- At least 1 quiz question should include imageSpec when a visual would help.
+- Keep all student-facing language simple.
+- Keep images directly tied to the actual lesson concept.
+- Avoid generic trees, mascots, scenery, or filler art unless the skill explicitly requires them.
+- The generated image prompt should describe one isolated visual asset we can place on the slide later.
+- The generated image prompt should explicitly say: no text, pure white background.
+- The slide image and the narration must match each other.
+- Slides are teaching slides, not activity directions.
+- Do not tell the student to perform an action unless the slide explicitly includes an interactive component.
+- Avoid commands such as click, tap, drag, move, choose, point, count, circle, write, or draw.
+- If the skill uses exact counts, colors, or groups, the slide image prompt must specify those exact quantities with no approximation.
+
+Known-word guidance:
+{{KNOWN_WORDS}}
+
+Unknown technical words to define or soften:
+{{UNKNOWN_WORDS}}
+
+Regional substitutions:
+{{REGIONAL_SUBSTITUTIONS}}
+
+Student + lesson context JSON:
+{{CONTEXT_JSON}}

@@ -1,0 +1,35 @@
+{
+  "name": "treeschool",
+  "private": true,
+  "packageManager": "bun@1.2.5",
+  "workspaces": [
+    "app/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter ts-frontend dev & bun run --filter ts-backend dev",
+    "dev:frontend": "bun run --filter ts-frontend dev",
+    "dev:backend": "bun run --filter ts-backend dev",
+    "build": "bun run --filter ts-db build && bun run --filter ts-backend build && bun run --filter ts-frontend build",
+    "lint": "bun run --filter ts-db lint && bun run --filter ts-frontend lint && bun run --filter ts-backend lint",
+    "verify:plan-generators": "bun run --filter ts-frontend verify:plan-generators",
+    "db:generate": "bash ./scripts/drizzle-node20.sh generate --config=drizzle.config.mjs",
+    "db:push": "bash ./scripts/drizzle-node20.sh push --config=drizzle.config.mjs",
+    "db:studio": "bash ./scripts/drizzle-node20.sh studio --config=drizzle.config.mjs",
+    "db:seed:grades": "bun run scripts/seed-grade-nodes.ts",
+    "db:seed:locales": "bun run scripts/seed-locales.ts",
+    "db:seed:g1math": "bun run scripts/seed-g1-math.ts",
+    "db:seed:g1commoncore": "bun run scripts/seed-g1-common-core.ts",
+    "db:seed:g1texas": "bun run scripts/seed-g1-texas-science-social-studies.ts",
+    "db:seed:electives": "bun run scripts/seed-electives.ts",
+    "generate:migration": "bun run db:generate",
+    "data-migrations:apply": "bun run db:push"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "dotenv": "^16.4.7",
+    "drizzle-kit": "^0.30.4",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
