@@ -39,7 +39,7 @@ Weekly planning has two worker phases: metadata planning, followed by metadata q
 
 The frontend deployment needs these server-only environment variables:
 
-- `INTERNAL_BACKEND_URL=https://treeschool-api-635939195300.asia-northeast3.run.app`
+- `INTERNAL_BACKEND_URL=https://treeschool-api-274426411544.asia-northeast3.run.app`
 - `INTERNAL_API_SECRET` set to the same Secret Manager value used by the API
 
 Large curriculum files upload directly from the browser to short-lived signed GCS URLs. They do not pass through Vercel or the Cloud Run API.

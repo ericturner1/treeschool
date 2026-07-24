@@ -24,7 +24,7 @@ Retry a permanently failed paid pack from a trusted terminal:
 
 ```sh
 INTAKE_ID="the-plan-pack-intake-id"
-API_URL="https://treeschool-api-635939195300.asia-northeast3.run.app"
+API_URL="https://treeschool-api-274426411544.asia-northeast3.run.app"
 INTERNAL_API_SECRET="$(gcloud secrets versions access latest --secret INTERNAL_API_SECRET --project treeschool)"
 curl --fail-with-body -X POST "${API_URL}/internal/plan-pack/retry" \
   -H "content-type: application/json" \
