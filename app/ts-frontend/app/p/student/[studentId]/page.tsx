@@ -221,8 +221,8 @@ export default async function ParentStudentOverviewPage({
         )}
       >
         <section>
-          <div className="site-panel rounded-[28px] px-6 py-7">
-            <div className="flex flex-col gap-5 rounded-[24px] border border-[#b9cf9f] bg-[#eef5e4] px-5 py-5 shadow-[0_6px_0_#cfdfbf] sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="site-panel rounded-[24px] px-4 py-5 sm:rounded-[28px] sm:px-6 sm:py-7">
+            <div className="flex flex-col gap-4 rounded-[20px] border border-[#b9cf9f] bg-[#eef5e4] px-4 py-4 shadow-[0_5px_0_#cfdfbf] sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:rounded-[24px] sm:px-6 sm:py-5 sm:shadow-[0_6px_0_#cfdfbf]">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#587443]">Next up</p>
                 <h3 className="mt-2 text-[24px] font-semibold tracking-[-0.045em] text-ink">

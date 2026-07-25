@@ -70,7 +70,7 @@ export function LessonDispositionControl({
 
   return (
     <div>
-      <div className="grid grid-cols-4 gap-1 rounded-[13px] bg-[#eee5d7] p-1" aria-label="Lesson treatment">
+      <div className="grid grid-cols-2 gap-1 rounded-[13px] bg-[#eee5d7] p-1 sm:grid-cols-4" aria-label="Lesson treatment">
         {options.map((option) => (
           <div key={option.value} className="group/help relative">
             <button

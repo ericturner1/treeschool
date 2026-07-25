@@ -808,8 +808,8 @@ export function AuthenticatedPlanGenerator({
         document.body
       ) : null}
       {showAddSourceChoice && typeof document !== "undefined" ? createPortal(
-        <div className="fixed inset-0 z-[130] grid place-items-center bg-black/55 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowAddSourceChoice(false); }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="add-material-source-title" className="w-full max-w-2xl rounded-[28px] border border-[#dcc8aa] bg-[#fffaf2] p-6 shadow-2xl sm:p-8">
+        <div className="fixed inset-0 z-[130] flex items-start justify-center overflow-y-auto bg-black/55 p-2 sm:items-center sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowAddSourceChoice(false); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="add-material-source-title" className="max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] p-4 shadow-2xl sm:rounded-[28px] sm:p-8">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.14em] text-earth">Add teaching material</p>

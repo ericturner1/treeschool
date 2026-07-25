@@ -81,7 +81,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       activeNav={null}
     >
       <section className={`mt-4 grid gap-6 ${isParentView ? "" : "lg:grid-cols-[1fr_3fr]"}`}>
-            <div className="site-panel rounded-[28px] px-6 py-7">
+            <div className="site-panel min-w-0 overflow-hidden rounded-[24px] px-4 py-5 sm:rounded-[28px] sm:px-6 sm:py-7">
               <h2 className="text-[28px] font-semibold tracking-[-0.05em] text-ink">
                 {dashboard.profileManagement.title}
               </h2>
@@ -93,68 +93,113 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 {studentProfiles.length === 0 ? (
                   <p className="text-sm text-ink/65">{dashboard.profileManagement.empty}</p>
                 ) : (
-                  <div className="overflow-x-auto rounded-[24px] border border-[#dcc8aa] bg-[#fffaf2]">
-                    <div className="grid min-w-[760px] grid-cols-[minmax(160px,1.6fr)_80px_120px_110px_180px] gap-4 border-b border-[#e4d5bd] bg-[#f6ecdc] px-5 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-ink/62">
-                      <span>{dashboard.profileManagement.columns.name}</span>
-                      <span>{dashboard.profileManagement.columns.age}</span>
-                      <span>{dashboard.profileManagement.columns.grade}</span>
-                      <span>Streak</span>
-                      <span className="text-right">{dashboard.profileManagement.columns.actions}</span>
+                  <>
+                    <div className="grid gap-3 md:hidden">
+                      {studentProfiles.map((profile) => {
+                        const age = ageFromBirthDate(profile.birthDate);
+                        const grade = profile.gradeLevel != null
+                          ? profile.gradeLevel === 0
+                            ? `${dashboard.profileManagement.columns.grade} K`
+                            : `${dashboard.profileManagement.columns.grade} ${profile.gradeLevel}`
+                          : dashboard.profileManagement.noGrade;
+                        const streakCount = streaks.get(profile.id)?.currentCount ?? 0;
+
+                        return (
+                          <article key={profile.id} className="rounded-[20px] border border-[#dcc8aa] bg-white p-4">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div
+                                role="img"
+                                aria-label={profile.avatarUrl ? `${profile.firstName}'s private profile photo` : `${profile.firstName}'s profile photo placeholder`}
+                                className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-full border-2 border-[#c9d9b7] bg-[#e7efdc] bg-cover bg-center text-lg font-semibold text-[#4f703c]"
+                                style={profile.avatarUrl ? { backgroundImage: `url(${JSON.stringify(profile.avatarUrl)})` } : undefined}
+                              >
+                                {!profile.avatarUrl ? profile.firstName.trim().slice(0, 1).toUpperCase() : null}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <h3 className="truncate text-xl font-semibold tracking-[-0.04em] text-ink">{profile.firstName}</h3>
+                                <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-ink/58">
+                                  <span>{grade}</span>
+                                  {age != null ? <span>Age {age}</span> : null}
+                                  <span className="rounded-full bg-[#e7efdc] px-2.5 py-1 text-[#4f703c]">
+                                    {streakCount} {streakCount === 1 ? "day" : "days"} streak
+                                  </span>
+                                </p>
+                              </div>
+                            </div>
+                            <Link
+                              href={`/p/student/${profile.slug ?? profile.id}`}
+                              className="cta-button cta-button--outline cta-button--small mt-4 w-full"
+                            >
+                              {`${dashboard.profileManagement.manageLabel} ${profile.firstName}`}
+                            </Link>
+                          </article>
+                        );
+                      })}
                     </div>
 
-                    {studentProfiles.map((profile, index) => (
-                      <div
-                        key={profile.id}
-                        className={`grid min-w-[760px] grid-cols-[minmax(160px,1.6fr)_80px_120px_110px_180px] gap-4 px-5 py-4 ${
-                          index === studentProfiles.length - 1 ? "" : "border-b border-[#eadfcd]"
-                        }`}
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div
-                            role="img"
-                            aria-label={profile.avatarUrl ? `${profile.firstName}'s private profile photo` : `${profile.firstName}'s profile photo placeholder`}
-                            className="flex h-12 w-12 flex-none items-center justify-center overflow-hidden rounded-full border-2 border-[#c9d9b7] bg-[#e7efdc] bg-cover bg-center text-lg font-semibold text-[#4f703c]"
-                            style={profile.avatarUrl ? { backgroundImage: `url(${JSON.stringify(profile.avatarUrl)})` } : undefined}
-                          >
-                            {!profile.avatarUrl ? profile.firstName.trim().slice(0, 1).toUpperCase() : null}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate text-lg font-semibold tracking-[-0.04em] text-ink">
-                              {profile.firstName}
-                            </p>
-                            <p className="mt-1 text-sm text-ink/62">{dashboard.studentRole}</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center text-sm font-semibold text-ink/78">
-                          {ageFromBirthDate(profile.birthDate) ?? "—"}
-                        </div>
-
-                        <div className="flex items-center text-sm font-semibold text-ink/78">
-                          {profile.gradeLevel != null
-                            ? profile.gradeLevel === 0
-                              ? `${dashboard.profileManagement.columns.grade} K`
-                              : `${dashboard.profileManagement.columns.grade} ${profile.gradeLevel}`
-                            : dashboard.profileManagement.noGrade}
-                        </div>
-
-                        <div className="flex items-center">
-                          <span className="rounded-full bg-[#e7efdc] px-3 py-1.5 text-sm font-semibold text-[#4f703c]">
-                            {streaks.get(profile.id)?.currentCount ?? 0} {(streaks.get(profile.id)?.currentCount ?? 0) === 1 ? "day" : "days"}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center justify-end">
-                          <Link
-                            href={`/p/student/${profile.slug ?? profile.id}`}
-                            className="cta-button cta-button--outline cta-button--small"
-                          >
-                            {`${dashboard.profileManagement.manageLabel} ${profile.firstName}`}
-                          </Link>
-                        </div>
+                    <div className="hidden max-w-full overflow-x-auto rounded-[24px] border border-[#dcc8aa] bg-[#fffaf2] md:block">
+                      <div className="grid min-w-[760px] grid-cols-[minmax(160px,1.6fr)_80px_120px_110px_180px] gap-4 border-b border-[#e4d5bd] bg-[#f6ecdc] px-5 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-ink/62">
+                        <span>{dashboard.profileManagement.columns.name}</span>
+                        <span>{dashboard.profileManagement.columns.age}</span>
+                        <span>{dashboard.profileManagement.columns.grade}</span>
+                        <span>Streak</span>
+                        <span className="text-right">{dashboard.profileManagement.columns.actions}</span>
                       </div>
-                    ))}
-                  </div>
+
+                      {studentProfiles.map((profile, index) => (
+                        <div
+                          key={profile.id}
+                          className={`grid min-w-[760px] grid-cols-[minmax(160px,1.6fr)_80px_120px_110px_180px] gap-4 px-5 py-4 ${
+                            index === studentProfiles.length - 1 ? "" : "border-b border-[#eadfcd]"
+                          }`}
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div
+                              role="img"
+                              aria-label={profile.avatarUrl ? `${profile.firstName}'s private profile photo` : `${profile.firstName}'s profile photo placeholder`}
+                              className="flex h-12 w-12 flex-none items-center justify-center overflow-hidden rounded-full border-2 border-[#c9d9b7] bg-[#e7efdc] bg-cover bg-center text-lg font-semibold text-[#4f703c]"
+                              style={profile.avatarUrl ? { backgroundImage: `url(${JSON.stringify(profile.avatarUrl)})` } : undefined}
+                            >
+                              {!profile.avatarUrl ? profile.firstName.trim().slice(0, 1).toUpperCase() : null}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-lg font-semibold tracking-[-0.04em] text-ink">
+                                {profile.firstName}
+                              </p>
+                              <p className="mt-1 text-sm text-ink/62">{dashboard.studentRole}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center text-sm font-semibold text-ink/78">
+                            {ageFromBirthDate(profile.birthDate) ?? "—"}
+                          </div>
+
+                          <div className="flex items-center text-sm font-semibold text-ink/78">
+                            {profile.gradeLevel != null
+                              ? profile.gradeLevel === 0
+                                ? `${dashboard.profileManagement.columns.grade} K`
+                                : `${dashboard.profileManagement.columns.grade} ${profile.gradeLevel}`
+                              : dashboard.profileManagement.noGrade}
+                          </div>
+
+                          <div className="flex items-center">
+                            <span className="rounded-full bg-[#e7efdc] px-3 py-1.5 text-sm font-semibold text-[#4f703c]">
+                              {streaks.get(profile.id)?.currentCount ?? 0} {(streaks.get(profile.id)?.currentCount ?? 0) === 1 ? "day" : "days"}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-end">
+                            <Link
+                              href={`/p/student/${profile.slug ?? profile.id}`}
+                              className="cta-button cta-button--outline cta-button--small"
+                            >
+                              {`${dashboard.profileManagement.manageLabel} ${profile.firstName}`}
+                            </Link>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
             </div>

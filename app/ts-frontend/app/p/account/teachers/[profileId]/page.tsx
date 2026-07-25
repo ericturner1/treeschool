@@ -34,6 +34,25 @@ function eventDate(value: string) {
   }).format(new Date(value));
 }
 
+function attendanceDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(new Date(`${value}T00:00:00.000Z`));
+}
+
+function activityTypeLabel(value: string | null) {
+  if (value === "field_trip") return "field trip";
+  if (value === "co_op") return "co-op learning";
+  if (value === "project") return "project";
+  if (value === "library") return "library learning";
+  if (value === "sport") return "physical education";
+  if (value === "subject") return "subject study";
+  return "other learning";
+}
+
 export default async function TeacherProfilePage({ params, searchParams }: Props) {
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { dashboard, home } = dictionary;
@@ -114,11 +133,14 @@ export default async function TeacherProfilePage({ params, searchParams }: Props
           <section className="site-panel rounded-[28px] px-6 py-7 sm:px-8">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.13em] text-earth">Activity</p>
-              <h2 className="mt-2 text-[30px] font-semibold tracking-[-0.05em] text-ink">Grading activity</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/62">A record of grades saved or removed by {activity.teacher.name} during the last year.</p>
+              <h2 className="mt-2 text-[30px] font-semibold tracking-[-0.05em] text-ink">Teaching activity</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/62">
+                A record of grades and other learning recorded by {activity.teacher.name} during the last year.
+              </p>
             </div>
-            <div className="mt-6 grid gap-3 sm:grid-cols-4">
-              <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Actions</p><p className="mt-1 text-3xl font-semibold text-ink">{activity.summary.gradingActions}</p></div>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Actions</p><p className="mt-1 text-3xl font-semibold text-ink">{activity.summary.totalActions}</p></div>
+              <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Other learning</p><p className="mt-1 text-3xl font-semibold text-ink">{activity.summary.attendanceRecorded}</p></div>
               <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Grades saved</p><p className="mt-1 text-3xl font-semibold text-ink">{activity.summary.gradesSaved}</p></div>
               <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Grades removed</p><p className="mt-1 text-3xl font-semibold text-ink">{activity.summary.gradesRemoved}</p></div>
               <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Active days</p><p className="mt-1 text-3xl font-semibold text-ink">{activity.summary.activeDays}</p></div>
@@ -128,8 +150,8 @@ export default async function TeacherProfilePage({ params, searchParams }: Props
                 days={activity.days}
                 dateFrom={activity.dateFrom}
                 dateTo={activity.dateTo}
-                noun="grading action"
-                explanation="Lighter squares show quieter grading days; darker squares show more grading activity."
+                noun="teaching action"
+                explanation="Lighter squares show quieter teaching days; darker squares show more recorded teaching activity."
               />
             </div>
           </section>
@@ -138,19 +160,29 @@ export default async function TeacherProfilePage({ params, searchParams }: Props
             <h2 className="text-[26px] font-semibold tracking-[-0.045em] text-ink">Recent activity</h2>
             <div className="mt-5 space-y-3">
               {activity.events.length === 0 ? (
-                <p className="rounded-[18px] bg-[#fffaf2] px-5 py-7 text-sm text-ink/60">No grading activity has been recorded for this teacher yet.</p>
+                <p className="rounded-[18px] bg-[#fffaf2] px-5 py-7 text-sm text-ink/60">No teaching activity has been recorded for this teacher yet.</p>
               ) : activity.events.map((event) => {
-                const context = [
-                  event.studentName,
-                  event.weekNumber == null ? null : `Week ${event.weekNumber}`,
-                  event.dayNumber == null ? null : `Day ${event.dayNumber}`
-                ].filter(Boolean).join(" · ");
+                const manualAttendance = event.eventType === "attendance_manual";
+                const context = manualAttendance
+                  ? [
+                      event.studentName,
+                      event.attendanceDate ? `Learning date ${attendanceDate(event.attendanceDate)}` : null,
+                      event.subjectLabel,
+                      event.minutes == null ? null : `${event.minutes} min`
+                    ].filter(Boolean).join(" · ")
+                  : [
+                      event.studentName,
+                      event.weekNumber == null ? null : `Week ${event.weekNumber}`,
+                      event.dayNumber == null ? null : `Day ${event.dayNumber}`
+                    ].filter(Boolean).join(" · ");
                 return (
                   <article key={event.id} className="rounded-[18px] border border-[#e2d2b8] bg-white px-5 py-4">
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                       <div>
                         <p className="font-semibold text-ink">
-                          {event.eventType === "grade_removed"
+                          {manualAttendance
+                            ? `Recorded ${activityTypeLabel(event.activityType)}: ${event.activityTitle ?? "Learning activity"}`
+                            : event.eventType === "grade_removed"
                             ? `Removed the grade for ${event.subjectLabel ?? "a lesson"}`
                             : `Saved ${event.score}% for ${event.subjectLabel ?? "a lesson"}`}
                         </p>

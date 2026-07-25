@@ -105,7 +105,7 @@ export function WeeklyPdfButton({
 
   const dialog = open ? createPortal(
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-black/45 px-4 py-8"
+      className="fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto bg-black/45 p-2 sm:items-center sm:px-4 sm:py-8"
       onMouseDown={(event) => {
         if (event.currentTarget === event.target && !pending) setOpen(false);
       }}
@@ -114,7 +114,7 @@ export function WeeklyPdfButton({
         role="dialog"
         aria-modal="true"
         aria-labelledby={`week-${weekNumber}-download-title`}
-        className="relative w-full max-w-xl rounded-[28px] border border-[#dcc8aa] bg-[#fffaf2] p-6 shadow-2xl sm:p-8"
+        className="relative max-h-[calc(100dvh-1rem)] w-full min-w-0 max-w-xl overflow-y-auto rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] p-4 shadow-2xl sm:max-h-[92vh] sm:rounded-[28px] sm:p-8"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <button
@@ -128,7 +128,7 @@ export function WeeklyPdfButton({
         </button>
 
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-earth">Week {weekNumber}</p>
-        <h2 id={`week-${weekNumber}-download-title`} className="mt-2 pr-12 text-[30px] font-semibold tracking-[-0.05em] text-ink">
+        <h2 id={`week-${weekNumber}-download-title`} className="mt-2 pr-12 text-[25px] font-semibold leading-tight tracking-[-0.05em] text-ink sm:text-[30px]">
           How would you like it packaged?
         </h2>
         <p className="mt-2 text-sm leading-6 text-ink/62">Both choices contain the complete week.</p>
@@ -138,7 +138,7 @@ export function WeeklyPdfButton({
             type="button"
             onClick={() => setFormat("week")}
             disabled={pending}
-            className={`flex items-center gap-4 rounded-[20px] border-2 px-5 py-4 text-left transition ${
+            className={`flex min-w-0 items-center gap-3 rounded-[18px] border-2 px-4 py-3.5 text-left transition sm:gap-4 sm:rounded-[20px] sm:px-5 sm:py-4 ${
               format === "week"
                 ? "border-[#82a760] bg-[#eef5e4] shadow-[0_4px_0_#c4d8b2]"
                 : "border-[#e1ceb0] bg-white hover:border-[#c8ac84]"
@@ -157,7 +157,7 @@ export function WeeklyPdfButton({
             type="button"
             onClick={() => setFormat("days")}
             disabled={pending || dayCount < 1}
-            className={`flex items-center gap-4 rounded-[20px] border-2 px-5 py-4 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
+            className={`flex min-w-0 items-center gap-3 rounded-[18px] border-2 px-4 py-3.5 text-left transition disabled:cursor-not-allowed disabled:opacity-45 sm:gap-4 sm:rounded-[20px] sm:px-5 sm:py-4 ${
               format === "days"
                 ? "border-[#82a760] bg-[#eef5e4] shadow-[0_4px_0_#c4d8b2]"
                 : "border-[#e1ceb0] bg-white hover:border-[#c8ac84]"

@@ -5,11 +5,16 @@ import {
   contentDocuments,
   learningActivityEvents,
   learningYears,
+  teacherActivityEvents,
   weeklyPlanItems,
   weeklyPlans
 } from "ts-db";
 import { db } from "../db";
-import { getManageableStudentProfile, requireAccountRole } from "./accounts";
+import {
+  getAccountMemberContext,
+  getManageableStudentProfile,
+  requireAccountRole
+} from "./accounts";
 import { requirePremiumFeatureAccess } from "./entitlements";
 import {
   clearWorkbookUnitProgress,
@@ -512,25 +517,51 @@ export async function createManualAttendanceEntry(input: {
   notes?: string | null;
   minutes?: number | null;
 }) {
-  await verifyStudent(input.parentUserId, input.profileId);
+  const student = await verifyStudent(input.parentUserId, input.profileId);
+  const actor = await getAccountMemberContext(input.parentUserId);
   const title = input.title.trim();
   if (!title) throw new Error("Add a short description of the learning activity.");
   const date = isoDate(safeDate(input.attendanceDate, new Date()));
   const label = input.subjectLabel?.trim() || null;
-  const [entry] = await db.insert(attendanceEntries).values({
-    profileId: input.profileId,
-    learningYearId: input.learningYearId || null,
-    attendanceDate: date,
-    entryKind: "manual",
-    activityType: input.activityType || "other",
-    subjectKey: label ? subjectKey(label) : null,
-    subjectLabel: label,
-    title,
-    notes: input.notes?.trim() || null,
-    minutes: input.minutes && input.minutes > 0 ? Math.min(input.minutes, 1440) : null,
-    createdByUserId: input.parentUserId
-  }).returning();
-  await db.insert(learningActivityEvents).values({ profileId: input.profileId, source: "attendance_manual" });
+  const activityType = input.activityType || "other";
+  const normalizedMinutes = input.minutes && input.minutes > 0 ? Math.min(input.minutes, 1440) : null;
+  const entry = await db.transaction(async (tx) => {
+    const [savedEntry] = await tx.insert(attendanceEntries).values({
+      profileId: input.profileId,
+      learningYearId: input.learningYearId || null,
+      attendanceDate: date,
+      entryKind: "manual",
+      activityType,
+      subjectKey: label ? subjectKey(label) : null,
+      subjectLabel: label,
+      title,
+      notes: input.notes?.trim() || null,
+      minutes: normalizedMinutes,
+      createdByUserId: input.parentUserId
+    }).returning();
+    if (!savedEntry) throw new Error("The learning activity could not be recorded.");
+    await tx.insert(learningActivityEvents).values({
+      profileId: input.profileId,
+      source: "attendance_manual"
+    });
+    await tx.insert(teacherActivityEvents).values({
+      accountId: student.accountId,
+      actorUserId: input.parentUserId,
+      actorProfileId: actor.profileId,
+      studentProfileId: input.profileId,
+      eventType: "attendance_manual",
+      subjectKey: savedEntry.subjectKey,
+      subjectLabel: label,
+      metadata: {
+        attendanceEntryId: savedEntry.id,
+        attendanceDate: date,
+        activityType,
+        activityTitle: title,
+        minutes: normalizedMinutes
+      }
+    }).onConflictDoNothing();
+    return savedEntry;
+  });
   await refreshStudentStreakCache(input.profileId);
   return entry;
 }

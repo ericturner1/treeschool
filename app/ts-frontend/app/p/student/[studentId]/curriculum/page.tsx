@@ -406,7 +406,7 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
   }
 
   const ownWorkbooksContent = (
-    <section className="site-panel rounded-[28px] px-6 py-7 sm:px-8">
+    <section className="site-panel min-w-0 max-w-full overflow-hidden rounded-[24px] px-4 py-5 sm:rounded-[28px] sm:px-8 sm:py-7">
       <AuthenticatedPlanGenerator
         profileId={student.id}
         existingLearningYearId={plan.year?.id}
@@ -494,18 +494,18 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
               <section className="grid gap-6">
                 {canManagePlan ? <details
                   open={plan.weeks.length === 0 || plan.materialsChanged || activeDocumentCount > 0}
-                  className="site-panel group rounded-[28px] px-6 py-5"
+                  className="site-panel group min-w-0 max-w-full overflow-hidden rounded-[24px] px-4 py-4 sm:rounded-[28px] sm:px-6 sm:py-5"
                 >
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-[24px] font-semibold tracking-[-0.05em] text-ink">Plan setup and teaching materials</h2>
+                  <summary className="flex min-w-0 cursor-pointer list-none items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="text-[21px] font-semibold leading-tight tracking-[-0.045em] text-ink sm:text-[24px]">Plan setup and teaching materials</h2>
                       <p className="mt-1 text-sm text-ink/60">
                         {plan.documents.length} {plan.documents.length === 1 ? "file" : "files"} · {activeDocumentCount > 0 ? `${activeDocumentCount} processing` : planningLabel}
                       </p>
                     </div>
-                    <span className="text-2xl text-earth transition-transform group-open:rotate-45">+</span>
+                    <span className="shrink-0 text-2xl text-earth transition-transform group-open:rotate-45">+</span>
                   </summary>
-                  <div className="mt-4">
+                  <div className="mt-4 min-w-0 max-w-full">
                   <AuthenticatedPlanGenerator
                     profileId={student.id}
                     existingLearningYearId={plan.year.id}

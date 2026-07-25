@@ -95,14 +95,27 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: clip;
 }
 
 body {
   min-height: 100vh;
+  overflow-x: clip;
   background: #f8f1e4;
   color: var(--ink);
   font-family: "Avenir Next", "Nunito", "Trebuchet MS", "Segoe UI", sans-serif;
   line-height: 1.5;
+}
+
+input,
+select,
+textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+
+fieldset {
+  min-width: 0;
 }
 
 select:not([multiple]) {
@@ -224,9 +237,15 @@ select.select-on-dark:not([multiple]) {
 }
 
 .site-panel {
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid #eadbc2;
   background: #fffaf2;
   box-shadow: 0 14px 32px rgba(79, 54, 34, 0.07);
+}
+
+.responsive-sidebar-menu > summary::-webkit-details-marker {
+  display: none;
 }
 
 .progress-arrow-step {
@@ -673,9 +692,35 @@ a[role="button"].is-loading:has(.animate-spin)::after {
   .cta-button {
     width: 100%;
     min-width: 0;
+    min-height: 3.5rem;
+    padding: 0.85rem 1.15rem;
   }
 
   .cta-button--small {
     width: auto;
+    min-height: 2.85rem;
+    padding: 0.65rem 1rem;
+    border-radius: 14px;
+    font-size: 0.9rem;
+  }
+
+  .site-shell,
+  .site-panel {
+    border-radius: 22px;
+  }
+
+  .blog-prose {
+    font-size: 1rem;
+    line-height: 1.75;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-sidebar-menu > summary {
+    display: none;
+  }
+
+  .responsive-sidebar-menu:not([open]) > .responsive-sidebar-menu__content {
+    display: block;
   }
 }

@@ -6,10 +6,12 @@ import {
   weeklyPlans
 } from "ts-db";
 import { db } from "../db";
+import {
+  summarizeTeacherActivityEvents,
+  type TeacherActivityEventType
+} from "./teacher-activity-model";
 
 const DAY_MS = 86_400_000;
-
-export type TeacherActivityEventType = "grade_saved" | "grade_removed";
 
 function utcDay(value: Date) {
   return value.toISOString().slice(0, 10);
@@ -159,8 +161,7 @@ export async function getTeacherActivity(input: {
     daily.set(day, (daily.get(day) ?? 0) + 1);
   }
   const activeDays = daily.size;
-  const gradesSaved = events.filter((event) => event.eventType === "grade_saved").length;
-  const gradesRemoved = events.filter((event) => event.eventType === "grade_removed").length;
+  const summary = summarizeTeacherActivityEvents(events);
 
   return {
     teacher: {
@@ -178,9 +179,7 @@ export async function getTeacherActivity(input: {
     dateTo: utcDay(to),
     days: Array.from(daily, ([date, count]) => ({ date, count })).sort((left, right) => left.date.localeCompare(right.date)),
     summary: {
-      gradingActions: events.length,
-      gradesSaved,
-      gradesRemoved,
+      ...summary,
       activeDays
     },
     events: events.slice(0, 100).map((event) => ({
@@ -191,6 +190,10 @@ export async function getTeacherActivity(input: {
       studentName: event.studentProfileId ? studentNames.get(event.studentProfileId) ?? null : null,
       weekNumber: event.weeklyPlanId ? weekNumbers.get(event.weeklyPlanId) ?? null : null,
       dayNumber: typeof event.metadata?.dayNumber === "number" ? event.metadata.dayNumber : null,
+      activityTitle: typeof event.metadata?.activityTitle === "string" ? event.metadata.activityTitle : null,
+      activityType: typeof event.metadata?.activityType === "string" ? event.metadata.activityType : null,
+      attendanceDate: typeof event.metadata?.attendanceDate === "string" ? event.metadata.attendanceDate : null,
+      minutes: typeof event.metadata?.minutes === "number" ? event.metadata.minutes : null,
       occurredAt: event.occurredAt.toISOString()
     }))
   };

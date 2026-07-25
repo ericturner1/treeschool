@@ -72,7 +72,7 @@ export default async function AdminWorkbooksPage() {
         <section className="mt-8">
           <div className="flex items-baseline justify-between gap-4"><h2 className="text-3xl font-semibold tracking-[-0.04em]">Workbook bundles</h2><p className="text-sm text-ink/55">{bundles.length} bundle{bundles.length === 1 ? "" : "s"}</p></div>
           {bundles.length ? <div className="mt-5 grid gap-4 lg:grid-cols-2">
-            {bundles.map((bundle) => <article key={bundle.id} className="rounded-[24px] border border-[#bfd1ad] bg-[#f3f8ed] p-4 sm:p-5">
+            {bundles.map((bundle) => <article key={bundle.id} className="min-w-0 max-w-full overflow-hidden rounded-[24px] border border-[#bfd1ad] bg-[#f3f8ed] p-4 sm:p-5">
               <div className="flex gap-4">
                 <div className="relative flex h-32 w-24 flex-none items-center justify-center overflow-hidden rounded-[12px] border border-[#bfd1ad] bg-white"><WorkbookCoverThumbnail title={bundle.title} thumbnailUrl={bundle.thumbnailUrl} /></div>
                 <div className="min-w-0 flex-1">
@@ -111,7 +111,7 @@ export default async function AdminWorkbooksPage() {
                 <article
                   key={`${workbook.id}:${workbook.versionId}`}
                   aria-busy={indexing}
-                  className={`rounded-[24px] border p-4 transition-colors sm:p-5 ${indexing ? "border-[#d7bd72] bg-[#fff4d2]" : "border-[#dcc8aa] bg-[#fffaf2]"}`}
+                  className={`min-w-0 max-w-full overflow-hidden rounded-[24px] border p-4 transition-colors sm:p-5 ${indexing ? "border-[#d7bd72] bg-[#fff4d2]" : "border-[#dcc8aa] bg-[#fffaf2]"}`}
                 >
                   <div className="flex gap-4">
                     <div className="relative flex h-28 w-[88px] flex-none items-center justify-center overflow-hidden rounded-[12px] border border-[#dcc8aa] bg-white">

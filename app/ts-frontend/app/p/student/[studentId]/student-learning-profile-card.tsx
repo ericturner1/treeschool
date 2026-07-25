@@ -187,8 +187,8 @@ function StudentPhotoCropper({
   }
 
   return (
-    <div className="fixed inset-0 z-[180] flex items-center justify-center bg-[rgba(37,32,27,0.68)] px-4 py-6">
-      <div role="dialog" aria-modal="true" aria-labelledby="student-photo-crop-title" className="max-h-[95vh] w-full max-w-xl overflow-y-auto rounded-[28px] border border-[#dcc8aa] bg-[#fffaf2] px-5 py-6 shadow-[0_24px_70px_rgba(37,32,27,0.4)] sm:px-8">
+    <div className="fixed inset-0 z-[180] flex items-start justify-center overflow-y-auto bg-[rgba(37,32,27,0.68)] p-2 sm:items-center sm:px-4 sm:py-6">
+      <div role="dialog" aria-modal="true" aria-labelledby="student-photo-crop-title" className="max-h-[calc(100dvh-1rem)] w-full max-w-xl overflow-y-auto rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] px-4 py-5 shadow-[0_24px_70px_rgba(37,32,27,0.4)] sm:max-h-[95vh] sm:rounded-[28px] sm:px-8 sm:py-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 id="student-photo-crop-title" className="text-[28px] font-semibold tracking-[-0.05em] text-ink">Crop {studentName}&apos;s photo</h2>
@@ -571,8 +571,8 @@ export function StudentLearningProfileCard({
       </section> : null}
 
       {editing ? (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-[rgba(37,32,27,0.48)] px-4 py-6">
-          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-[28px] border border-[#dcc8aa] bg-[#fffaf2] px-6 py-6 shadow-[0_24px_60px_rgba(37,32,27,0.28)] sm:px-8">
+        <div className="fixed inset-0 z-[140] flex items-start justify-center overflow-y-auto bg-[rgba(37,32,27,0.48)] p-2 sm:items-center sm:px-4 sm:py-6">
+          <div className="max-h-[calc(100dvh-1rem)] w-full max-w-3xl overflow-y-auto rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] px-4 py-5 shadow-[0_24px_60px_rgba(37,32,27,0.28)] sm:max-h-[92vh] sm:rounded-[28px] sm:px-8 sm:py-6">
             <div className="flex items-start justify-between gap-5">
               <div>
                 <h2 className="text-[28px] font-semibold tracking-[-0.05em] text-ink">{studentName}&apos;s settings</h2>

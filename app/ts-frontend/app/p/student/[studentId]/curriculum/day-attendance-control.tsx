@@ -77,10 +77,10 @@ export function DayAttendanceControl({
           role="dialog"
           aria-modal="true"
           aria-labelledby={`day-${weeklyPlanId}-${dayNumber}-attendance-title`}
-          className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-[#2d241c]/45 px-4 py-8"
+          className="fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto bg-[#2d241c]/45 p-2 sm:items-center sm:px-4 sm:py-8"
           onMouseDown={(event) => { if (event.currentTarget === event.target) setOpen(false); }}
         >
-          <form onSubmit={submit} className="relative w-full max-w-lg rounded-[26px] border border-[#dcc8aa] bg-[#fffaf2] p-6 shadow-2xl sm:p-7">
+          <form onSubmit={submit} className="relative max-h-[calc(100dvh-1rem)] w-full max-w-lg overflow-y-auto rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] p-4 shadow-2xl sm:rounded-[26px] sm:p-7">
             <button type="button" disabled={pending} onClick={() => setOpen(false)} aria-label="Close attendance dialog" className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white text-2xl text-earth shadow-sm disabled:opacity-50">×</button>
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-earth">Day {dayNumber}</p>
             <h3 id={`day-${weeklyPlanId}-${dayNumber}-attendance-title`} className="mt-2 pr-12 text-[26px] font-semibold tracking-[-0.05em] text-ink">

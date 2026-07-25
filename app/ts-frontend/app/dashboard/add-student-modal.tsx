@@ -86,8 +86,8 @@ export function AddStudentModal({
       </button>
 
       {open ? (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[rgba(37,32,27,0.42)] px-4 py-8">
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-[#dcc8aa] bg-[#fffaf2] px-6 py-6 shadow-[0_24px_48px_rgba(37,32,27,0.22)]">
+        <div className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto bg-[rgba(37,32,27,0.42)] p-2 sm:items-center sm:px-4 sm:py-8">
+          <div className="max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] px-4 py-5 shadow-[0_24px_48px_rgba(37,32,27,0.22)] sm:max-h-[92vh] sm:rounded-[28px] sm:px-6 sm:py-6">
             <div className="flex items-start justify-between gap-4">
               <h2 className="text-[28px] font-semibold tracking-[-0.05em] text-ink">{title}</h2>
               <button

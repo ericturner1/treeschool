@@ -99,41 +99,41 @@ export function StudentShell({
   );
 
   return (
-    <main className="min-h-screen bg-[#f8f1e4] px-4 py-10 sm:px-6 lg:px-8">
-      <div className={`mx-auto grid max-w-[1400px] gap-6 ${
+    <main className="min-h-screen bg-[#f8f1e4] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-10">
+      <div className={`mx-auto grid max-w-[1400px] gap-4 lg:gap-6 ${
         studentIdentityInContent
           ? "lg:grid-cols-[240px_minmax(0,1fr)]"
           : "lg:grid-cols-[280px_minmax(0,1fr)]"
       } lg:items-start`}>
-        <aside className="rounded-[24px] border border-[#dec9a9] bg-[#fffaf2] px-4 py-4 lg:sticky lg:top-4 lg:flex lg:min-h-[calc(100vh-5rem)] lg:flex-col">
+        <aside className="min-w-0 rounded-[22px] border border-[#dec9a9] bg-[#fffaf2] px-3 py-3 sm:px-4 lg:sticky lg:top-4 lg:flex lg:min-h-[calc(100vh-5rem)] lg:flex-col lg:py-4">
           <Link
             href="/"
-            className="flex w-full flex-col items-center justify-center text-center text-[28px] font-semibold tracking-[-0.05em] text-ink"
+            className="flex min-w-0 items-center text-left text-[20px] font-semibold tracking-[-0.05em] text-ink lg:w-full lg:flex-col lg:justify-center lg:text-center lg:text-[28px]"
           >
-            <img src="/tree-icon.png" alt="treeschool tree icon" className="h-24 w-24 object-contain" />
+            <img src="/tree-icon.png" alt="treeschool tree icon" className="h-11 w-11 flex-none object-contain lg:h-24 lg:w-24" />
             <span className="brand-logo">{brandName}</span>
           </Link>
 
           {!studentIdentityInContent ? (
-            <div className="mt-6 rounded-[20px] bg-[#f8f1e4] px-4 py-4 text-center">
-              <p className="text-sm font-semibold uppercase tracking-[0.12em] text-ink/58">
+            <div className="mt-2 flex min-w-0 items-center justify-between gap-3 rounded-[14px] bg-[#f8f1e4] px-3 py-2 text-left lg:mt-6 lg:block lg:rounded-[20px] lg:px-4 lg:py-4 lg:text-center">
+              <p className="hidden text-sm font-semibold uppercase tracking-[0.12em] text-ink/58 lg:block">
                 {dashboard.studentManagement.title}
               </p>
-              <p className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-ink">{student.firstName}</p>
-              <p className="mt-2 text-sm text-ink/68">{gradeLabel}</p>
+              <p className="min-w-0 truncate text-lg font-semibold tracking-[-0.04em] text-ink lg:mt-2 lg:text-2xl lg:tracking-[-0.05em]">{student.firstName}</p>
+              <p className="shrink-0 text-xs font-semibold text-ink/58 lg:mt-2 lg:text-sm lg:font-normal lg:text-ink/68">{gradeLabel}</p>
             </div>
           ) : null}
 
-          <div className={studentIdentityInContent ? "mt-6" : "mt-4"}>
+          <div className={studentIdentityInContent ? "mt-2 lg:mt-6" : "mt-2 lg:mt-4"}>
             <Link
               href="/p/dashboard"
-              className="cta-button cta-button--outline cta-button--small w-full"
+              className="cta-button cta-button--outline cta-button--small w-full lg:w-full"
             >
               {dashboard.studentManagement.back}
             </Link>
           </div>
 
-          <nav className="mt-4 space-y-2">
+          <nav className="mt-3 flex min-w-0 gap-2 overflow-x-auto pb-2 lg:mt-4 lg:block lg:space-y-2 lg:overflow-visible lg:pb-0">
             {navItems.map((item) => {
               const href = item.segment
                 ? `/p/student/${studentRouteSegment}/${item.segment}`
@@ -144,7 +144,7 @@ export function StudentShell({
                 <Link
                   key={item.key}
                   href={href as Route}
-                  className={`block rounded-[16px] px-4 py-3 text-sm font-semibold transition-colors ${
+                  className={`block shrink-0 whitespace-nowrap rounded-[14px] px-3.5 py-2.5 text-sm font-semibold transition-colors lg:w-full lg:rounded-[16px] lg:px-4 lg:py-3 ${
                     isActive
                       ? "bg-[#eef5e4] text-[#4d6a39]"
                       : "border border-[#dcc8aa] bg-white text-ink hover:border-[#c8af8b] hover:bg-[#f8f1e4]"
@@ -158,14 +158,14 @@ export function StudentShell({
             })}
           </nav>
 
-          <div className="mt-auto space-y-3 pt-6">
+          <div className="flex flex-wrap gap-2 border-t border-[#eadbc2] pt-3 lg:mt-auto lg:block lg:space-y-3 lg:border-0 lg:pt-6">
             <Link
               href={"/p/account#teachers" as Route}
-              className="cta-button cta-button--outline cta-button--small w-full"
+              className="cta-button cta-button--outline cta-button--small min-w-0 flex-1 lg:w-full"
             >
               {dashboard.actions.teachers}
             </Link>
-            <form action={logoutAction}>
+            <form action={logoutAction} className="min-w-0 flex-1 lg:w-full">
               <button type="submit" className="cta-button cta-button--dark cta-button--small w-full">
                 {dashboard.actions.logout}
               </button>
@@ -175,19 +175,19 @@ export function StudentShell({
 
         <div className="min-w-0">
           {studentIdentityInContent ? (
-            <header className={`relative rounded-[28px] px-5 py-2 sm:px-6 sm:py-2 ${activeNav === "curriculum" ? "mb-2" : "mb-6 border border-[#dec9a9] bg-[#fffaf2] shadow-[0_7px_0_#ead8bd]"}`}>
+            <header className={`relative rounded-[22px] px-3 py-2 sm:rounded-[28px] sm:px-6 ${activeNav === "curriculum" ? "mb-2" : "mb-4 border border-[#dec9a9] bg-[#fffaf2] shadow-[0_5px_0_#ead8bd] sm:mb-6 sm:shadow-[0_7px_0_#ead8bd]"}`}>
               <div className={`${studentProfileSummary
                 ? "grid gap-5 lg:grid-cols-[minmax(250px,0.6fr)_minmax(480px,1.4fr)] lg:items-center lg:gap-5"
                 : "flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between"
               }`}>
-                <div className="flex min-w-0 items-center gap-4 sm:gap-5">
+                <div className="flex min-w-0 items-center gap-3 sm:gap-5">
                   {activeNav === "overview" ? (
                     <StudentProfilePhotoTrigger profileId={student.id} studentName={student.firstName}>
                       {studentPhoto}
                     </StudentProfilePhotoTrigger>
                   ) : activeNav === "curriculum" ? null : studentPhoto}
                   <div className="min-w-0">
-                    <p className="break-words text-[36px] font-semibold leading-none tracking-[-0.06em] text-ink sm:text-[44px]">
+                    <p className="break-words text-[29px] font-semibold leading-[1.02] tracking-[-0.055em] text-ink sm:text-[44px] sm:leading-none sm:tracking-[-0.06em]">
                       {activeNav === "curriculum" ? `${student.firstName}'s Lesson Plan` : student.firstName}
                     </p>
                     {activeNav === "curriculum" ? null : (
@@ -204,7 +204,7 @@ export function StudentShell({
                   </div>
                 </div>
                 {studentProfileSummary ? (
-                  <div className="rounded-[20px] px-4 py-3.5 sm:px-5">
+                  <div className="min-w-0 rounded-[18px] px-2 py-2.5 sm:rounded-[20px] sm:px-5 sm:py-3.5">
                     {studentProfileSummary}
                   </div>
                 ) : activeNav === "overview" || activeNav === "curriculum" ? null : (
@@ -216,8 +216,8 @@ export function StudentShell({
               </div>
             </header>
           ) : (
-            <div className="pb-3">
-              <p className="text-4xl font-semibold tracking-[-0.05em] text-ink sm:text-5xl">{title}</p>
+            <div className="pb-2 lg:pb-3">
+              <p className="break-words text-[32px] font-semibold leading-tight tracking-[-0.05em] text-ink sm:text-5xl">{title}</p>
             </div>
           )}
           {children}

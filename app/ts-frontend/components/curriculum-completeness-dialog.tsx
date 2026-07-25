@@ -201,7 +201,7 @@ export function CurriculumCompletenessDialog({
   const reviewFailed = Boolean(error && !displayResult);
   return createPortal(
     <div
-      className="fixed inset-0 z-[80] flex h-[100dvh] w-screen items-center justify-center overscroll-contain bg-[#2d241c]/55 px-4 py-6"
+      className="fixed inset-0 z-[80] flex h-[100dvh] w-screen items-start justify-center overscroll-contain bg-[#2d241c]/55 p-2 sm:items-center sm:px-4 sm:py-6"
       role="presentation"
       onPointerDown={(event) => {
         const interactionInProgress = loading || continuing || reevaluating || addingWorkbookId != null;
@@ -212,12 +212,12 @@ export function CurriculumCompletenessDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="curriculum-check-title"
-        className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-[#dcc8aa] bg-[#fffdf8] p-5 shadow-2xl sm:p-7"
+        className="max-h-[calc(100dvh-1rem)] w-full min-w-0 max-w-2xl overflow-y-auto rounded-[22px] border border-[#dcc8aa] bg-[#fffdf8] p-4 shadow-2xl sm:max-h-[92vh] sm:rounded-[28px] sm:p-7"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.14em] text-earth">Academic completeness check</p>
-            <h2 id="curriculum-check-title" className="mt-2 text-[27px] font-semibold tracking-[-0.04em] text-ink">
+            <h2 id="curriculum-check-title" className="mt-2 text-[23px] font-semibold leading-tight tracking-[-0.04em] text-ink sm:text-[27px]">
               {loading
                 ? "Reviewing the year’s subjects…"
                 : reviewFailed ? "The review needs another try"

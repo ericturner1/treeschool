@@ -68,19 +68,25 @@ export type TeacherActivity = {
   dateTo: string;
   days: Array<{ date: string; count: number }>;
   summary: {
+    totalActions: number;
     gradingActions: number;
     gradesSaved: number;
     gradesRemoved: number;
+    attendanceRecorded: number;
     activeDays: number;
   };
   events: Array<{
     id: string;
-    eventType: "grade_saved" | "grade_removed";
+    eventType: "grade_saved" | "grade_removed" | "attendance_manual";
     subjectLabel: string | null;
     score: number | null;
     studentName: string | null;
     weekNumber: number | null;
     dayNumber: number | null;
+    activityTitle: string | null;
+    activityType: string | null;
+    attendanceDate: string | null;
+    minutes: number | null;
     occurredAt: string;
   }>;
 };

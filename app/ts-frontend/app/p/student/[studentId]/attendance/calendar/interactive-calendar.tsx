@@ -538,7 +538,7 @@ export function InteractiveCalendar({
 
       {dialogOpen && selectedRange ? (
         <div
-          className="fixed inset-0 z-[160] flex items-center justify-center bg-[rgba(37,32,27,0.48)] px-4 py-8"
+          className="fixed inset-0 z-[160] flex items-start justify-center overflow-y-auto bg-[rgba(37,32,27,0.48)] p-2 sm:items-center sm:px-4 sm:py-8"
           onMouseDown={(event) => {
             if (!submitting && event.currentTarget === event.target) closeDialog();
           }}
@@ -547,7 +547,7 @@ export function InteractiveCalendar({
             role="dialog"
             aria-modal="true"
             aria-labelledby="calendar-selection-title"
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[28px] border border-[#dcc8aa] bg-[#fffaf2] px-6 py-6 shadow-[0_24px_56px_rgba(37,32,27,0.28)] sm:px-7"
+            className="max-h-[calc(100dvh-1rem)] w-full max-w-lg overflow-y-auto rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] px-4 py-5 shadow-[0_24px_56px_rgba(37,32,27,0.28)] sm:max-h-[90vh] sm:rounded-[28px] sm:px-7 sm:py-6"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -594,7 +594,7 @@ export function InteractiveCalendar({
 
       {selectedException ? (
         <div
-          className="fixed inset-0 z-[160] flex items-center justify-center bg-[rgba(37,32,27,0.48)] px-4 py-8"
+          className="fixed inset-0 z-[160] flex items-start justify-center overflow-y-auto bg-[rgba(37,32,27,0.48)] p-2 sm:items-center sm:px-4 sm:py-8"
           onMouseDown={(event) => {
             if (!removing && event.currentTarget === event.target) {
               closeExistingExceptionDialog();
@@ -605,7 +605,7 @@ export function InteractiveCalendar({
             role="dialog"
             aria-modal="true"
             aria-labelledby="remove-calendar-entry-title"
-            className="w-full max-w-lg rounded-[28px] border border-[#dcc8aa] bg-[#fffaf2] px-6 py-6 shadow-[0_24px_56px_rgba(37,32,27,0.28)] sm:px-7"
+            className="max-h-[calc(100dvh-1rem)] w-full max-w-lg overflow-y-auto rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] px-4 py-5 shadow-[0_24px_56px_rgba(37,32,27,0.28)] sm:rounded-[28px] sm:px-7 sm:py-6"
           >
             <div className="flex items-start justify-between gap-4">
               <div>

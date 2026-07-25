@@ -96,8 +96,8 @@ export function PlanCreationProgress({
     : progress.detail;
 
   return (
-    <div className="w-full" role="status" aria-live="polite">
-      <ol className="mb-3 flex w-full items-center gap-1 overflow-x-auto pb-1" aria-label="Plan creation steps">
+    <div className="min-w-0 w-full max-w-full" role="status" aria-live="polite">
+      <ol className="mb-3 flex min-w-0 w-full max-w-full items-center gap-1 overflow-x-auto overscroll-x-contain pb-1" aria-label="Plan creation steps">
         {PLAN_STAGES.map((item, index) => {
           const complete = stage === "ready" ? index <= stageIndex : index < stageIndex;
           const active = index === stageIndex && stage !== "ready";
@@ -134,8 +134,8 @@ export function PlanCreationProgress({
           );
         })}
       </ol>
-      <div className="flex items-baseline justify-between gap-4">
-        <p className={`${compact ? "text-sm" : "text-base"} font-semibold ${warning ? "text-[#805c22]" : "text-[#4d6a39]"}`}>{displayedLabel}</p>
+      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p className={`min-w-0 ${compact ? "text-sm" : "text-base"} font-semibold ${warning ? "text-[#805c22]" : "text-[#4d6a39]"}`}>{displayedLabel}</p>
         <span className={`shrink-0 text-xs font-black ${warning ? "text-[#805c22]" : "tabular-nums text-[#567b40]"}`}>
           {attention ? "Action required" : recovering ? "Correcting automatically" : waiting ? "Waiting for you" : `${percent}%`}
         </span>

@@ -1,8 +1,10 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { redirect } from "next/navigation";
+import { LocalDateTime } from "../../../../../components/local-date-time";
 import { PointIcon } from "../../../../../components/point-icon";
 import { PointIconPicker } from "../../../../../components/point-icon-picker";
+import { getStudentStreakSettings } from "../../../../../lib/accounts/server";
 import { getStudentPoints } from "../../../../../lib/points/server";
 import { ParentModeGuard } from "../../../parent-mode-guard";
 import { getParentStudentPageData, studentRoutePath } from "../student-page-data";
@@ -23,16 +25,6 @@ function unitName(amount: number, singularName: string, pluralName: string) {
   return Math.abs(amount) === 1 ? singularName : pluralName;
 }
 
-function activityDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
-}
-
 export default async function StudentPointsPage({ params, searchParams }: Props) {
   const { dashboard, home, currentUser, student, studentRouteSegment } = await getParentStudentPageData(
     params.studentId,
@@ -43,12 +35,18 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
   }
   const historyPage = Math.max(1, Math.round(Number(searchParams?.historyPage) || 1));
   const historyPageSize = 50;
-  const points = await getStudentPoints({
-    parentUserId: currentUser.id,
-    profileId: student.id,
-    historyLimit: historyPageSize,
-    historyOffset: (historyPage - 1) * historyPageSize
-  });
+  const [points, streakSettings] = await Promise.all([
+    getStudentPoints({
+      parentUserId: currentUser.id,
+      profileId: student.id,
+      historyLimit: historyPageSize,
+      historyOffset: (historyPage - 1) * historyPageSize
+    }),
+    getStudentStreakSettings({
+      parentUserId: currentUser.id,
+      profileId: student.id
+    })
+  ]);
   const returnPath = studentRoutePath(studentRouteSegment, "/points");
   const redirectTo = studentRoutePath(studentRouteSegment, "/points", searchParams);
   const { singularName, pluralName, iconKey, customIconUrl } = points.settings;
@@ -188,7 +186,11 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
                   <div className="min-w-0">
                     <p className={`font-semibold text-ink ${transaction.reversed ? "line-through" : ""}`}>{transaction.reason}</p>
                     <p className="mt-1 text-xs text-ink/48">
-                      {transaction.actorName} · {activityDate(transaction.createdAt)}
+                      {transaction.actorName} ·{" "}
+                      <LocalDateTime
+                        value={transaction.createdAt}
+                        fallbackTimeZone={streakSettings.timeZone}
+                      />
                       {transaction.reversed ? " · Completion undone" : ""}
                     </p>
                   </div>

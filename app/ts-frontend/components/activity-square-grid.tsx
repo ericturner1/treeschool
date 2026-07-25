@@ -54,7 +54,7 @@ export function ActivitySquareGrid({
   const size = compact ? "h-[9px] w-[9px]" : "h-[11px] w-[11px]";
 
   return (
-    <div className={compact ? "overflow-hidden" : "overflow-x-auto pb-2"}>
+    <div className={compact ? "min-w-0 max-w-full overflow-hidden" : "min-w-0 w-full max-w-full overflow-x-auto overscroll-x-contain pb-2"}>
       <div className={compact ? "" : "min-w-[760px]"}>
         {explanation ? <p className={`${compact ? "mb-2" : "mb-2 pl-8"} text-[11px] leading-5 text-ink/45`}>{explanation}</p> : null}
         <div className="flex gap-2">
