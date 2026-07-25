@@ -1,11 +1,9 @@
+import Link from "next/link";
+import type { Route } from "next";
 import { redirect } from "next/navigation";
 import { ParentModeGuard } from "../../../parent-mode-guard";
 import { getStudentStreakSettings } from "../../../../../lib/accounts/server";
-import {
-  updateGradingSchemeAction,
-  updateStreakSettingsAction
-} from "../../../../dashboard/students/[profileId]/actions";
-import { StreakSettingsForm } from "../../../../dashboard/students/[profileId]/streak-settings-form";
+import { updateGradingSchemeAction } from "../../../../dashboard/students/[profileId]/actions";
 import { getParentStudentPageData, studentRoutePath } from "../student-page-data";
 import { StudentShell } from "../student-shell";
 
@@ -124,14 +122,12 @@ export default async function ParentStudentSettingsPage({
                 ? `${streakSettings.currentPeriodLabel} ${dashboard.studentManagement.currentPeriodCompleteSuffix}`
                 : `${streakSettings.currentPeriodLabel} ${dashboard.studentManagement.currentPeriodOpenSuffix}`}
           </div>
-          <StreakSettingsForm
-            action={updateStreakSettingsAction}
-            profileId={student.id}
-            initialMode={streakSettings.mode}
-            initialPausedWeekdays={streakSettings.pausedWeekdays}
-            initialPausedWeeks={streakSettings.pausedWeeks}
-            initialTimeZone={streakSettings.timeZone}
-          />
+          <Link
+            href={studentRoutePath(studentRouteSegment, "/attendance/calendar") as Route}
+            className="cta-button cta-button--outline cta-button--small mt-5"
+          >
+            Open school calendar &amp; streak
+          </Link>
         </section>
       </StudentShell>
     </ParentModeGuard>

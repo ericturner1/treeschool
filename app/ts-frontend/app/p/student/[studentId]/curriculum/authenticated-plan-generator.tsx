@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal, useFormStatus } from "react-dom";
 import { CurriculumCompletenessDialog } from "../../../../../components/curriculum-completeness-dialog";
+import { GearIcon } from "../../../../../components/gear-icon";
 import { TeachingDaysConflictDialog } from "../../../../../components/teaching-days-conflict-dialog";
 import {
   PlanCreationProgress,
@@ -90,15 +91,6 @@ const AUTHENTICATED_DRAFT_PREFIX = "treeschool-authenticated-plan-draft";
 
 function dateInputValue(value: string | null | undefined) {
   return value ? value.slice(0, 10) : "";
-}
-
-function PlanPreferencesIcon({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path d="M12 8.25A3.75 3.75 0 1 0 12 15.75 3.75 3.75 0 0 0 12 8.25Z" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M19.25 13.1a7.7 7.7 0 0 0 0-2.2l2-1.5-2-3.45-2.45 1a7.7 7.7 0 0 0-1.9-1.1L14.55 3h-4.1l-.35 2.85a7.7 7.7 0 0 0-1.9 1.1l-2.45-1-2 3.45 2 1.5a7.7 7.7 0 0 0 0 2.2l-2 1.5 2 3.45 2.45-1a7.7 7.7 0 0 0 1.9 1.1l.35 2.85h4.1l.35-2.85a7.7 7.7 0 0 0 1.9-1.1l2.45 1 2-3.45-2-1.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 function HintPopover({ children, closeLabel }: { children: ReactNode; closeLabel: string }) {
@@ -951,7 +943,7 @@ export function AuthenticatedPlanGenerator({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="flex items-center gap-2 text-sm font-semibold text-ink">
-                <PlanPreferencesIcon className="h-[18px] w-[18px] text-earth/75" />
+                <GearIcon className="h-[18px] w-[18px] text-earth/75" />
                 Plan preferences
               </p>
               <p className="mt-1 text-xs text-ink/55">
@@ -1031,7 +1023,7 @@ export function AuthenticatedPlanGenerator({
         ) : null}
         {!addingToExistingYear ? <div className="mt-4 rounded-[20px] border border-[#eadbc2] bg-[#fffaf2] px-4 py-3 text-sm text-ink">
           <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.11em] text-earth">
-            <PlanPreferencesIcon className="h-3.5 w-3.5" />
+            <GearIcon className="h-3.5 w-3.5" />
             Plan preferences
           </span>
           <div className="mt-2 flex flex-wrap gap-2">

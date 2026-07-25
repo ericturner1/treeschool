@@ -108,6 +108,21 @@ import {
   updateStudentStreakSettings
 } from "./services/streaks";
 import {
+  createStudentCalendarException,
+  deleteStudentCalendarException,
+  getStudentSchoolCalendar,
+  updateStudentCalendarSchedule
+} from "./services/school-calendar";
+import {
+  awardStudentPoints,
+  completeStudentPointIconUpload,
+  discardStudentPointIconUpload,
+  getStudentPoints,
+  prepareStudentPointIconUpload,
+  redeemStudentPoints,
+  updateStudentPointSettings
+} from "./services/student-points";
+import {
   getConsumerSafeWordWhitelist,
   getNodeTechnicalVocabularyContext,
   getPioneerWords
@@ -1972,6 +1987,14 @@ const server = Bun.serve({
         languagePreference?: string;
         learningProfileNotes?: string;
         subjectStrengths?: Record<string, string>;
+        recurringDaysOff?: number[];
+        calendarTimeZone?: string;
+        calendarExceptions?: Array<{
+          label: string;
+          exceptionKind?: "holiday" | "school_break" | "vacation" | "personal_day" | "other";
+          startDate: string;
+          endDate: string;
+        }>;
         successUrl?: string;
         cancelUrl?: string;
       };
@@ -2006,7 +2029,10 @@ const server = Bun.serve({
             uiTheme: body.uiTheme,
             languagePreference: body.languagePreference,
             learningProfileNotes: body.learningProfileNotes,
-            subjectStrengths: body.subjectStrengths
+            subjectStrengths: body.subjectStrengths,
+            recurringDaysOff: body.recurringDaysOff,
+            calendarTimeZone: body.calendarTimeZone,
+            calendarExceptions: body.calendarExceptions
           }
         });
 
@@ -2153,6 +2179,231 @@ const server = Bun.serve({
           pausedWeeks: body.pausedWeeks
         })
       );
+    }
+
+    if (url.pathname === "/internal/profiles/student/calendar" && request.method === "GET") {
+      const parentUserId = url.searchParams.get("parentUserId");
+      const profileId = url.searchParams.get("profileId");
+      const dateFrom = url.searchParams.get("dateFrom");
+      const dateTo = url.searchParams.get("dateTo");
+      if (!parentUserId || !profileId || !dateFrom || !dateTo) {
+        return Response.json(
+          { error: "parentUserId, profileId, dateFrom, and dateTo are required." },
+          { status: 400 }
+        );
+      }
+      try {
+        return Response.json(await getStudentSchoolCalendar({
+          parentUserId,
+          profileId,
+          dateFrom,
+          dateTo
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Failed to load the school calendar." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/profiles/student/points" && request.method === "GET") {
+      const parentUserId = url.searchParams.get("parentUserId");
+      const profileId = url.searchParams.get("profileId");
+      const historyLimit = Number(url.searchParams.get("historyLimit") ?? 100);
+      const historyOffset = Number(url.searchParams.get("historyOffset") ?? 0);
+      if (!parentUserId || !profileId) {
+        return Response.json(
+          { error: "parentUserId and profileId are required." },
+          { status: 400 }
+        );
+      }
+      try {
+        return Response.json(await getStudentPoints({
+          parentUserId,
+          profileId,
+          historyLimit,
+          historyOffset
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Failed to load student points." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/profiles/student/points" && request.method === "POST") {
+      const body = (await request.json()) as {
+        parentUserId?: string;
+        profileId?: string;
+        action?: "award" | "redeem" | "settings";
+        amount?: number;
+        reason?: string;
+        singularName?: string;
+        pluralName?: string;
+        iconKey?: string;
+        autoAwardLessonCompletion?: boolean;
+      };
+      if (!body.parentUserId || !body.profileId || !body.action) {
+        return Response.json(
+          { error: "parentUserId, profileId, and action are required." },
+          { status: 400 }
+        );
+      }
+      try {
+        if (body.action === "award") {
+          return Response.json(await awardStudentPoints({
+            parentUserId: body.parentUserId,
+            profileId: body.profileId,
+            amount: Number(body.amount),
+            reason: body.reason ?? ""
+          }), { status: 201 });
+        }
+        if (body.action === "redeem") {
+          return Response.json(await redeemStudentPoints({
+            parentUserId: body.parentUserId,
+            profileId: body.profileId,
+            amount: Number(body.amount),
+            reason: body.reason ?? ""
+          }), { status: 201 });
+        }
+        return Response.json(await updateStudentPointSettings({
+          parentUserId: body.parentUserId,
+          profileId: body.profileId,
+          singularName: body.singularName ?? "point",
+          pluralName: body.pluralName ?? "points",
+          iconKey: body.iconKey ?? "star",
+          autoAwardLessonCompletion: body.autoAwardLessonCompletion === true
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Failed to update student points." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/profiles/student/points/icon/prepare" && request.method === "POST") {
+      try {
+        const body = await request.json() as Parameters<typeof prepareStudentPointIconUpload>[0];
+        return Response.json(await prepareStudentPointIconUpload(body));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Could not prepare the custom point icon upload." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/profiles/student/points/icon/complete" && request.method === "POST") {
+      try {
+        const body = await request.json() as Parameters<typeof completeStudentPointIconUpload>[0];
+        return Response.json(await completeStudentPointIconUpload(body));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Could not save the custom point icon." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/profiles/student/points/icon/discard" && request.method === "POST") {
+      try {
+        const body = await request.json() as Parameters<typeof discardStudentPointIconUpload>[0];
+        return Response.json(await discardStudentPointIconUpload(body));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Could not discard the custom point icon upload." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/profiles/student/calendar" && request.method === "PATCH") {
+      const body = (await request.json()) as {
+        parentUserId?: string;
+        profileId?: string;
+        timeZone?: string;
+        recurringDaysOff?: number[];
+      };
+      if (!body.parentUserId || !body.profileId || !Array.isArray(body.recurringDaysOff)) {
+        return Response.json(
+          { error: "parentUserId, profileId, and recurringDaysOff are required." },
+          { status: 400 }
+        );
+      }
+      try {
+        return Response.json(await updateStudentCalendarSchedule({
+          parentUserId: body.parentUserId,
+          profileId: body.profileId,
+          timeZone: body.timeZone,
+          recurringDaysOff: body.recurringDaysOff
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Failed to update the school calendar." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/profiles/student/calendar" && request.method === "POST") {
+      const body = (await request.json()) as {
+        parentUserId?: string;
+        profileId?: string;
+        label?: string;
+        exceptionKind?: "holiday" | "school_break" | "vacation" | "personal_day" | "other";
+        startDate?: string;
+        endDate?: string;
+      };
+      if (!body.parentUserId || !body.profileId || !body.label || !body.startDate || !body.endDate) {
+        return Response.json(
+          { error: "parentUserId, profileId, label, startDate, and endDate are required." },
+          { status: 400 }
+        );
+      }
+      try {
+        return Response.json(await createStudentCalendarException({
+          parentUserId: body.parentUserId,
+          profileId: body.profileId,
+          label: body.label,
+          exceptionKind: body.exceptionKind,
+          startDate: body.startDate,
+          endDate: body.endDate
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Failed to add the calendar entry." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/profiles/student/calendar" && request.method === "DELETE") {
+      const body = (await request.json()) as {
+        parentUserId?: string;
+        profileId?: string;
+        exceptionId?: string;
+      };
+      if (!body.parentUserId || !body.profileId || !body.exceptionId) {
+        return Response.json(
+          { error: "parentUserId, profileId, and exceptionId are required." },
+          { status: 400 }
+        );
+      }
+      try {
+        return Response.json(await deleteStudentCalendarException({
+          parentUserId: body.parentUserId,
+          profileId: body.profileId,
+          exceptionId: body.exceptionId
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Failed to remove the calendar entry." },
+          { status: 400 }
+        );
+      }
     }
 
     if (url.pathname === "/internal/profiles/student/attendance" && request.method === "GET") {

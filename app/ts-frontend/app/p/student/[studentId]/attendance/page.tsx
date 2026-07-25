@@ -1,3 +1,5 @@
+import Link from "next/link";
+import type { Route } from "next";
 import { redirect } from "next/navigation";
 import { ParentModeGuard } from "../../../parent-mode-guard";
 import { ActivitySquareGrid } from "../../../../../components/activity-square-grid";
@@ -53,10 +55,18 @@ export default async function AttendancePage({ params, searchParams }: Props) {
             <section className="site-panel rounded-[28px] px-6 py-7 sm:px-8">
               <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-earth">Learning activity</p><h2 className="mt-2 text-[32px] font-semibold tracking-[-0.055em] text-ink">Attendance at a glance</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-ink/62">Planned school days and learning beyond the plan belong in one honest record. Plan progress is based on the scheduled subjects logged here.</p></div>
-                {attendance.years.length > 0 ? <form method="GET" className="flex flex-wrap items-end gap-2">
-                  <label className="text-xs font-semibold text-ink/65">School year<select name="yearId" defaultValue={attendance.selectedYearId ?? ""} className="mt-1 block rounded-[12px] border border-[#dcc8aa] bg-white px-3 py-2 text-sm text-ink">{attendance.years.map((year) => <option key={year.id} value={year.id}>{year.title}</option>)}</select></label>
-                  <button className="cta-button cta-button--small" type="submit">View</button>
-                </form> : null}
+                <div className="flex flex-wrap items-end gap-2">
+                  {attendance.years.length > 0 ? <form method="GET" className="flex flex-wrap items-end gap-2">
+                    <label className="text-xs font-semibold text-ink/65">School year<select name="yearId" defaultValue={attendance.selectedYearId ?? ""} className="mt-1 block rounded-[12px] border border-[#dcc8aa] bg-white px-3 py-2 text-sm text-ink">{attendance.years.map((year) => <option key={year.id} value={year.id}>{year.title}</option>)}</select></label>
+                    <button className="cta-button cta-button--small" type="submit">View</button>
+                  </form> : null}
+                  <Link
+                    href={studentRoutePath(studentRouteSegment, "/attendance/calendar") as Route}
+                    className="cta-button cta-button--outline cta-button--small"
+                  >
+                    School calendar &amp; streak
+                  </Link>
+                </div>
               </div>
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Learning days</p><p className="mt-1 text-3xl font-semibold text-ink">{attendance.summary.learningDays}</p></div>

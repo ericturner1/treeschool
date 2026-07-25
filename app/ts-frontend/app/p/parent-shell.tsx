@@ -30,6 +30,7 @@ type ParentShellProps = {
       browse: string;
       electives: string;
       settings: string;
+      teachers: string;
       account: string;
       logout: string;
     };
@@ -160,6 +161,12 @@ export async function ParentShell({
                   >
                     {dashboard.actions.settings}
                   </Link> : null}
+                <Link
+                  href={"/p/account#teachers" as Route}
+                  className="cta-button cta-button--small cta-button--outline w-full"
+                >
+                  {dashboard.actions.teachers}
+                </Link>
                 <Link
                   href="/p/account"
                   className={`cta-button cta-button--small w-full ${activeNav === "account" ? "cta-button--light" : "cta-button--outline"}`}

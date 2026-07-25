@@ -174,6 +174,7 @@ const en = {
       browse: "Browse curriculum",
       electives: "Electives",
       settings: "Settings",
+      teachers: "Teachers",
       account: "Account",
       home: "Back to home",
       logout: "Log out"
@@ -222,6 +223,7 @@ const en = {
         attendance: "Attendance",
         reports: "Reports",
         grades: "Grades",
+        points: "Points",
         settings: "Settings"
       },
       cards: {
@@ -294,9 +296,9 @@ const en = {
         gradesTitle: "Grades",
         gradesCopy: "Student grading and mastery snapshots will live here."
       },
-      streakTitle: "Streak settings",
+      streakTitle: "Learning streak",
       streakCopy:
-        "Choose a daily or weekly streak and pause the days or weeks your family wants to skip.",
+        "Regular days off and planned holidays are skipped automatically. Manage them in the school calendar.",
       currentStreakPrefix: "Current streak",
       currentPeriodPausedSuffix: "is paused",
       currentPeriodCompleteSuffix: "is complete",

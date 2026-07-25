@@ -10,6 +10,8 @@ import {
   nodeTranslations,
   profileCurriculumEnrollments,
   profiles,
+  streakSettings,
+  studentCalendarExceptions,
   type gradingSchemeEnum,
   studentVocabulary,
   users,
@@ -83,6 +85,14 @@ export type CreateStudentProfileInput = {
   languagePreference?: string;
   learningProfileNotes?: string;
   subjectStrengths?: Record<string, string>;
+  recurringDaysOff?: number[];
+  calendarTimeZone?: string;
+  calendarExceptions?: Array<{
+    label: string;
+    exceptionKind?: "holiday" | "school_break" | "vacation" | "personal_day" | "other";
+    startDate: string;
+    endDate: string;
+  }>;
 };
 
 const STUDENT_STRENGTH_SUBJECTS = new Set([
@@ -98,6 +108,53 @@ const STUDENT_STRENGTH_VALUES = new Set([
   "ready_for_challenge",
   "not_sure"
 ]);
+const CALENDAR_EXCEPTION_KINDS = new Set([
+  "holiday",
+  "school_break",
+  "vacation",
+  "personal_day",
+  "other"
+]);
+
+function normalizeRecurringDaysOff(values: number[] | undefined) {
+  return [...new Set((values ?? [0, 6]).filter((value) =>
+    Number.isInteger(value) && value >= 0 && value <= 6
+  ))].sort((left, right) => left - right);
+}
+
+function normalizeCalendarTimeZone(value: string | undefined) {
+  const candidate = value?.trim() || "UTC";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format(new Date());
+    return candidate;
+  } catch {
+    return "UTC";
+  }
+}
+
+function normalizeCalendarExceptions(
+  values: CreateStudentProfileInput["calendarExceptions"]
+) {
+  return (values ?? []).map((entry) => {
+    const label = entry.label.trim().replace(/\s+/g, " ");
+    if (!label) throw new Error("Every planned school break needs a name.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(entry.endDate)) {
+      throw new Error(`Choose valid dates for ${label}.`);
+    }
+    if (entry.endDate < entry.startDate) {
+      throw new Error(`${label} must end on or after it starts.`);
+    }
+    const duration = (
+      new Date(`${entry.endDate}T00:00:00.000Z`).getTime() -
+      new Date(`${entry.startDate}T00:00:00.000Z`).getTime()
+    ) / 86_400_000;
+    if (duration > 370) throw new Error(`${label} cannot be longer than one year.`);
+    const exceptionKind = CALENDAR_EXCEPTION_KINDS.has(entry.exceptionKind ?? "")
+      ? entry.exceptionKind!
+      : "other";
+    return { label, exceptionKind, startDate: entry.startDate, endDate: entry.endDate };
+  });
+}
 const STUDENT_PHOTO_MAX_BYTES = 8 * 1024 * 1024;
 const STUDENT_PHOTO_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -599,6 +656,11 @@ export async function createStudentProfile(input: CreateStudentProfileInput) {
   const profileId = input.profileId ?? randomUUID();
   const derivedAge = getAgeFromBirthDate(input.birthDate);
   const birthDate = new Date(input.birthDate);
+  const recurringDaysOff = normalizeRecurringDaysOff(input.recurringDaysOff);
+  const calendarExceptions = normalizeCalendarExceptions(input.calendarExceptions);
+  if (recurringDaysOff.length >= 7) {
+    throw new Error("Leave at least one regular school day in the week.");
+  }
 
   const insertedProfile = await db.transaction(async (tx) => {
     const householdSlugs = await tx
@@ -629,6 +691,26 @@ export async function createStudentProfile(input: CreateStudentProfileInput) {
     }).onConflictDoNothing({ target: profiles.id }).returning({ id: profiles.id });
 
     if (inserted.length > 0) {
+      await tx.insert(streakSettings).values({
+        profileId,
+        mode: "daily",
+        timeZone: normalizeCalendarTimeZone(input.calendarTimeZone),
+        pausedWeekdays: recurringDaysOff
+      }).onConflictDoNothing();
+
+      if (calendarExceptions.length > 0) {
+        await tx.insert(studentCalendarExceptions).values(
+          calendarExceptions.map((entry) => ({
+            profileId,
+            label: entry.label,
+            exceptionKind: entry.exceptionKind,
+            startDate: entry.startDate,
+            endDate: entry.endDate,
+            createdByUserId: input.parentUserId
+          }))
+        );
+      }
+
       const vocabularyRows = await tx
         .select({
           id: lexicon.id

@@ -18,6 +18,39 @@ function getField(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
 }
 
+const daysOffPresets: Record<string, number[]> = {
+  sat_sun: [0, 6],
+  fri_sat: [5, 6],
+  sun_only: [0],
+  fri_sat_sun: [0, 5, 6],
+  none: []
+};
+
+function getStudentCalendarSetup(formData: FormData) {
+  const daysOffPreset = getField(formData, "daysOffPreset");
+  const recurringDaysOff = daysOffPresets[daysOffPreset] ?? daysOffPresets.sat_sun;
+  const calendarExceptions = formData
+    .getAll("calendarBreak")
+    .map((value) => String(value))
+    .map((key) => ({
+      label: getField(formData, `calendarBreak-${key}-label`),
+      exceptionKind: (getField(formData, `calendarBreak-${key}-exceptionKind`) || "other") as
+        | "holiday"
+        | "school_break"
+        | "vacation"
+        | "personal_day"
+        | "other",
+      startDate: getField(formData, `calendarBreak-${key}-startDate`),
+      endDate: getField(formData, `calendarBreak-${key}-endDate`)
+    }))
+    .filter((entry) => entry.label && entry.startDate && entry.endDate);
+  return {
+    recurringDaysOff,
+    calendarTimeZone: getField(formData, "calendarTimeZone") || "UTC",
+    calendarExceptions
+  };
+}
+
 function getSafeRedirectTarget(input: string) {
   if (!input || !input.startsWith("/") || input.startsWith("//")) {
     return "/p/dashboard";
@@ -79,6 +112,7 @@ export async function createStudentProfileAction(formData: FormData) {
       .map((subject) => [subject, getField(formData, `strength-${subject}`)])
       .filter(([, value]) => Boolean(value))
   );
+  const calendarSetup = getStudentCalendarSetup(formData);
 
   if (!firstName || !birthDate || Number.isNaN(gradeLevel)) {
     return { ok: false, error: "Please provide first name, birth date, and grade level." };
@@ -93,6 +127,7 @@ export async function createStudentProfileAction(formData: FormData) {
       gradeLevel,
       learningProfileNotes,
       subjectStrengths,
+      ...calendarSetup,
       successUrl: `${origin}/p/dashboard?student_checkout=success`,
       cancelUrl: `${origin}/p/dashboard?student_checkout=canceled`
     });

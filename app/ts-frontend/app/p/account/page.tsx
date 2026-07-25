@@ -178,7 +178,7 @@ export default async function ParentAccountPage({ searchParams }: ParentAccountP
             </section>
           </div>
 
-          <section className="site-panel rounded-[28px] px-6 py-7">
+          <section id="teachers" className="site-panel scroll-mt-6 rounded-[28px] px-6 py-7">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.13em] text-earth">Account access</p>

@@ -270,6 +270,14 @@ export const studentProfileCheckouts = pgTable(
         languagePreference?: string;
         learningProfileNotes?: string;
         subjectStrengths?: Record<string, string>;
+        recurringDaysOff?: number[];
+        calendarTimeZone?: string;
+        calendarExceptions?: Array<{
+          label: string;
+          exceptionKind?: "holiday" | "school_break" | "vacation" | "personal_day" | "other";
+          startDate: string;
+          endDate: string;
+        }>;
       }>()
       .notNull(),
     status: text("status").notNull().default("pending"),
@@ -344,6 +352,93 @@ export const streakSettings = pgTable("streak_settings", {
     .default(sql`'[]'::jsonb`),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+export const studentCalendarExceptions = pgTable(
+  "student_calendar_exceptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, {
+        onDelete: "cascade"
+      }),
+    label: text("label").notNull(),
+    exceptionKind: text("exception_kind").notNull().default("other"),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date").notNull(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    profileDateIndex: index("student_calendar_exceptions_profile_date_idx").on(
+      table.profileId,
+      table.startDate,
+      table.endDate
+    )
+  })
+);
+
+export const studentPointSettings = pgTable("student_point_settings", {
+  profileId: uuid("profile_id")
+    .primaryKey()
+    .references(() => profiles.id, {
+      onDelete: "cascade"
+    }),
+  singularName: text("singular_name").notNull().default("point"),
+  pluralName: text("plural_name").notNull().default("points"),
+  iconKey: text("icon_key").notNull().default("star"),
+  customIconPath: text("custom_icon_path"),
+  autoAwardLessonCompletion: boolean("auto_award_lesson_completion").notNull().default(false),
+  updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+    onDelete: "set null"
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+});
+
+export const studentPointTransactions = pgTable(
+  "student_point_transactions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, {
+        onDelete: "cascade"
+      }),
+    amount: integer("amount").notNull(),
+    kind: text("kind").notNull(),
+    reason: text("reason").notNull(),
+    sourceType: text("source_type"),
+    sourceKey: text("source_key"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
+    reversedByUserId: uuid("reversed_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    profileCreatedIndex: index("student_point_transactions_profile_created_idx").on(
+      table.profileId,
+      table.createdAt
+    ),
+    sourceUnique: unique("student_point_transactions_profile_source_unique").on(
+      table.profileId,
+      table.sourceType,
+      table.sourceKey
+    )
+  })
+);
 
 export const subjects = pgTable(
   "subjects",
@@ -842,16 +937,25 @@ export const studentMastery = pgTable(
   })
 );
 
-export const learningActivityEvents = pgTable("learning_activity_events", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  profileId: uuid("profile_id")
-    .notNull()
-    .references(() => profiles.id, {
-      onDelete: "cascade"
-    }),
-  occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull(),
-  source: text("source").notNull().default("lesson")
-});
+export const learningActivityEvents = pgTable(
+  "learning_activity_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, {
+        onDelete: "cascade"
+      }),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull(),
+    source: text("source").notNull().default("lesson")
+  },
+  (table) => ({
+    profileOccurredAtIndex: index("learning_activity_events_profile_occurred_at_idx").on(
+      table.profileId,
+      table.occurredAt
+    )
+  })
+);
 
 export const learningYears = pgTable("learning_years", {
   id: uuid("id").defaultRandom().primaryKey(),

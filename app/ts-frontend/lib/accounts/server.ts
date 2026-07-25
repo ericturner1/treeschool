@@ -116,6 +116,7 @@ export type StudentStreakSettings = {
   pausedWeekdays: number[];
   pausedWeeks: string[];
   currentCount: number;
+  longestCount: number;
   currentPeriodLabel: string;
   currentPeriodPaused: boolean;
   currentPeriodCompleted: boolean;
@@ -306,6 +307,14 @@ export async function createStudentHouseholdProfile(input: {
   accessPin?: string;
   learningProfileNotes?: string;
   subjectStrengths?: Record<string, string>;
+  recurringDaysOff?: number[];
+  calendarTimeZone?: string;
+  calendarExceptions?: Array<{
+    label: string;
+    exceptionKind?: "holiday" | "school_break" | "vacation" | "personal_day" | "other";
+    startDate: string;
+    endDate: string;
+  }>;
   successUrl: string;
   cancelUrl: string;
 }) {

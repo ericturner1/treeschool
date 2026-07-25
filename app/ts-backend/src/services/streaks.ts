@@ -1,6 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import { learningActivityEvents, profiles, streakModeEnum, streakSettings } from "ts-db";
 import { db } from "../db";
+import {
+  getCalculatedStreakStatus,
+  refreshStudentStreakCache
+} from "./school-calendar";
 
 type StreakMode = (typeof streakModeEnum.enumValues)[number];
 
@@ -190,39 +194,7 @@ async function getManageableStudentProfile(parentUserId: string, profileId: stri
 }
 
 export async function getStreakStatus(profileId: string) {
-  const settings = await ensureStreakSettings(profileId);
-  const [profile] = await db
-    .select({
-      id: profiles.id,
-      streakCount: profiles.streakCount,
-      lastActiveAt: profiles.lastActiveAt
-    })
-    .from(profiles)
-    .where(eq(profiles.id, profileId))
-    .limit(1);
-
-  if (!profile) {
-    throw new Error(`Profile ${profileId} not found.`);
-  }
-
-  const now = new Date();
-  const currentBucket = getBucketStart(settings, now);
-  const currentPeriodPaused = isPausedBucket(settings, currentBucket);
-  const currentPeriodCompleted = profile.lastActiveAt
-    ? getBucketStart(settings, profile.lastActiveAt).getTime() === currentBucket.getTime()
-    : false;
-
-  return {
-    mode: settings.mode,
-    timeZone: settings.timeZone,
-    currentCount: profile.streakCount,
-    lastActiveAt: profile.lastActiveAt,
-    currentPeriodLabel: describeCurrentPeriod(settings, now),
-    currentPeriodPaused,
-    currentPeriodCompleted,
-    pausedWeekdays: settings.pausedWeekdays,
-    pausedWeeks: settings.pausedWeeks
-  };
+  return getCalculatedStreakStatus(profileId);
 }
 
 export async function getStudentStreakSettings(parentUserId: string, profileId: string) {
@@ -233,6 +205,7 @@ export async function getStudentStreakSettings(parentUserId: string, profileId: 
   return {
     ...settings,
     currentCount: status.currentCount,
+    longestCount: status.longestCount,
     currentPeriodLabel: status.currentPeriodLabel,
     currentPeriodPaused: status.currentPeriodPaused,
     currentPeriodCompleted: status.currentPeriodCompleted
@@ -301,80 +274,15 @@ export async function updateStudentStreakSettings(input: {
 }
 
 export async function recordActivity(profileId: string) {
-  const settings = await ensureStreakSettings(profileId);
-  const now = new Date();
-
   await db.insert(learningActivityEvents).values({
     profileId,
-    occurredAt: now,
+    occurredAt: new Date(),
     source: "lesson"
   });
-
-  const [profile] = await db
-    .select({
-      id: profiles.id,
-      streakCount: profiles.streakCount,
-      lastActiveAt: profiles.lastActiveAt
-    })
-    .from(profiles)
-    .where(eq(profiles.id, profileId))
-    .limit(1);
-
-  if (!profile) {
-    throw new Error(`Profile ${profileId} not found.`);
-  }
-
-  const currentBucket = getBucketStart(settings, now);
-
-  if (isPausedBucket(settings, currentBucket)) {
-    return {
-      counted: false,
-      reason: "paused",
-      ...(await getStreakStatus(profileId))
-    };
-  }
-
-  if (!profile.lastActiveAt) {
-    await db
-      .update(profiles)
-      .set({
-        streakCount: 1,
-        lastActiveAt: now
-      })
-      .where(eq(profiles.id, profileId));
-
-    return {
-      counted: true,
-      reason: "started",
-      ...(await getStreakStatus(profileId))
-    };
-  }
-
-  const lastBucket = getBucketStart(settings, profile.lastActiveAt);
-
-  if (lastBucket.getTime() === currentBucket.getTime()) {
-    return {
-      counted: false,
-      reason: "already-counted",
-      ...(await getStreakStatus(profileId))
-    };
-  }
-
-  const expectedBucket = getNextActiveBucket(settings, lastBucket);
-  const nextStreakCount =
-    expectedBucket.getTime() === currentBucket.getTime() ? profile.streakCount + 1 : 1;
-
-  await db
-    .update(profiles)
-    .set({
-      streakCount: nextStreakCount,
-      lastActiveAt: now
-    })
-    .where(eq(profiles.id, profileId));
-
+  const status = await refreshStudentStreakCache(profileId);
   return {
     counted: true,
-    reason: nextStreakCount === 1 && profile.streakCount > 0 ? "reset" : "continued",
-    ...(await getStreakStatus(profileId))
+    reason: status.currentPeriodPaused ? "paused" : "recorded",
+    ...status
   };
 }

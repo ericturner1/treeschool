@@ -19,6 +19,31 @@ export type StudentAttendancePayload = {
   }>;
 };
 
+export type StudentSchoolCalendarPayload = {
+  timeZone: string;
+  recurringDaysOff: number[];
+  holidays: Array<{
+    id: string;
+    label: string;
+    exceptionKind: "holiday" | "school_break" | "vacation" | "personal_day" | "other";
+    startDate: string;
+    endDate: string;
+  }>;
+  activityDates: string[];
+  streak: {
+    mode: "daily" | "weekly";
+    timeZone: string;
+    currentCount: number;
+    longestCount: number;
+    lastActiveAt: string | null;
+    currentPeriodLabel: string;
+    currentPeriodPaused: boolean;
+    currentPeriodCompleted: boolean;
+    pausedWeekdays: number[];
+    pausedWeeks: string[];
+  };
+};
+
 async function attendanceRequest<T>(method: string, body: Record<string, unknown>) {
   const response = await backendFetch(`${getBackendUrl()}/internal/profiles/student/attendance`, {
     method,
@@ -64,4 +89,60 @@ export function setPlanDaySubjectCompletion(input: Record<string, unknown>) {
 
 export function removeAttendance(input: Record<string, unknown>) {
   return attendanceRequest("DELETE", input);
+}
+
+export async function getStudentSchoolCalendar(input: {
+  parentUserId: string;
+  profileId: string;
+  dateFrom: string;
+  dateTo: string;
+}) {
+  const params = new URLSearchParams(input);
+  const response = await backendFetch(
+    `${getBackendUrl()}/internal/profiles/student/calendar?${params}`,
+    { cache: "no-store" }
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.error ?? "Failed to load the school calendar.");
+  return payload as StudentSchoolCalendarPayload;
+}
+
+async function calendarRequest<T>(method: "PATCH" | "POST" | "DELETE", body: Record<string, unknown>) {
+  const response = await backendFetch(`${getBackendUrl()}/internal/profiles/student/calendar`, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store"
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.error ?? "Failed to update the school calendar.");
+  return payload as T;
+}
+
+export function updateStudentSchoolSchedule(input: {
+  parentUserId: string;
+  profileId: string;
+  timeZone: string;
+  recurringDaysOff: number[];
+}) {
+  return calendarRequest("PATCH", input);
+}
+
+export function addStudentCalendarException(input: {
+  parentUserId: string;
+  profileId: string;
+  label: string;
+  exceptionKind: "holiday" | "school_break" | "vacation" | "personal_day" | "other";
+  startDate: string;
+  endDate: string;
+}) {
+  return calendarRequest("POST", input);
+}
+
+export function removeStudentCalendarException(input: {
+  parentUserId: string;
+  profileId: string;
+  exceptionId: string;
+}) {
+  return calendarRequest("DELETE", input);
 }

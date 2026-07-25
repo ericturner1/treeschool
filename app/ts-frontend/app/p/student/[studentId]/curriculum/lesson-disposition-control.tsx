@@ -14,7 +14,7 @@ const options: Array<{ value: Disposition; label: string; help: string }> = [
   {
     value: "already_mastered",
     label: "Mastered",
-    help: "Skip printing it because your child already knows it; Treeschool records it as covered."
+    help: "Keep this lesson visible in the plan, but omit its pages from future downloads because your child already knows it."
   },
   {
     value: "save_for_later",

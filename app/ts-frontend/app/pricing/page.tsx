@@ -36,6 +36,10 @@ const membershipFeatures = [
     copy: "Mark lessons and days done, see school-year pace, and record field trips, co-ops, projects, and other learning outside the plan."
   },
   {
+    title: "Motivating points and learning streaks",
+    copy: "Celebrate consistency with streaks that respect planned days off. Award customizable points manually or automatically as lessons are finished, then use them for family-chosen rewards and privileges."
+  },
+  {
     title: "Optional grades and reports",
     copy: "Record scores only when useful, see automatic letter grades, and review results across subjects and school years."
   },

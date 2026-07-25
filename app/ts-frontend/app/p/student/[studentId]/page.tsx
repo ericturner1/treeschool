@@ -1,6 +1,12 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { redirect } from "next/navigation";
+import {
+  getStudentSchoolCalendar,
+  type StudentSchoolCalendarPayload
+} from "../../../../lib/attendance/server";
+import { PointIcon } from "../../../../components/point-icon";
+import { getStudentPoints } from "../../../../lib/points/server";
 import { getStudentOverviewMetrics } from "../../../../lib/student-overview/server";
 import { ParentModeGuard } from "../../parent-mode-guard";
 import { getParentStudentPageData, studentRoutePath } from "./student-page-data";
@@ -28,6 +34,114 @@ function formatSchoolYearDate(value: string) {
   }).format(new Date(`${value}T00:00:00.000Z`));
 }
 
+function dateKeyInTimeZone(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function shiftDate(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function weekday(value: string) {
+  return new Date(`${value}T00:00:00.000Z`).getUTCDay();
+}
+
+function dayDistance(first: string, second: string) {
+  return Math.round(
+    (
+      new Date(`${second}T00:00:00.000Z`).getTime() -
+      new Date(`${first}T00:00:00.000Z`).getTime()
+    ) / 86_400_000
+  );
+}
+
+function displayCalendarDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(new Date(`${value}T00:00:00.000Z`));
+}
+
+function calendarExceptionOn(
+  value: string,
+  holidays: StudentSchoolCalendarPayload["holidays"]
+) {
+  return holidays.find((holiday) =>
+    holiday.startDate <= value && holiday.endDate >= value
+  ) ?? null;
+}
+
+function getDashboardCalendarStatus(calendar: StudentSchoolCalendarPayload) {
+  const today = dateKeyInTimeZone(new Date(), calendar.timeZone);
+  const currentException = calendarExceptionOn(today, calendar.holidays);
+  const todayIsDayOff = Boolean(
+    currentException || calendar.recurringDaysOff.includes(weekday(today))
+  );
+
+  if (todayIsDayOff) {
+    let nextSchoolDay: string | null = null;
+    for (let offset = 1; offset <= 370; offset += 1) {
+      const candidate = shiftDate(today, offset);
+      if (
+        !calendar.recurringDaysOff.includes(weekday(candidate)) &&
+        !calendarExceptionOn(candidate, calendar.holidays)
+      ) {
+        nextSchoolDay = candidate;
+        break;
+      }
+    }
+    return {
+      isDayOffToday: true,
+      eyebrow: currentException ? currentException.label : "Today is a regular day off",
+      headline: "Next school day",
+      date: nextSchoolDay,
+      description: nextSchoolDay
+        ? `School resumes in ${dayDistance(today, nextSchoolDay)} ${
+            dayDistance(today, nextSchoolDay) === 1 ? "day" : "days"
+          }.`
+        : "No upcoming school day is currently scheduled."
+    };
+  }
+
+  const nextPlannedBreak = [...calendar.holidays]
+    .filter((holiday) => holiday.startDate > today)
+    .sort((left, right) => left.startDate.localeCompare(right.startDate))[0] ?? null;
+  let nextRegularDayOff: string | null = null;
+  if (!nextPlannedBreak) {
+    for (let offset = 1; offset <= 14; offset += 1) {
+      const candidate = shiftDate(today, offset);
+      if (calendar.recurringDaysOff.includes(weekday(candidate))) {
+        nextRegularDayOff = candidate;
+        break;
+      }
+    }
+  }
+  const nextDate = nextPlannedBreak?.startDate ?? nextRegularDayOff;
+  return {
+    isDayOffToday: false,
+    eyebrow: nextPlannedBreak?.exceptionKind === "holiday" ? "Next holiday" : "Next break",
+    headline: nextPlannedBreak?.label ?? (nextRegularDayOff ? "Regular day off" : "No break scheduled"),
+    date: nextDate,
+    description: nextDate
+      ? `Starts in ${dayDistance(today, nextDate)} ${
+          dayDistance(today, nextDate) === 1 ? "day" : "days"
+        }.`
+      : "Add holidays and days off to the school calendar."
+  };
+}
+
 export default async function ParentStudentOverviewPage({
   params,
   searchParams
@@ -36,10 +150,25 @@ export default async function ParentStudentOverviewPage({
   if (params.studentId !== studentRouteSegment) {
     redirect(studentRoutePath(studentRouteSegment, "", searchParams));
   }
-  const metrics = await getStudentOverviewMetrics({
-    parentUserId: currentUser.id,
-    profileId: student.id
-  });
+  const calendarDateFrom = new Date().toISOString().slice(0, 10);
+  const [metrics, calendar, points] = await Promise.all([
+    getStudentOverviewMetrics({
+      parentUserId: currentUser.id,
+      profileId: student.id
+    }),
+    getStudentSchoolCalendar({
+      parentUserId: currentUser.id,
+      profileId: student.id,
+      dateFrom: calendarDateFrom,
+      dateTo: shiftDate(calendarDateFrom, 370)
+    }),
+    getStudentPoints({
+      parentUserId: currentUser.id,
+      profileId: student.id
+    }).catch(() => null)
+  ]);
+  const streak = calendar.streak;
+  const calendarStatus = getDashboardCalendarStatus(calendar);
   const basePath = studentRoutePath(studentRouteSegment);
   const query = new URLSearchParams();
 
@@ -111,7 +240,7 @@ export default async function ParentStudentOverviewPage({
                 <span aria-hidden="true">→</span>
               </Link>
             </div>
-            <div className={`mt-6 grid gap-4 ${metrics.hasLessonPlan && metrics.premiumAccess ? "md:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-2"}`}>
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {metrics.hasLessonPlan && metrics.premiumAccess ? (
                 <article className="rounded-[22px] border border-[#c9d9b7] bg-[#f1f7e8] px-5 py-5">
                   <p className="text-sm font-semibold uppercase tracking-[0.08em] text-[#587443]">Year plan progress</p>
@@ -133,6 +262,35 @@ export default async function ParentStudentOverviewPage({
                   </div>
                   <p className="mt-3 text-sm leading-[1.55] text-ink/65">Based on completed lesson-day activity.</p>
                 </article>
+              ) : null}
+
+              {points ? (
+                <Link
+                  href={studentRoutePath(studentRouteSegment, "/points") as Route}
+                  className="group rounded-[22px] border border-[#c9d9b7] bg-[#f1f7e8] px-5 py-5 transition hover:-translate-y-0.5 hover:border-[#9dbb82]"
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-sm font-semibold uppercase tracking-[0.08em] text-[#587443]">
+                      Current {points.settings.pluralName}
+                    </p>
+                    <span className="grid h-10 w-10 place-items-center rounded-[13px] bg-[#dceacd] text-[#55763f]">
+                      <PointIcon
+                        iconKey={points.settings.iconKey}
+                        customIconUrl={points.settings.customIconUrl}
+                        className="text-xl"
+                      />
+                    </span>
+                  </div>
+                  <p className="mt-3 text-[36px] font-semibold leading-none tracking-[-0.06em] text-ink">
+                    {points.summary.balance}
+                  </p>
+                  <p className="mt-3 text-sm leading-[1.55] text-ink/65">
+                    {points.summary.lifetimeEarned} earned over time. Award, use, and customize {points.settings.pluralName.toLowerCase()}.
+                  </p>
+                  <span className="mt-3 inline-flex text-sm font-semibold text-[#4f703c] underline decoration-[#99b782] underline-offset-4">
+                    Open {points.settings.pluralName.toLowerCase()}
+                  </span>
+                </Link>
               ) : null}
 
               {pace && paceHeadline ? (
@@ -245,6 +403,56 @@ export default async function ParentStudentOverviewPage({
                       ? `Last recorded ${lastAttendanceLabel}.`
                       : "No attendance recorded yet."}
                 </p>
+              </article>
+
+              <article className="rounded-[22px] border border-[#c9d9b7] bg-[#f1f7e8] px-5 py-5">
+                <p className="text-sm font-semibold uppercase tracking-[0.08em] text-[#587443]">Learning streak</p>
+                <p className="mt-3 text-[36px] font-semibold leading-none tracking-[-0.06em] text-ink">
+                  {streak.currentCount}
+                </p>
+                <p className="mt-3 text-sm leading-[1.55] text-ink/65">
+                  {streak.currentCount === 1 ? "School day in a row." : "School days in a row."}
+                  {streak.longestCount > 0 ? ` Best: ${streak.longestCount}.` : ""}
+                </p>
+                <Link
+                  href={studentRoutePath(studentRouteSegment, "/attendance/calendar") as Route}
+                  className="mt-3 inline-flex text-sm font-semibold text-[#4f703c] underline decoration-[#99b782] underline-offset-4"
+                >
+                  Open school calendar
+                </Link>
+              </article>
+
+              <article className={`rounded-[22px] border px-5 py-5 ${
+                calendarStatus.isDayOffToday
+                  ? "border-[#c9b1df] bg-[#f5effb] shadow-[0_6px_0_#e1d3ec]"
+                  : "border-[#dfc47f] bg-[#fff8e5]"
+              }`}>
+                <p className={`text-sm font-semibold uppercase tracking-[0.08em] ${
+                  calendarStatus.isDayOffToday ? "text-[#76528f]" : "text-[#805c22]"
+                }`}>
+                  {calendarStatus.eyebrow}
+                </p>
+                <p className="mt-3 text-[28px] font-semibold leading-[1.05] tracking-[-0.05em] text-ink">
+                  {calendarStatus.headline}
+                </p>
+                {calendarStatus.date ? (
+                  <p className="mt-3 text-base font-semibold leading-6 text-ink/75">
+                    {displayCalendarDate(calendarStatus.date)}
+                  </p>
+                ) : null}
+                <p className="mt-2 text-sm leading-[1.55] text-ink/65">
+                  {calendarStatus.description}
+                </p>
+                <Link
+                  href={studentRoutePath(studentRouteSegment, "/attendance/calendar") as Route}
+                  className={`mt-3 inline-flex text-sm font-semibold underline underline-offset-4 ${
+                    calendarStatus.isDayOffToday
+                      ? "text-[#76528f] decoration-[#c2a7d8]"
+                      : "text-[#805c22] decoration-[#d8bd76]"
+                  }`}
+                >
+                  Open school calendar
+                </Link>
               </article>
             </div>
             <StudentLearningProfileCard

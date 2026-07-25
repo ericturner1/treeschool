@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { StudentCalendarSetup } from "./student-calendar-setup";
 
 const strengthSubjects = [
   ["mathematics", "Math"],
@@ -48,6 +49,7 @@ export function AddStudentModal({
   const [submitting, setSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [studentName, setStudentName] = useState("");
+  const [birthDate, setBirthDate] = useState("");
   const [checkoutOffer, setCheckoutOffer] = useState<{ url: string; copy: string } | null>(null);
 
   async function submitStudent(formData: FormData) {
@@ -206,6 +208,8 @@ export function AddStudentModal({
                   type="date"
                   required
                   disabled={submitting}
+                  value={birthDate}
+                  onChange={(event) => setBirthDate(event.target.value)}
                   className="mt-2 min-h-14 w-full rounded-[18px] border border-[#dcc8aa] bg-white px-4 text-base text-ink outline-none transition-colors focus:border-[#8f6544]"
                 />
               </div>
@@ -229,6 +233,12 @@ export function AddStudentModal({
                   ))}
                 </select>
               </div>
+
+              <StudentCalendarSetup
+                studentName={studentName}
+                birthDate={birthDate}
+                disabled={submitting}
+              />
 
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
                 <button type="button" disabled={submitting} className="cta-button cta-button--outline cta-button--small disabled:cursor-not-allowed disabled:opacity-45" onClick={() => setOpen(false)}>

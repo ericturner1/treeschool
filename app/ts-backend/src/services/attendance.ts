@@ -15,6 +15,11 @@ import {
   clearWorkbookUnitProgress,
   upsertWorkbookUnitProgress
 } from "./student-workbook-progress";
+import { refreshStudentStreakCache } from "./school-calendar";
+import {
+  applyAutomaticLessonCompletionPoint,
+  reverseAutomaticLessonCompletionPoint
+} from "./student-points";
 
 const DAY_MS = 86_400_000;
 
@@ -311,8 +316,20 @@ export async function recordPlanDayAttendance(input: {
       selectedByUserId: input.parentUserId
     });
   }
+  for (const selectedKey of selectedKeys) {
+    await applyAutomaticLessonCompletionPoint({
+      profileId: input.profileId,
+      actorUserId: input.parentUserId,
+      weeklyPlanId: input.weeklyPlanId,
+      weekNumber: rows[0]!.weekNumber,
+      dayNumber: input.dayNumber,
+      subjectKey: selectedKey,
+      subjectLabel: availableSubjects.get(selectedKey)!
+    });
+  }
   await synchronizeWeekStatusFromAttendance(input.weeklyPlanId);
   await db.insert(learningActivityEvents).values({ profileId: input.profileId, source: "attendance_plan_day" });
+  await refreshStudentStreakCache(input.profileId);
   return savedEntry!;
 }
 
@@ -414,7 +431,15 @@ export async function setPlanDaySubjectCompletion(input: {
       statuses: ["completed"]
     });
   }
+  await reverseAutomaticLessonCompletionPoint({
+    profileId: input.profileId,
+    actorUserId: input.parentUserId,
+    weeklyPlanId: input.weeklyPlanId,
+    dayNumber: input.dayNumber,
+    subjectKey: input.subjectKey
+  });
   await synchronizeWeekStatusFromAttendance(input.weeklyPlanId);
+  await refreshStudentStreakCache(input.profileId);
   return { completed: false };
 }
 
@@ -472,6 +497,7 @@ export async function recordPlanItemAttendance(input: {
     });
   }
   await db.insert(learningActivityEvents).values({ profileId: input.profileId, source: "attendance_plan_item" });
+  await refreshStudentStreakCache(input.profileId);
   return entry;
 }
 
@@ -505,6 +531,7 @@ export async function createManualAttendanceEntry(input: {
     createdByUserId: input.parentUserId
   }).returning();
   await db.insert(learningActivityEvents).values({ profileId: input.profileId, source: "attendance_manual" });
+  await refreshStudentStreakCache(input.profileId);
   return entry;
 }
 
@@ -524,5 +551,6 @@ export async function deleteAttendanceEntry(input: { parentUserId: string; profi
   if (existing?.entryKind === "plan_day" && existing.weeklyPlanId) {
     await synchronizeWeekStatusFromAttendance(existing.weeklyPlanId);
   }
+  await refreshStudentStreakCache(input.profileId);
   return entry;
 }

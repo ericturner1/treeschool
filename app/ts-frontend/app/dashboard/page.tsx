@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getActiveProfileCookie } from "../../lib/accounts/active-profile";
 import {
   bootstrapParentAccount,
+  getStudentStreakSettings,
   listHouseholdProfiles
 } from "../../lib/accounts/server";
 import { getCurrentUser } from "../../lib/auth/server";
@@ -38,6 +39,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   if (!user?.email || !user.id) {
     redirect(`/signin?lang=${locale}&message=${encodeURIComponent(dashboard.unauthenticated)}`);
   }
+  const userId = user.id;
 
   const parentFirstName =
     user.user_metadata?.first_name ??
@@ -45,14 +47,23 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     user.user_metadata?.full_name?.split(" ")[0];
 
   await bootstrapParentAccount({
-    userId: user.id,
+    userId,
     email: user.email,
     firstName: parentFirstName
   });
 
-  const householdProfiles = await listHouseholdProfiles(user.id);
+  const householdProfiles = await listHouseholdProfiles(userId);
   const parentProfile = householdProfiles.find((profile) => profile.role === "PARENT");
   const studentProfiles = householdProfiles.filter((profile) => profile.role === "STUDENT");
+  const streaks = new Map(
+    await Promise.all(studentProfiles.map(async (profile) => {
+      const streak = await getStudentStreakSettings({
+        parentUserId: userId,
+        profileId: profile.id
+      });
+      return [profile.id, streak] as const;
+    }))
+  );
   const activeProfileCookie = getActiveProfileCookie();
   const activeProfile =
     householdProfiles.find((profile) => profile.id === activeProfileCookie?.id) ?? parentProfile;
@@ -83,17 +94,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   <p className="text-sm text-ink/65">{dashboard.profileManagement.empty}</p>
                 ) : (
                   <div className="overflow-x-auto rounded-[24px] border border-[#dcc8aa] bg-[#fffaf2]">
-                    <div className="grid min-w-[650px] grid-cols-[minmax(160px,1.6fr)_80px_120px_180px] gap-4 border-b border-[#e4d5bd] bg-[#f6ecdc] px-5 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-ink/62">
+                    <div className="grid min-w-[760px] grid-cols-[minmax(160px,1.6fr)_80px_120px_110px_180px] gap-4 border-b border-[#e4d5bd] bg-[#f6ecdc] px-5 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-ink/62">
                       <span>{dashboard.profileManagement.columns.name}</span>
                       <span>{dashboard.profileManagement.columns.age}</span>
                       <span>{dashboard.profileManagement.columns.grade}</span>
+                      <span>Streak</span>
                       <span className="text-right">{dashboard.profileManagement.columns.actions}</span>
                     </div>
 
                     {studentProfiles.map((profile, index) => (
                       <div
                         key={profile.id}
-                        className={`grid min-w-[650px] grid-cols-[minmax(160px,1.6fr)_80px_120px_180px] gap-4 px-5 py-4 ${
+                        className={`grid min-w-[760px] grid-cols-[minmax(160px,1.6fr)_80px_120px_110px_180px] gap-4 px-5 py-4 ${
                           index === studentProfiles.length - 1 ? "" : "border-b border-[#eadfcd]"
                         }`}
                       >
@@ -124,6 +136,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                               ? `${dashboard.profileManagement.columns.grade} K`
                               : `${dashboard.profileManagement.columns.grade} ${profile.gradeLevel}`
                             : dashboard.profileManagement.noGrade}
+                        </div>
+
+                        <div className="flex items-center">
+                          <span className="rounded-full bg-[#e7efdc] px-3 py-1.5 text-sm font-semibold text-[#4f703c]">
+                            {streaks.get(profile.id)?.currentCount ?? 0} {(streaks.get(profile.id)?.currentCount ?? 0) === 1 ? "day" : "days"}
+                          </span>
                         </div>
 
                         <div className="flex items-center justify-end">

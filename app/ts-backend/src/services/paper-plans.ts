@@ -9154,7 +9154,8 @@ async function buildLegacyWeeklyPacket(
   const includedItems = items.filter(({ item }) => item.includedInPacket);
   const excludedItems = items.filter(({ item }) => !item.includedInPacket);
   if (excludedItems.some(({ item }) =>
-    !item.conceptRedundant || item.conceptLabels.length === 0 || !item.redundancyReason
+    item.lessonDisposition === "include" &&
+    (!item.conceptRedundant || item.conceptLabels.length === 0 || !item.redundancyReason)
   )) {
     throw new Error("PDF quality check found an excluded range that was not verified as optional repeated practice.");
   }
@@ -9199,8 +9200,11 @@ async function buildLegacyWeeklyPacket(
         item.dayNumber ?? ((itemIndex % year.teachingDaysPerWeek!) + 1)
       ))).sort((left, right) => left - right)
     : [];
+  const baselinePacketItems = items.filter(({ item, document }) =>
+    (item.baseIncludedInPacket || item.includedInPacket) && isPrintablePdfDocument(document)
+  );
   assertTeachingDayCoverage(
-    packetItems.map(({ item }) => item),
+    baselinePacketItems.map(({ item }) => item),
     year.teachingDaysPerWeek,
     week.weekNumber
   );
@@ -9348,7 +9352,8 @@ async function loadWeeklyPacketContext(
   const includedItems = rows.filter(({ item }) => item.includedInPacket);
   const excludedItems = rows.filter(({ item }) => !item.includedInPacket);
   if (excludedItems.some(({ item }) =>
-    !item.conceptRedundant || item.conceptLabels.length === 0 || !item.redundancyReason
+    item.lessonDisposition === "include" &&
+    (!item.conceptRedundant || item.conceptLabels.length === 0 || !item.redundancyReason)
   )) {
     throw new Error("PDF quality check found an excluded range that was not verified as optional repeated practice.");
   }
@@ -9371,8 +9376,11 @@ async function loadWeeklyPacketContext(
       );
     }
   }
+  const baselinePacketItems = rows.filter(({ item, document }) =>
+    (item.baseIncludedInPacket || item.includedInPacket) && isPrintablePdfDocument(document)
+  );
   assertTeachingDayCoverage(
-    packetItems.map(({ item }) => item),
+    baselinePacketItems.map(({ item }) => item),
     year.teachingDaysPerWeek,
     week.weekNumber
   );

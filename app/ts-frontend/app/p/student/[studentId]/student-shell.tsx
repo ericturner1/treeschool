@@ -28,17 +28,19 @@ type StudentShellProps = {
         attendance: string;
         reports: string;
         grades: string;
+        points: string;
         settings: string;
       };
     };
     actions: {
+      teachers: string;
       logout: string;
     };
   };
   student: StudentShellProfile;
   title: string;
   studentRouteSegment: string;
-  activeNav: "overview" | "curriculum" | "attendance" | "reports" | "grades" | "settings";
+  activeNav: "overview" | "curriculum" | "attendance" | "reports" | "grades" | "points" | "settings";
   studentIdentityInContent?: boolean;
   studentProfileSummary?: React.ReactNode;
   children: React.ReactNode;
@@ -47,6 +49,7 @@ type StudentShellProps = {
 const navItems = [
   { key: "overview", segment: "", labelKey: "overview" },
   { key: "curriculum", segment: "lesson-plan", labelKey: "curriculum" },
+  { key: "points", segment: "points", labelKey: "points" },
   { key: "grades", segment: "grades", labelKey: "grades" },
   { key: "attendance", segment: "attendance", labelKey: "attendance" }
 ] as const;
@@ -155,7 +158,13 @@ export function StudentShell({
             })}
           </nav>
 
-          <div className="mt-auto pt-6">
+          <div className="mt-auto space-y-3 pt-6">
+            <Link
+              href={"/p/account#teachers" as Route}
+              className="cta-button cta-button--outline cta-button--small w-full"
+            >
+              {dashboard.actions.teachers}
+            </Link>
             <form action={logoutAction}>
               <button type="submit" className="cta-button cta-button--dark cta-button--small w-full">
                 {dashboard.actions.logout}

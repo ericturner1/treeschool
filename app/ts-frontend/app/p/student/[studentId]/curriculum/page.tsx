@@ -158,6 +158,30 @@ function groupWeekLessons(items: PaperPlanWeek["items"]) {
   );
 }
 
+function lessonDispositionPresentation(
+  disposition: PaperPlanWeek["items"][number]["lessonDisposition"]
+) {
+  if (disposition === "already_mastered") {
+    return {
+      label: "Mastered",
+      detail: "Recorded as covered; omitted from future downloads.",
+      badgeClass: "bg-[#dceacd] text-[#486a38]"
+    };
+  }
+  if (disposition === "save_for_later") {
+    return {
+      label: "Later",
+      detail: "Saved for a future plan; omitted from current downloads.",
+      badgeClass: "bg-[#f2dfb6] text-[#765632]"
+    };
+  }
+  return {
+    label: "Removed",
+    detail: "Removed from printable downloads, but retained here for reference.",
+    badgeClass: "bg-[#f2d8d0] text-[#8b3e2f]"
+  };
+}
+
 function weekSourcePageCount(items: Array<{
   firstPageIndex: number;
   lastPageIndex: number;
@@ -702,6 +726,8 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
                       const restoredItems = week.items.map((item) => ({ ...item, includedInPacket: true }));
                       const currentPacketPages = week.pdfPageCount ?? estimatedPacketPageCount(week.items);
                       const subjectSummaries = weekSubjectSummaries(week);
+                      const omittedLessons = groupWeekLessons(week.items)
+                        .filter((lesson) => lesson.first.lessonDisposition !== "include");
                       const teachingDayCount = new Set(
                         week.items
                           .filter((item) => item.includedInPacket && item.dayNumber != null)
@@ -776,6 +802,15 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
                                   </li>
                                 ))}
                               </ul>
+                            ) : null}
+                            {omittedLessons.length > 0 ? (
+                              <p className="mt-2 text-xs font-semibold text-ink/48">
+                                {omittedLessons.slice(0, 2).map((lesson) => {
+                                  const presentation = lessonDispositionPresentation(lesson.first.lessonDisposition);
+                                  return `${lesson.subjectLabel}: ${lesson.first.label} · ${presentation.label}`;
+                                }).join(" · ")}
+                                {omittedLessons.length > 2 ? ` · +${omittedLessons.length - 2} more` : ""}
+                              </p>
                             ) : null}
                           </div>
                           <div className="ml-auto flex items-center gap-3">
@@ -914,6 +949,56 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
                                 </div>
                               </PlanDayCard>
                             ))}
+                            {omittedLessons.length > 0 ? (
+                              <section className="rounded-[18px] border border-[#ded3c3] bg-[#f6f2eb] px-4 py-4 sm:px-5">
+                                <div>
+                                  <p className="text-sm font-semibold text-ink">Kept for your records</p>
+                                  <p className="mt-1 text-xs leading-5 text-ink/55">
+                                    These lessons stay visible here even though their pages are omitted from future downloads.
+                                  </p>
+                                </div>
+                                <div className="mt-3 grid gap-3">
+                                  {omittedLessons.map((lesson) => {
+                                    const presentation = lessonDispositionPresentation(lesson.first.lessonDisposition);
+                                    return (
+                                      <div
+                                        key={lesson.key}
+                                        className="grid gap-3 rounded-[14px] bg-white/75 px-3 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(330px,0.72fr)] lg:items-center"
+                                      >
+                                        <div className="min-w-0">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <p className="text-sm font-semibold text-ink/78">{lesson.first.label}</p>
+                                            <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] ${presentation.badgeClass}`}>
+                                              {presentation.label}
+                                            </span>
+                                          </div>
+                                          <p className="mt-1 text-xs leading-5 text-ink/52">
+                                            {lesson.subjectLabel}
+                                            {lesson.days.length > 0 ? ` · Day ${lesson.days.join(", ")}` : ""}
+                                            {` · ${lesson.first.documentLabel} · ${lesson.pageEnd > lesson.pageStart ? "pages" : "page"} ${lesson.pageStart}${lesson.pageEnd > lesson.pageStart ? `–${lesson.pageEnd}` : ""}`}
+                                          </p>
+                                          <p className="mt-1 text-xs leading-5 text-ink/45">{presentation.detail}</p>
+                                          <LessonPreviewButton
+                                            weeklyPlanItemId={lesson.first.id}
+                                            lessonLabel={lesson.first.label}
+                                            documentLabel={lesson.first.documentLabel}
+                                            pageStart={lesson.pageStart}
+                                            pageEnd={lesson.pageEnd}
+                                            disposition={lesson.first.lessonDisposition}
+                                          />
+                                        </div>
+                                        {canManagePlan ? (
+                                          <LessonDispositionControl
+                                            weeklyPlanItemId={lesson.first.id}
+                                            value={lesson.first.lessonDisposition}
+                                          />
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </section>
+                            ) : null}
                             {week.days.length > 0 ? (
                               <p className="px-1 text-xs leading-5 text-ink/48">
                                 Mark lessons done as they are completed. A day becomes Done automatically when all of its lessons are complete; “Mark all done” is simply a shortcut. Lesson choices affect future downloads, while grades remain optional and never affect progress.
