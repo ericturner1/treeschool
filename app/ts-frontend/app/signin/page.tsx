@@ -65,9 +65,9 @@ export default async function SigninPage({ searchParams }: SigninPageProps) {
           {accountMissing ? (
             <div className="mt-5 rounded-[20px] border border-[#d6c19e] bg-[#fff7e7] px-5 py-4 text-center">
               <p className="font-semibold text-ink">We couldn’t find a Treeschool account for that email.</p>
-              <p className="mt-1.5 text-sm leading-6 text-ink/65">Starting the Family Plan creates your parent account automatically.</p>
+              <p className="mt-1.5 text-sm leading-6 text-ink/65">Starting a Treeschool membership creates your parent account automatically.</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <Link href="/pricing" className="cta-button cta-button--dark cta-button--small">See the Family Plan</Link>
+                <Link href="/pricing" className="cta-button cta-button--dark cta-button--small">View membership plans</Link>
                 <Link href="/homeschool-lesson-plan-generator" className="cta-button cta-button--light cta-button--small">Start a lesson plan</Link>
               </div>
             </div>

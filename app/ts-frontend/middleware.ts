@@ -5,7 +5,9 @@ import {
   resolveLocale
 } from "./lib/i18n/config";
 import {
-  AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
+  AUTH_SESSION_ACTIVITY_COOKIE_NAME,
+  AUTH_SESSION_COOKIE_MAX_AGE_SECONDS,
+  hasAuthSessionGoneIdle
 } from "./lib/auth/session-policy";
 
 const ACCESS_TOKEN_COOKIE_NAME = "treeschool_access_token";
@@ -20,6 +22,15 @@ function setRequestCookie(cookieHeader: string, name: string, value: string) {
     .filter((cookie) => cookie.split("=", 1)[0] !== name);
   cookies.push(`${name}=${value}`);
   return cookies.join("; ");
+}
+
+function removeRequestCookie(cookieHeader: string, name: string) {
+  return cookieHeader
+    .split(";")
+    .map((cookie) => cookie.trim())
+    .filter(Boolean)
+    .filter((cookie) => cookie.split("=", 1)[0] !== name)
+    .join("; ");
 }
 
 function tokenExpiresSoon(token: string) {
@@ -85,14 +96,29 @@ export async function middleware(request: NextRequest) {
 
   const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)?.value;
   const refreshToken = request.cookies.get(REFRESH_TOKEN_COOKIE_NAME)?.value;
+  const lastActivitySeconds = request.cookies.get(AUTH_SESSION_ACTIVITY_COOKIE_NAME)?.value;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const sessionWentIdle = Boolean(
+    (accessToken || refreshToken) &&
+    hasAuthSessionGoneIdle(lastActivitySeconds, nowSeconds)
+  );
+  if (sessionWentIdle) {
+    let cookieHeader = requestHeaders.get("cookie") ?? "";
+    cookieHeader = removeRequestCookie(cookieHeader, ACCESS_TOKEN_COOKIE_NAME);
+    cookieHeader = removeRequestCookie(cookieHeader, REFRESH_TOKEN_COOKIE_NAME);
+    cookieHeader = removeRequestCookie(cookieHeader, AUTH_SESSION_ACTIVITY_COOKIE_NAME);
+    requestHeaders.set("cookie", cookieHeader);
+  }
+  const effectiveAccessToken = sessionWentIdle ? undefined : accessToken;
+  const effectiveRefreshToken = sessionWentIdle ? undefined : refreshToken;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const usesLocalDevSession = accessToken?.startsWith(LOCAL_DEV_TOKEN_PREFIX) === true ||
-    refreshToken?.startsWith("local-dev-refresh:") === true;
+  const usesLocalDevSession = effectiveAccessToken?.startsWith(LOCAL_DEV_TOKEN_PREFIX) === true ||
+    effectiveRefreshToken?.startsWith("local-dev-refresh:") === true;
   const shouldRefreshSession = Boolean(
     !usesLocalDevSession &&
-    refreshToken &&
-    (!accessToken || tokenExpiresSoon(accessToken)) &&
+    effectiveRefreshToken &&
+    (!effectiveAccessToken || tokenExpiresSoon(effectiveAccessToken)) &&
     supabaseUrl &&
     anonKey
   );
@@ -102,7 +128,7 @@ export async function middleware(request: NextRequest) {
     expires_in?: number;
   } | null = null;
 
-  if (shouldRefreshSession && refreshToken && supabaseUrl && anonKey) {
+  if (shouldRefreshSession && effectiveRefreshToken && supabaseUrl && anonKey) {
     const refreshResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
       method: "POST",
       headers: {
@@ -110,7 +136,7 @@ export async function middleware(request: NextRequest) {
         Authorization: `Bearer ${anonKey}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ refresh_token: refreshToken }),
+      body: JSON.stringify({ refresh_token: effectiveRefreshToken }),
       cache: "no-store"
     }).catch(() => null);
 
@@ -132,6 +158,12 @@ export async function middleware(request: NextRequest) {
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
 
+  if (sessionWentIdle) {
+    response.cookies.delete(ACCESS_TOKEN_COOKIE_NAME);
+    response.cookies.delete(REFRESH_TOKEN_COOKIE_NAME);
+    response.cookies.delete(AUTH_SESSION_ACTIVITY_COOKIE_NAME);
+  }
+
   if (queryLocale || cookieLocale !== locale) {
     response.cookies.set(LOCALE_COOKIE_NAME, locale, {
       path: "/",
@@ -142,20 +174,40 @@ export async function middleware(request: NextRequest) {
   }
 
   if (refreshedSession) {
-      response.cookies.set(ACCESS_TOKEN_COOKIE_NAME, refreshedSession.access_token, {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: request.nextUrl.protocol === "https:",
-        path: "/",
-        maxAge: refreshedSession.expires_in ?? 3600
-      });
-      response.cookies.set(REFRESH_TOKEN_COOKIE_NAME, refreshedSession.refresh_token, {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: request.nextUrl.protocol === "https:",
-        path: "/",
-        maxAge: AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
-      });
+    response.cookies.set(ACCESS_TOKEN_COOKIE_NAME, refreshedSession.access_token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: request.nextUrl.protocol === "https:",
+      path: "/",
+      maxAge: refreshedSession.expires_in ?? 3600
+    });
+    response.cookies.set(REFRESH_TOKEN_COOKIE_NAME, refreshedSession.refresh_token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: request.nextUrl.protocol === "https:",
+      path: "/",
+      maxAge: AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
+    });
+  }
+
+  const hasHealthySession = Boolean(
+    !sessionWentIdle &&
+    (
+      refreshedSession ||
+      (
+        effectiveAccessToken &&
+        (usesLocalDevSession || !tokenExpiresSoon(effectiveAccessToken))
+      )
+    )
+  );
+  if (hasHealthySession) {
+    response.cookies.set(AUTH_SESSION_ACTIVITY_COOKIE_NAME, String(nowSeconds), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: request.nextUrl.protocol === "https:",
+      path: "/",
+      maxAge: AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
+    });
   }
 
   return response;

@@ -12,6 +12,7 @@ import {
   profiles,
   streakSettings,
   studentCalendarExceptions,
+  subscriptions,
   type gradingSchemeEnum,
   studentVocabulary,
   users,
@@ -22,6 +23,7 @@ import { db } from "../db";
 import { prepareFirstLessonForSubject } from "./lessons";
 import { unlockInitialSkill } from "./mastery";
 import { getTeacherActivityDaysForMembers } from "./teacher-activity";
+import { getMembershipPlan } from "./membership-plans";
 import {
   deletePrivateFile,
   downloadPrivateFile,
@@ -36,7 +38,6 @@ type GradingScheme = (typeof gradingSchemeEnum.enumValues)[number];
 export type AccountMemberRole = (typeof accountMemberRoleEnum.enumValues)[number];
 
 const INVITATION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
-const TEACHER_USER_LIMIT = 4;
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
@@ -47,6 +48,15 @@ function normalizePersonName(value: string) {
   if (!name) throw new Error("Enter the person's name.");
   if (name.length > 100) throw new Error("Names may be up to 100 characters.");
   return name;
+}
+
+async function getAccountTeacherUserLimit(accountId: string) {
+  const [subscription] = await db
+    .select({ planTier: subscriptions.planTier })
+    .from(subscriptions)
+    .where(eq(subscriptions.accountId, accountId))
+    .limit(1);
+  return getMembershipPlan(subscription?.planTier ?? "standard").teacherUserLimit;
 }
 
 function studentSlugBase(value: string) {
@@ -247,6 +257,66 @@ export async function hasParentAccountForEmail(email: string) {
   return Boolean(invitation && invitation.expiresAt.getTime() > Date.now());
 }
 
+export async function ensureProvisionalParentAccountForEmail(email: string) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    throw new Error("A valid customer email is required.");
+  }
+
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`treeschool:parent:${normalizedEmail}`}, 0))`);
+    const [parent] = await tx
+      .select({
+        userId: users.id,
+        email: users.email,
+        accountId: profiles.accountId,
+        parentProfileId: profiles.id
+      })
+      .from(users)
+      .innerJoin(profiles, eq(profiles.userId, users.id))
+      .where(and(eq(sql`lower(${users.email})`, normalizedEmail), eq(profiles.role, "PARENT")))
+      .limit(1);
+    if (parent) return parent;
+
+    const [existingUser] = await tx
+      .select({
+        userId: users.id,
+        email: users.email
+      })
+      .from(users)
+      .where(eq(sql`lower(${users.email})`, normalizedEmail))
+      .limit(1);
+    const userId = existingUser?.userId ?? randomUUID();
+    const accountId = randomUUID();
+    const parentProfileId = randomUUID();
+
+    if (!existingUser) {
+      await tx.insert(users).values({
+        id: userId,
+        email: normalizedEmail
+      });
+    }
+    await tx.insert(accounts).values({ id: accountId });
+    await tx.insert(profiles).values({
+      id: parentProfileId,
+      accountId,
+      userId,
+      role: "PARENT",
+      accountRole: "OWNER",
+      firstName: normalizedEmail.split("@")[0] || "Parent",
+      uiTheme: "academic",
+      languagePreference: "en-US"
+    });
+
+    return {
+      userId,
+      email: existingUser?.email ?? normalizedEmail,
+      accountId,
+      parentProfileId
+    };
+  });
+}
+
 export async function ensureParentProfile(input: AuthUserInput) {
   const existingParentForUserId = await getPrimaryParentProfileByUserId(input.userId);
 
@@ -388,6 +458,7 @@ export async function createAccountInvitation(input: {
   if (email === normalizeEmail(inviter.email)) {
     throw new Error("You already belong to this account.");
   }
+  const teacherUserLimit = await getAccountTeacherUserLimit(inviter.accountId);
 
   const [existingMember] = await db
     .select({ id: profiles.id })
@@ -440,8 +511,8 @@ export async function createAccountInvitation(input: {
           gt(accountInvitations.expiresAt, now)
         ));
       const teacherUsersUsed = Number(activeTeacherUsers?.count ?? 0) + Number(pendingTeacherUsers?.count ?? 0);
-      if (teacherUsersUsed >= TEACHER_USER_LIMIT) {
-        throw new Error(`Your plan includes up to ${TEACHER_USER_LIMIT} Teacher users. Change an existing Teacher’s access level, or wait for a pending invitation to expire before inviting someone else.`);
+      if (teacherUsersUsed >= teacherUserLimit) {
+        throw new Error(`Your plan includes up to ${teacherUserLimit} Teacher users. Change an existing Teacher’s access level, or wait for a pending invitation to expire before inviting someone else.`);
       }
     }
 
@@ -510,7 +581,7 @@ export async function listAccountPeople(userId: string) {
       eq(accountInvitations.status, "PENDING")
     ))
     .orderBy(asc(accountInvitations.name));
-  const teacherUserLimit = TEACHER_USER_LIMIT;
+  const teacherUserLimit = await getAccountTeacherUserLimit(requester.accountId);
   const teacherUsersUsed = members.filter((member) => member.role === "TEACHER").length
     + invitations.filter((invitation) => invitation.expiresAt.getTime() > Date.now()).length;
   const activity = await getTeacherActivityDaysForMembers({
@@ -554,6 +625,7 @@ export async function updateAccountMemberRole(input: {
   if (!(["ADMIN", "TEACHER"] as const).includes(input.role)) {
     throw new Error("Choose a valid account role.");
   }
+  const teacherUserLimit = await getAccountTeacherUserLimit(requester.accountId);
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`treeschool:teacher-users:${requester.accountId}`}, 0))`);
     const [target] = await tx.select({
@@ -596,8 +668,8 @@ export async function updateAccountMemberRole(input: {
           gt(accountInvitations.expiresAt, now)
         ));
       const teacherUsersUsed = Number(activeTeacherUsers?.count ?? 0) + Number(pendingTeacherUsers?.count ?? 0);
-      if (teacherUsersUsed >= TEACHER_USER_LIMIT) {
-        throw new Error(`Your plan includes up to ${TEACHER_USER_LIMIT} Teacher users.`);
+      if (teacherUsersUsed >= teacherUserLimit) {
+        throw new Error(`Your plan includes up to ${teacherUserLimit} Teacher users.`);
       }
     }
 

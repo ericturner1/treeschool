@@ -184,7 +184,7 @@ export function NativeWorkbookChooserDialog({
       <section role="dialog" aria-modal="true" aria-labelledby="native-workbook-dialog-title" className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-[#dcc8aa] bg-[#fffaf2] shadow-2xl">
         <header className="border-b border-[#eadbc2] px-5 py-5 sm:px-7">
           <div className="flex items-start justify-between gap-4">
-            <div><p className="text-xs font-black uppercase tracking-[0.14em] text-earth">Treeschool library</p><h2 id="native-workbook-dialog-title" className="mt-2 text-3xl font-semibold tracking-[-0.045em]">Choose workbooks</h2><p className="mt-2 text-sm leading-6 text-ink/58">Core workbooks are included with your Family Plan. Purchased titles can be added again at any time.</p></div>
+            <div><p className="text-xs font-black uppercase tracking-[0.14em] text-earth">Treeschool library</p><h2 id="native-workbook-dialog-title" className="mt-2 text-3xl font-semibold tracking-[-0.045em]">Choose workbooks</h2><p className="mt-2 text-sm leading-6 text-ink/58">Core workbooks are included with your Treeschool membership. Purchased titles can be added again at any time.</p></div>
             <button type="button" onClick={onClose} className="grid h-11 w-11 flex-none place-items-center rounded-full border border-[#dcc8aa] bg-white text-2xl" aria-label="Close workbook chooser">×</button>
           </div>
           {checkoutCanceled ? <p className="mt-4 rounded-[14px] bg-[#f2e6d3] px-4 py-3 text-sm font-semibold text-earth">Checkout was canceled. Nothing was purchased, and you can continue choosing workbooks.</p> : null}
@@ -203,7 +203,7 @@ export function NativeWorkbookChooserDialog({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap gap-2">
                         {workbook.catalogKind === "bundle" ? <span className="rounded-full bg-[#dfead4] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#4f7339]">Bundle · {workbook.memberCount} workbooks</span> : null}
-                        {workbook.type === "core" && workbook.accessState === "included" ? <span className="rounded-full bg-[#e7f0de] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#4f7339]">Included with Family Plan</span> : null}
+                        {workbook.type === "core" && workbook.accessState === "included" ? <span className="rounded-full bg-[#e7f0de] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#4f7339]">Included with membership</span> : null}
                         {workbook.accessState === "owned" ? <span className="rounded-full bg-[#e7f0de] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#4f7339]">Purchased</span> : null}
                         {workbook.type === "elective" ? <span className="rounded-full bg-[#f3e6d2] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-earth">Elective</span> : null}
                       </div>

@@ -13,7 +13,7 @@
 1. Create the production webhook endpoint `https://www.treehomeschool.com/api/billing/stripe-webhook`.
 2. Subscribe it to `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.expired`, `customer.subscription.created`, `customer.subscription.updated`, and `customer.subscription.deleted`.
 3. Store its signing secret as `STRIPE_WEBHOOK_SECRET` in GCP Secret Manager and redeploy.
-4. Confirm the Stripe price IDs refer to live recurring USD prices: `STRIPE_MONTHLY_PRICE_ID` = $20/month, `STRIPE_YEARLY_PRICE_ID` = $200/year, `STRIPE_ADDITIONAL_STUDENT_MONTHLY_PRICE_ID` = $5/month, and `STRIPE_ADDITIONAL_STUDENT_YEARLY_PRICE_ID` = $50/year. The first-time monthly checkout invoices the $6 introductory month plus $2 for each student beyond three separately.
+4. Confirm the Stripe catalog contains the canonical recurring prices: Single = $14/month or $140/year, Standard = $20/month or $200/year, and each Standard student beyond three = $5/month or $50/year. `STRIPE_SINGLE_MONTHLY_PRICE_ID`, `STRIPE_SINGLE_YEARLY_PRICE_ID`, `STRIPE_MONTHLY_PRICE_ID`, and `STRIPE_YEARLY_PRICE_ID` may pin those prices; otherwise the backend resolves the stable lookup keys defined in `membership-plans.ts`. A first-time monthly checkout charges $6 for either plan, plus $2 for each Standard student beyond three.
 5. Enable and brand the Stripe Customer Portal for cancellation and payment-method updates. Keep plan and quantity changes disabled; Treeschool owns student-seat quantities so they cannot drift from child profiles.
 
 ## Failure alerts and retries

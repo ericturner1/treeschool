@@ -27,6 +27,7 @@ export function PremiumFeatureLock({
         </ul>
         <form action={startCoreSubscriptionCheckoutAction} className="mt-7">
           <input type="hidden" name="interval" value="monthly" />
+          <input type="hidden" name="planTier" value="single" />
           <input type="hidden" name="returnPath" value={returnPath} />
           <input type="hidden" name="successPath" value={returnPath} />
           <button type="submit" className="cta-button">Upgrade to membership</button>

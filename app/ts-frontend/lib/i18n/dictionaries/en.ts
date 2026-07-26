@@ -11,7 +11,7 @@ const en = {
     nav: {
       howItWorks: "How it works",
       pricing: "Pricing",
-      buyNow: "Try for $6",
+      buyNow: "View plans",
       signIn: "Parent sign in",
       languageLabel: "Language"
     },
@@ -22,10 +22,35 @@ const en = {
         "Bring your own curriculum, or use our K–4 elementary curriculum to fill in the gaps. Treeschool turns it all into printable weekly lesson plans for the entire year, so your children learn without being glued to another screen.",
       audienceLabel: "For parents & guardians:",
       primaryCta: "Try Treeschool for $6",
-      secondaryCta: "Start building a lesson plan",
-      offerCaption: "First month $6, then $20/month for up to 3 children",
+      secondaryCta: "View plans",
+      offerCaption: "First month $6, then plans from $14/month",
       guaranteeCaption: "Cancel anytime. Includes one initial lesson plan per child during the first month.",
       imageAlt: "Children writing in paper workbooks at a homeschool table"
+    },
+    paths: {
+      items: [
+        {
+          eyebrow: "New to homeschooling?",
+          title: "Begin first grade with confidence",
+          copy: "Begin with a complete first-grade curriculum, printable weekly plans, and a clear first step.",
+          href: "/first-grade-homeschool",
+          linkLabel: "First-grade starting guide"
+        },
+        {
+          eyebrow: "Already homeschooling?",
+          title: "Switch without starting over",
+          copy: "Keep the work and progress that still serve your child while moving to a calmer paper-first program.",
+          href: "/switch-to-paper-based-homeschool",
+          linkLabel: "See how switching works"
+        },
+        {
+          eyebrow: "Avoiding another subscription?",
+          title: "Choose printable workbooks you can keep",
+          copy: "Buy individual Treeschool workbooks and bundles as downloadable PDFs—without a recurring membership.",
+          href: "/homeschool-without-a-subscription",
+          linkLabel: "Browse pay-once options"
+        }
+      ]
     },
     proof: {
       eyebrow: "From curriculum to school week",
@@ -85,21 +110,25 @@ const en = {
       eyebrow: "A calmer homeschool command center",
       title: "Keep the curriculum you love. Lose the weekly scramble.",
       description:
-        "The Family Plan keeps printable lessons and homeschool records together for parents—without turning the child’s school day into more screen time.",
-      primary: "Try for $6",
+        "Treeschool keeps printable lessons and homeschool records together for parents—without turning the child’s school day into more screen time.",
+      primary: "View plans",
       secondary: "Start building a lesson plan"
     },
     footer: {
       description:
-        "Treeschool is a paper-first elementary homeschooling program for grades K–4: parents plan and keep records online, while children escape the pull of the screen and learn from printed lessons, books, projects, and the real world.",
+        "You chose homeschooling because you want to shape your child’s education—not hand their attention to another screen. Treeschool helps you teach grades K–4 with curriculum you trust, printable weekly lessons, real books, hands-on work, and the time-tested simplicity of pencil and paper.",
       columns: [
         {
           title: "Explore",
-          links: ["Pricing", "Bookstore"]
+          links: ["Pricing", "Bookstore", "Blog"]
         },
         {
           title: "Get started",
-          links: ["Try for $6", "Parent sign in"]
+          links: ["View plans", "Parent sign in"]
+        },
+        {
+          title: "Find your path",
+          links: ["Starting first grade", "Switching homeschool programs", "No-subscription homeschooling"]
         }
       ],
       copyright: "Copyright © 2026 Treeschool. All rights reserved.",

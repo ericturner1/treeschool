@@ -129,11 +129,11 @@ export function BookstoreCatalog({
                 <p className="mt-3 text-xl font-normal">{formatPrice(workbook.priceInCents, workbook.currencyCode)}</p>
                 <button
                   type="button"
-                  disabled={owned || inCart || cartFull}
+                  disabled={!loaded || owned || inCart || cartFull}
                   onClick={() => addToCart(workbook.id)}
                   className="cta-button cta-button--outline cta-button--small mt-auto disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {owned ? "Already owned" : inCart ? "Added to cart ✓" : cartFull ? "Cart full" : "Add to cart"}
+                  {!loaded ? "Loading…" : owned ? "Already owned" : inCart ? "Added to cart ✓" : cartFull ? "Cart full" : "Add to cart"}
                 </button>
               </article>
             );

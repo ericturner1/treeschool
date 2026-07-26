@@ -144,12 +144,10 @@ export async function ParentShell({
             </div>
           ) : null}
 
-          <details className="responsive-sidebar-menu mt-3 lg:mt-auto">
-            <summary className="flex cursor-pointer list-none items-center justify-between rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3 text-sm font-semibold text-ink shadow-[0_4px_0_#dcc8aa] marker:hidden">
-              Account menu
-              <span aria-hidden="true" className="text-lg leading-none text-earth">+</span>
-            </summary>
-            <div className="responsive-sidebar-menu__content mt-3 grid grid-cols-2 gap-2 border-t border-[#eadbc2] pt-3 lg:mt-0 lg:block lg:space-y-3 lg:border-0 lg:pt-6">
+          <nav
+            aria-label="Parent navigation"
+            className="mt-3 grid grid-cols-2 gap-2 border-t border-[#eadbc2] pt-3 lg:mt-auto lg:block lg:space-y-3 lg:border-0 lg:pt-6"
+          >
               {isParentView ? (
                 <>
                   {workbookNavigation.purchasedWorkbookCount > 0 ? (
@@ -212,8 +210,7 @@ export async function ParentShell({
                   {dashboard.actions.logout}
                 </button>
               </form>
-            </div>
-          </details>
+          </nav>
         </aside>
 
         <div className="min-w-0">

@@ -89,7 +89,7 @@ export async function getStudentOverviewMetrics(input: {
           }
         : {
             kind: "upgrade" as const,
-            label: "Explore the Family Plan",
+            label: "View membership plans",
             description: "Create and manage a complete lesson plan for this student.",
             href: "/pricing"
           }
@@ -314,7 +314,7 @@ export async function getStudentOverviewMetrics(input: {
         }
       : {
           kind: "upgrade",
-          label: "Explore the Family Plan",
+          label: "View membership plans",
           description: "Unlock live lesson planning, grades, attendance, and progress.",
           href: "/pricing"
         };

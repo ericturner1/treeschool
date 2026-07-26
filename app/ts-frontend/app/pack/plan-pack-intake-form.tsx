@@ -36,6 +36,8 @@ type PlanPackPricing = {
   planPackPriceInCents: number;
   subscriptionIntroPriceInCents: number;
   subscriptionMonthlyPriceInCents: number;
+  subscriptionYearlyPriceInCents: number;
+  subscriptionPlanTier: "single";
   includedStudentCount: number;
   additionalStudentIntroPriceInCents: number;
   additionalStudentMonthlyPriceInCents: number;
@@ -177,7 +179,7 @@ function SubmitButton({
         ? authenticated ? "Uploading materials..." : "Opening secure checkout..."
         : authenticated
           ? addingToExistingYear ? "Upload materials" : "Create learning year and upload materials"
-          : "Start Family Plan"}
+          : "Start Single"}
     </button>
   );
 }
@@ -1267,12 +1269,12 @@ export function PlanGenerator({
         <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.05em] text-ink sm:text-[30px]">
           {authenticated
             ? addingToExistingYear ? "Review and add these materials." : "Review and create your learning year."
-            : "Review your plan and start your Family Plan."}
+            : "Review your plan and start your Single membership."}
         </h2>
         <p className="mt-3 text-sm leading-[1.7] text-ink/68">
           {authenticated
             ? `Treeschool will upload these materials and begin reading each PDF${addingToExistingYear ? " for the current learning year" : ""}.`
-            : "We’ll save this setup to a passwordless parent account, then open secure checkout for the Family Plan."}
+            : "We’ll save this setup to a passwordless parent account, then open secure checkout for Single."}
         </p>
         {storageError ? (
           <p role="alert" className="mt-4 rounded-[18px] border border-[#d9afa2] bg-[#fff1ec] px-4 py-3 text-sm font-semibold text-[#8b3e2f]">
@@ -1293,7 +1295,7 @@ export function PlanGenerator({
             <div><dt className="text-xs text-ink/50">Page size</dt><dd className="mt-0.5 font-semibold text-ink">{printPageSizeLabel(preferredPrintPageSize || null)}</dd></div>
           </dl>
           {!authenticated ? <div className="mt-4 space-y-2 border-t border-[#eadbc2] pt-3 text-sm">
-            <div className="flex justify-between gap-4"><span className="text-ink/65">Family Plan · first month</span><span className="font-semibold text-ink">{formatMoney(pricing.subscriptionIntroPriceInCents, pricing.currencyCode)}</span></div>
+            <div className="flex justify-between gap-4"><span className="text-ink/65">Single · first month</span><span className="font-semibold text-ink">{formatMoney(pricing.subscriptionIntroPriceInCents, pricing.currencyCode)}</span></div>
             {selectedNativeWorkbooks.map((item) => <div key={`summary-${item.id}`} className="flex justify-between gap-4"><span className="min-w-0 truncate text-ink/65">{item.title}</span><span className="font-semibold text-ink">{item.accessState === "owned" ? "Owned" : item.type === "core" || item.accessState === "included" ? "Included" : formatMoney(item.priceInCents, item.currencyCode)}</span></div>)}
             <div className="flex justify-between gap-4 border-t border-[#eadbc2] pt-2 text-base"><strong>Total today</strong><strong>{formatMoney(subscriptionCheckoutTotalInCents, pricing.currencyCode)}</strong></div>
             <p className="text-xs leading-5 text-ink/55">Then {formatMoney(pricing.subscriptionMonthlyPriceInCents, pricing.currencyCode)}/month for up to {pricing.includedStudentCount} children. Cancel anytime.</p>
@@ -1301,7 +1303,7 @@ export function PlanGenerator({
           <p className="mt-3 border-t border-[#eadbc2] pt-3 text-xs leading-[1.6] text-ink/60">
             {authenticated
               ? "Your uploaded materials will be indexed before Treeschool builds the sequential weekly lesson-plan PDFs."
-              : "Your Family Plan includes printable weekly lesson plans, progress, attendance, grades, and ongoing planning tools."}
+              : "Single includes the complete Treeschool experience for one student: printable weekly lesson plans, progress, attendance, grades, and ongoing planning tools."}
           </p>
         </div>
         {!authenticated ? <><label className="mt-6 block text-sm font-semibold text-ink">

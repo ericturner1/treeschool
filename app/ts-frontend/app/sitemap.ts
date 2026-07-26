@@ -10,6 +10,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ["", 1, "weekly"],
     ["/pricing", 0.9, "monthly"],
     ["/homeschool-lesson-plan-generator", 0.9, "monthly"],
+    ["/first-grade-homeschool", 0.9, "monthly"],
+    ["/switch-to-paper-based-homeschool", 0.9, "monthly"],
+    ["/homeschool-without-a-subscription", 0.85, "monthly"],
     ["/bookstore", 0.8, "weekly"],
     ["/blog", 0.8, "daily"]
   ].map(([path, priority, changeFrequency]) => ({

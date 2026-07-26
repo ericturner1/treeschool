@@ -8,6 +8,8 @@ import {
   subscriptions
 } from "ts-db";
 import { db } from "../db";
+import { isIntroductoryOfferActive } from "./billing-introductory-offer";
+import { getMembershipPlan } from "./membership-plans";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -28,7 +30,9 @@ export async function getPremiumFeatureAccess(userId: string) {
   const [subscription] = await db
     .select({
       status: subscriptions.status,
+      planTier: subscriptions.planTier,
       introductoryOffer: subscriptions.introductoryOffer,
+      introductoryOfferEndsAt: subscriptions.introductoryOfferEndsAt,
       additionalStudentQuantity: subscriptions.additionalStudentQuantity,
       currentPeriodStart: subscriptions.currentPeriodStart,
       currentPeriodEnd: subscriptions.currentPeriodEnd,
@@ -57,9 +61,7 @@ export async function getPremiumFeatureAccess(userId: string) {
       (!subscription.currentPeriodEnd || subscription.currentPeriodEnd > now)
   );
   const trialActive = Boolean(planPack?.trialEndsAt && planPack.trialEndsAt > now);
-  const introductoryMonth = subscriptionActive &&
-    subscription?.status === "trialing" &&
-    subscription.introductoryOffer === "first_month_6_usd";
+  const introductoryMonth = subscriptionActive && isIntroductoryOfferActive(subscription, now);
   const allowed = subscriptionActive || trialActive;
   const daysRemaining = trialActive && planPack?.trialEndsAt
     ? Math.max(1, Math.ceil((planPack.trialEndsAt.getTime() - now.getTime()) / DAY_MS))
@@ -71,6 +73,7 @@ export async function getPremiumFeatureAccess(userId: string) {
     subscriptionPeriodStart: subscription?.currentPeriodStart?.toISOString() ?? null,
     subscriptionPeriodEnd: subscription?.currentPeriodEnd?.toISOString() ?? null,
     subscriptionStatus: subscription?.status ?? null,
+    planTier: subscription?.planTier ?? null,
     introductoryMonth,
     additionalStudentQuantity: subscription?.additionalStudentQuantity ?? 0,
     allowed,
@@ -227,7 +230,8 @@ export async function reservePlanGeneration(input: {
             "The introductory month includes one initial lesson plan for each student. Plan updates unlock after the first regular renewal."
           );
         }
-        const limit = 3 + access.additionalStudentQuantity;
+        const includedStudentCount = getMembershipPlan(access.planTier ?? "standard").includedStudentCount;
+        const limit = includedStudentCount + access.additionalStudentQuantity;
         if (Number(accountUsage?.count ?? 0) >= limit) {
           throw new Error(
             `The introductory month includes ${limit} initial lesson-plan generations—one for each paid student seat.`
@@ -258,7 +262,7 @@ export async function reservePlanGeneration(input: {
   }
   if (access.introductoryMonth) {
     throw new Error(
-      "Your introductory month includes one initial lesson plan per student. Plan updates unlock after the first $20 renewal."
+      `Your introductory month includes one initial lesson plan per student. Plan updates unlock after the first ${access.planTier === "single" ? "$14" : "$20"} renewal.`
     );
   }
 

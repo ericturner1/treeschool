@@ -47,6 +47,8 @@ export async function getPlanPackPricing() {
     planPackPriceInCents: number;
     subscriptionIntroPriceInCents: number;
     subscriptionMonthlyPriceInCents: number;
+    subscriptionYearlyPriceInCents: number;
+    subscriptionPlanTier: "single";
     includedStudentCount: number;
     additionalStudentIntroPriceInCents: number;
     additionalStudentMonthlyPriceInCents: number;

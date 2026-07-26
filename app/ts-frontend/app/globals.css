@@ -244,10 +244,6 @@ select.select-on-dark:not([multiple]) {
   box-shadow: 0 14px 32px rgba(79, 54, 34, 0.07);
 }
 
-.responsive-sidebar-menu > summary::-webkit-details-marker {
-  display: none;
-}
-
 .progress-arrow-step {
   --progress-step-border: #b8bdc0;
   --progress-step-fill: #ffffff;
@@ -712,15 +708,5 @@ a[role="button"].is-loading:has(.animate-spin)::after {
   .blog-prose {
     font-size: 1rem;
     line-height: 1.75;
-  }
-}
-
-@media (min-width: 1024px) {
-  .responsive-sidebar-menu > summary {
-    display: none;
-  }
-
-  .responsive-sidebar-menu:not([open]) > .responsive-sidebar-menu__content {
-    display: block;
   }
 }

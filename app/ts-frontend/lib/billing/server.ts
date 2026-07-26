@@ -27,6 +27,7 @@ export async function getParentBillingOverview(input: { userId: string }) {
     displayStatus: "trialing" | "active" | "active_canceling" | "past_due" | "canceled" | "free";
     subscription: null | {
       status: "trialing" | "active" | "past_due" | "canceled";
+      planTier: "single" | "standard";
       billingInterval: "monthly" | "yearly" | null;
       introductoryOffer: string | null;
       introductoryMonth: boolean;
@@ -61,6 +62,7 @@ export async function getParentBillingOverview(input: { userId: string }) {
       allowed: boolean;
       isSubscriber: boolean;
       subscriptionStatus: "trialing" | "active" | "past_due" | "canceled" | null;
+      planTier: "single" | "standard" | null;
       introductoryMonth: boolean;
       additionalStudentQuantity: number;
       hasPlanPack: boolean;
@@ -97,14 +99,37 @@ async function postBillingJson<T>(path: string, body: Record<string, unknown>, f
 export async function createParentBillingCheckout(input: {
   userId: string;
   interval: "monthly" | "yearly";
+  planTier: "single" | "standard";
   successUrl: string;
   cancelUrl: string;
-  trialDays?: number;
 }) {
   return postBillingJson<{ url: string | null }>(
     "/internal/billing/checkout",
     input,
     "Failed to create Stripe checkout session."
+  );
+}
+
+export async function createPublicParentBillingCheckout(input: {
+  interval: "monthly" | "yearly";
+  planTier: "single" | "standard";
+  successUrl: string;
+  cancelUrl: string;
+}) {
+  return postBillingJson<{ url: string | null }>(
+    "/internal/billing/public-checkout",
+    input,
+    "Failed to create Stripe checkout session."
+  );
+}
+
+export async function completePublicParentBillingCheckout(input: {
+  sessionId: string;
+}) {
+  return postBillingJson<{ sessionId: string; email: string; accountId: string }>(
+    "/internal/billing/public-checkout/complete",
+    input,
+    "Failed to finish Stripe checkout."
   );
 }
 
@@ -116,6 +141,18 @@ export async function createParentBillingPortal(input: {
     "/internal/billing/portal",
     input,
     "Failed to create Stripe customer portal session."
+  );
+}
+
+export async function createParentPlanChange(input: {
+  userId: string;
+  targetPlanTier: "single" | "standard";
+  returnUrl: string;
+}) {
+  return postBillingJson<{ url: string | null }>(
+    "/internal/billing/change-plan",
+    input,
+    "Failed to open the plan-change confirmation."
   );
 }
 

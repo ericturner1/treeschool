@@ -23,7 +23,7 @@ export default async function ResumePlanPackCheckoutPage({ searchParams }: Resum
   const intakeId = String(searchParams?.intakeId ?? "").trim();
   const draftKey = String(searchParams?.draftKey ?? "").trim();
   // Explicit legacy links retain their one-time checkout. New or incomplete links
-  // always resume into the Family Plan funnel.
+  // always resume into the Single membership funnel.
   const checkoutKind = searchParams?.checkoutKind === "one_time" ? "one_time" as const : "subscription" as const;
   if (!intakeId) redirect("/homeschool-lesson-plan-generator?error=This%20checkout%20link%20is%20incomplete.");
 

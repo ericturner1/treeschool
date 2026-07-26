@@ -24,6 +24,7 @@ import {
   users
 } from "ts-db";
 import { db, env } from "../db";
+import { withTreeschoolCheckoutBranding } from "./stripe-checkout";
 import { getPremiumFeatureAccess } from "./entitlements";
 import {
   deletePrivateFile,
@@ -3094,7 +3095,7 @@ export async function createNativeWorkbookCheckout(input: {
   const [subscription] = parent ? await db.select({ stripeCustomerId: subscriptions.stripeCustomerId })
     .from(subscriptions).where(eq(subscriptions.accountId, parent.accountId)).limit(1) : [];
   const stripe = getStripe();
-  const session = await stripe.checkout.sessions.create({
+  const session = await stripe.checkout.sessions.create(withTreeschoolCheckoutBranding({
     mode: "payment",
     customer: subscription?.stripeCustomerId ?? undefined,
     customer_email: subscription?.stripeCustomerId ? undefined : email,
@@ -3123,7 +3124,7 @@ export async function createNativeWorkbookCheckout(input: {
       ...(parent ? { accountId: parent.accountId, userId: input.userId! } : {}),
       ...(input.addToLearningYearId ? { addToLearningYearId: input.addToLearningYearId } : {})
     }
-  });
+  }));
   return { id: session.id, url: session.url };
 }
 
@@ -3181,7 +3182,7 @@ export async function createNativeWorkbookCartCheckout(input: {
     [`amount${index}`, String(workbook.priceInCents)]
   ]));
   const stripe = getStripe();
-  const session = await stripe.checkout.sessions.create({
+  const session = await stripe.checkout.sessions.create(withTreeschoolCheckoutBranding({
     mode: "payment",
     customer: subscription?.stripeCustomerId ?? undefined,
     customer_email: subscription?.stripeCustomerId ? undefined : email,
@@ -3208,7 +3209,7 @@ export async function createNativeWorkbookCartCheckout(input: {
       ...(parent ? { accountId: parent.accountId, userId: input.userId! } : {}),
       ...itemMetadata
     }
-  });
+  }));
   return { id: session.id, url: session.url };
 }
 

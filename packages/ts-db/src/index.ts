@@ -68,6 +68,7 @@ export {
   streakSettings,
   subjects,
   subscriptionStatusEnum,
+  subscriptionPlanTierEnum,
   subscriptions,
   studentMastery,
   studentCalendarExceptions,

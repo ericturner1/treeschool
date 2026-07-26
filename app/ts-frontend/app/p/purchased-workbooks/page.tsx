@@ -30,7 +30,7 @@ export default async function PurchasedWorkbooksPage({ searchParams }: { searchP
   return (
     <ParentModeGuard lang={searchParams?.lang} redirectTo="/p/purchased-workbooks">
       <ParentShell brandName={home.brand.name} dashboard={dashboard} currentUserEmail={user.email} activeProfile={activeProfile} parentProfile={parentProfile} studentProfiles={studentProfiles} title="Purchased Workbooks" activeNav="workbooks" sidebarLinks={[{ href: "/p/dashboard", label: dashboard.actions.dashboard, tone: "outline" }]}>
-        <p className="mb-5 max-w-3xl text-base leading-7 text-ink/65">These permanent purchases remain available here even if your Family Plan ends.</p>
+        <p className="mb-5 max-w-3xl text-base leading-7 text-ink/65">These permanent purchases remain available here even if your Treeschool membership ends.</p>
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {purchased.workbooks.map((workbook) => (
             <article key={workbook.purchaseId} className="overflow-hidden rounded-[24px] border border-[#dcc8aa] bg-[#fffaf2]">

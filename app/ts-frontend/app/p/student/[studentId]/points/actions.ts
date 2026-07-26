@@ -22,9 +22,17 @@ function safeReturnPath(formData: FormData) {
   return value.startsWith("/p/student/") ? value : "/p/dashboard";
 }
 
-function withMessage(path: string, key: "message" | "error", value: string) {
+function withMessage(
+  path: string,
+  key: "message" | "error",
+  value: string,
+  extra?: Record<string, string>
+) {
   const url = new URL(path, "https://treehomeschool.com");
   url.searchParams.set(key, value);
+  for (const [extraKey, extraValue] of Object.entries(extra ?? {})) {
+    url.searchParams.set(extraKey, extraValue);
+  }
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
@@ -49,7 +57,10 @@ export async function awardStudentPointsAction(formData: FormData) {
   }
   if (error) redirect(withMessage(returnPath, "error", error));
   revalidatePath(returnPath);
-  redirect(withMessage(returnPath, "message", "Points awarded."));
+  redirect(withMessage(returnPath, "message", "Points awarded.", {
+    resetForm: "award",
+    resetToken: Date.now().toString(36)
+  }));
 }
 
 export async function redeemStudentPointsAction(formData: FormData) {
@@ -67,7 +78,10 @@ export async function redeemStudentPointsAction(formData: FormData) {
   }
   if (error) redirect(withMessage(returnPath, "error", error));
   revalidatePath(returnPath);
-  redirect(withMessage(returnPath, "message", "Points used."));
+  redirect(withMessage(returnPath, "message", "Points used.", {
+    resetForm: "redeem",
+    resetToken: Date.now().toString(36)
+  }));
 }
 
 export async function updateStudentPointSettingsAction(formData: FormData) {

@@ -1,0 +1,57 @@
+name: Production revenue smoke test
+
+on:
+  deployment_status:
+  workflow_dispatch:
+
+concurrency:
+  group: production-revenue-smoke
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  purchase-paths:
+    name: Verify production purchase paths
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+      (github.event.deployment.environment == 'Production' ||
+      github.event.deployment.environment == 'production'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out deployed commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.deployment.sha || github.sha }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.9
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Wait for production alias
+        run: |
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error --max-time 15 https://www.treehomeschool.com/pricing >/dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Production pricing page did not become available." >&2
+          exit 1
+
+      - name: Test every production purchase path
+        working-directory: app/ts-frontend
+        env:
+          CI: "true"
+          REVENUE_SMOKE_BASE_URL: https://www.treehomeschool.com
+        run: bun run test:revenue

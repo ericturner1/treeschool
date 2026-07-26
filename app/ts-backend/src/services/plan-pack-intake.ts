@@ -1,11 +1,9 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import {
-  accounts,
   contentDocuments,
   planPackIntakes,
   profiles,
-  users,
   weeklyPlanJobs,
   weeklyPlanItems,
   weeklyPlans
@@ -34,6 +32,7 @@ import {
   recommendNativeWorkbooksForLearningYear,
   resolveNativeWorkbookCheckoutSelections
 } from "./native-workbooks";
+import { ensureProvisionalParentAccountForEmail } from "./accounts";
 
 const GEMINI_NOTE_VALIDATION_MODEL = "gemini-2.5-flash";
 const GEMINI_NOTE_VALIDATION_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_NOTE_VALIDATION_MODEL}:generateContent`;
@@ -365,83 +364,6 @@ function inferDocumentRoleForFile(
   return subject?.documentRole || "mixed";
 }
 
-async function getParentAccountByEmail(email: string) {
-  const normalizedEmail = normalizeEmail(email);
-  const [parent] = await db
-    .select({
-      userId: users.id,
-      email: users.email,
-      accountId: profiles.accountId,
-      parentProfileId: profiles.id
-    })
-    .from(users)
-    .innerJoin(profiles, eq(profiles.userId, users.id))
-    .where(and(eq(sql`lower(${users.email})`, normalizedEmail), eq(profiles.role, "PARENT")))
-    .limit(1);
-
-  if (parent) return parent;
-
-  const [existingUser] = await db
-    .select({
-      userId: users.id,
-      email: users.email
-    })
-    .from(users)
-    .where(eq(sql`lower(${users.email})`, normalizedEmail))
-    .limit(1);
-
-  if (existingUser) {
-    const accountId = randomUUID();
-    const parentProfileId = randomUUID();
-    await db.transaction(async (tx) => {
-      await tx.insert(accounts).values({ id: accountId });
-      await tx.insert(profiles).values({
-        id: parentProfileId,
-        accountId,
-        userId: existingUser.userId,
-        role: "PARENT",
-        firstName: normalizedEmail.split("@")[0] || "Parent",
-        uiTheme: "academic",
-        languagePreference: "en-US"
-      });
-    });
-
-    return {
-      userId: existingUser.userId,
-      email: existingUser.email,
-      accountId,
-      parentProfileId
-    };
-  }
-
-  const userId = randomUUID();
-  const accountId = randomUUID();
-  const parentProfileId = randomUUID();
-  await db.transaction(async (tx) => {
-    await tx.insert(users).values({
-      id: userId,
-      email: normalizedEmail
-    });
-    await tx.insert(accounts).values({ id: accountId });
-    await tx.insert(profiles).values({
-      id: parentProfileId,
-      accountId,
-      userId,
-      role: "PARENT",
-      firstName: normalizedEmail.split("@")[0] || "Parent",
-      uiTheme: "academic",
-      languagePreference: "en-US"
-    });
-  });
-
-  return {
-    userId,
-    email: normalizedEmail,
-    accountId,
-    parentProfileId
-  };
-}
-
 async function getPlanPackIntake(intakeId: string) {
   const [intake] = await db
     .select()
@@ -604,7 +526,7 @@ export async function createPlanPackIntake(input: { email: string; draft: PlanPa
     throw new Error("Enter a valid email address.");
   }
 
-  const parent = await getParentAccountByEmail(email);
+  const parent = await ensureProvisionalParentAccountForEmail(email);
   await resolveNativeWorkbookCheckoutSelections({
     ids: draft.nativeCatalogItemIds ?? [],
     userId: parent.userId
@@ -643,6 +565,7 @@ export async function createPlanPackCheckoutForIntake(input: {
     ? await createCoreSubscriptionCheckout({
         userId: parentUserId,
         interval: "monthly",
+        planTier: "single",
         intakeId: intake.id,
         nativeCatalogItemIds: draft.nativeCatalogItemIds,
         successUrl: input.successUrl,

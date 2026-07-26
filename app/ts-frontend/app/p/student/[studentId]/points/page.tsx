@@ -18,7 +18,14 @@ import { PointsSubmitButton } from "./points-submit-button";
 
 type Props = {
   params: { studentId?: string };
-  searchParams?: { lang?: string; message?: string; error?: string; historyPage?: string };
+  searchParams?: {
+    lang?: string;
+    message?: string;
+    error?: string;
+    historyPage?: string;
+    resetForm?: string;
+    resetToken?: string;
+  };
 };
 
 function unitName(amount: number, singularName: string, pluralName: string) {
@@ -34,7 +41,7 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
     redirect(studentRoutePath(studentRouteSegment, "/points", searchParams));
   }
   const historyPage = Math.max(1, Math.round(Number(searchParams?.historyPage) || 1));
-  const historyPageSize = 50;
+  const historyPageSize = 20;
   const [points, streakSettings] = await Promise.all([
     getStudentPoints({
       parentUserId: currentUser.id,
@@ -113,7 +120,11 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
 
           {points.canManage ? (
             <section className="grid gap-5 lg:grid-cols-2">
-              <form action={awardStudentPointsAction} className="site-panel rounded-[28px] px-6 py-7">
+              <form
+                key={`award-${searchParams?.resetForm === "award" ? searchParams.resetToken : "initial"}`}
+                action={awardStudentPointsAction}
+                className="site-panel rounded-[28px] px-6 py-7"
+              >
                 <input type="hidden" name="profileId" value={student.id} />
                 <input type="hidden" name="returnPath" value={returnPath} />
                 <p className="text-xs font-black uppercase tracking-[0.13em] text-[#587443]">Recognize good work</p>
@@ -121,7 +132,16 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
                 <div className="mt-5 grid gap-4 sm:grid-cols-[130px_minmax(0,1fr)]">
                   <label className="text-sm font-semibold text-ink">
                     Amount
-                    <input name="amount" type="number" min="1" max="100000" step="1" defaultValue="1" required className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544]" />
+                    <input
+                      name="amount"
+                      type="number"
+                      min="1"
+                      max="100000"
+                      step="1"
+                      defaultValue={searchParams?.resetForm === "award" ? "" : "1"}
+                      required
+                      className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544]"
+                    />
                   </label>
                   <label className="text-sm font-semibold text-ink">
                     Reason
@@ -133,7 +153,11 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
                 </div>
               </form>
 
-              <form action={redeemStudentPointsAction} className="site-panel rounded-[28px] px-6 py-7">
+              <form
+                key={`redeem-${searchParams?.resetForm === "redeem" ? searchParams.resetToken : "initial"}`}
+                action={redeemStudentPointsAction}
+                className="site-panel rounded-[28px] px-6 py-7"
+              >
                 <input type="hidden" name="profileId" value={student.id} />
                 <input type="hidden" name="returnPath" value={returnPath} />
                 <p className="text-xs font-black uppercase tracking-[0.13em] text-earth">Rewards and privileges</p>
@@ -141,7 +165,17 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
                 <div className="mt-5 grid gap-4 sm:grid-cols-[130px_minmax(0,1fr)]">
                   <label className="text-sm font-semibold text-ink">
                     Amount
-                    <input name="amount" type="number" min="1" max={Math.max(1, points.summary.balance)} step="1" defaultValue="1" required disabled={points.summary.balance < 1} className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544] disabled:bg-[#eee9e0]" />
+                    <input
+                      name="amount"
+                      type="number"
+                      min="1"
+                      max={Math.max(1, points.summary.balance)}
+                      step="1"
+                      defaultValue={searchParams?.resetForm === "redeem" ? "" : "1"}
+                      required
+                      disabled={points.summary.balance < 1}
+                      className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544] disabled:bg-[#eee9e0]"
+                    />
                   </label>
                   <label className="text-sm font-semibold text-ink">
                     Used for

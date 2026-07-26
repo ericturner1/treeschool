@@ -1,7 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
+import { redirect } from "next/navigation";
 import { LanguageSelect } from "../components/language-select";
+import { startPricingSubscriptionCheckoutAction } from "./billing-actions";
+import { getCurrentUser } from "../lib/auth/server";
 import { SUPPORTED_LOCALES } from "../lib/i18n/config";
 import { getRequestDictionary } from "../lib/i18n/server";
 
@@ -11,13 +14,102 @@ type HomePageProps = {
   };
 };
 
+function BookIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[19px] w-[19px]">
+      <path
+        fill="currentColor"
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M6.6 2.25h10.9a2.4 2.4 0 0 1 2.4 2.4v11.1a2.2 2.2 0 0 1-2.2 2.2h.35a1.95 1.95 0 0 1 1.95 1.95v.25a1.6 1.6 0 0 1-1.6 1.6H6.65A3.65 3.65 0 0 1 3 18.1V5.85a3.6 3.6 0 0 1 3.6-3.6Zm2.15 4.1a.85.85 0 0 0 0 1.7h7.1a.85.85 0 0 0 0-1.7h-7.1ZM7.15 17.8a1.1 1.1 0 0 0 0 2.2h9.9v-2.2h-9.9Z"
+      />
+    </svg>
+  );
+}
+
+function SignInIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 17l5-5-5-5" />
+      <path d="M15 12H3" />
+      <path d="M15 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+    </svg>
+  );
+}
+
+type PathwayStripProps = {
+  item: {
+    eyebrow: string;
+    title: string;
+    copy: string;
+    href: string;
+    linkLabel: string;
+  };
+  tone: "green" | "cream" | "warm" | "gold";
+  actionFirst?: boolean;
+};
+
+function PathwayStrip({ item, tone, actionFirst = false }: PathwayStripProps) {
+  const toneClass =
+    tone === "green"
+      ? "border-[#b8cba7] bg-[#e8f0e1]"
+      : tone === "gold"
+        ? "border-[#d0b674] bg-[#eee1b9]"
+      : tone === "warm"
+        ? "border-[#d7bd98] bg-[#f2e6d3]"
+        : "border-[#dfcfb8] bg-[#fffaf2]";
+  const buttonClass =
+    tone === "green"
+      ? "cta-button--light"
+      : tone === "cream" || tone === "gold"
+        ? "cta-button--dark"
+        : "border-[#8f6544] bg-[#b47b42] text-white shadow-[0_7px_0_#8f6544] hover:bg-[#a66f3a] hover:shadow-[0_11px_0_#795536]";
+
+  return (
+    <section className={`border-b ${toneClass}`}>
+      <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="text-center">
+          <p className="label-font text-xs font-black uppercase tracking-[0.09em] text-earth">
+            {item.eyebrow}
+          </p>
+          <h2 className="mt-1.5 text-2xl font-semibold tracking-[-0.03em] text-ink sm:text-[28px]">
+            {item.title}
+          </h2>
+        </div>
+        <div className="mx-auto mt-5 grid max-w-4xl items-center gap-5 sm:grid-cols-2 sm:gap-8">
+          <p className={`text-center text-base leading-7 text-ink/70 sm:text-left sm:text-lg sm:leading-8 ${actionFirst ? "sm:order-2" : ""}`}>
+            {item.copy}
+          </p>
+          <Link
+            href={item.href as Route}
+            className={`cta-button cta-button--small w-full justify-self-center whitespace-nowrap sm:w-auto sm:min-w-[280px] ${buttonClass} ${
+              actionFirst ? "sm:order-1 sm:justify-self-end" : "sm:justify-self-start"
+            }`}
+          >
+            {item.linkLabel}
+            <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default async function HomePage({ searchParams }: HomePageProps) {
+  const currentUser = await getCurrentUser();
+  if (currentUser?.id) {
+    redirect("/p/dashboard");
+  }
+
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { home } = dictionary;
   const navHref = (link: string) => {
     if (link === "Pricing" || link === home.nav.buyNow) return "/pricing";
     if (link === "Bookstore") return "/bookstore";
     if (link === "Blog") return "/blog";
+    if (link === "Starting first grade") return "/first-grade-homeschool";
+    if (link === "Switching homeschool programs") return "/switch-to-paper-based-homeschool";
+    if (link === "No-subscription homeschooling") return "/homeschool-without-a-subscription";
     if (link === home.nav.signIn) return "/p/signin";
     return "/";
   };
@@ -52,13 +144,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               <Link href="/pricing" className="hidden text-sm font-semibold text-ink/68 transition-colors hover:text-ink md:inline-flex">
                 {home.nav.pricing}
               </Link>
-              <Link href="/bookstore" className="hidden text-sm font-semibold text-ink/68 transition-colors hover:text-ink md:inline-flex">
+              <Link href="/bookstore" className="hidden items-center gap-2 text-sm font-semibold text-ink/68 transition-colors hover:text-ink md:inline-flex">
+                <BookIcon />
                 Bookstore
               </Link>
-              <Link href="/blog" className="hidden text-sm font-semibold text-ink/68 transition-colors hover:text-ink lg:inline-flex">
-                Blog
-              </Link>
-              <Link href="/p/signin" className="text-sm font-semibold text-ink/68 transition-colors hover:text-ink">
+              <Link href="/p/signin" className="inline-flex items-center gap-2 text-sm font-semibold text-ink/68 transition-colors hover:text-ink">
+                <SignInIcon />
                 {home.nav.signIn}
               </Link>
             </div>
@@ -84,11 +175,16 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
             <div className="mt-7">
               <div className="flex flex-col gap-4 sm:flex-row">
-                <Link href="/pricing" className="cta-button cta-button--light gap-2">
-                  {home.hero.primaryCta}
-                  <span aria-hidden="true" className="text-xl">→</span>
-                </Link>
-                <Link href="/homeschool-lesson-plan-generator" className="cta-button cta-button--outline">
+                <form action={startPricingSubscriptionCheckoutAction} data-revenue-path="home-monthly-primary">
+                  <input type="hidden" name="interval" value="monthly" />
+                  <input type="hidden" name="planTier" value="single" />
+                  <input type="hidden" name="returnPath" value="/" />
+                  <button type="submit" className="cta-button cta-button--light gap-2">
+                    {home.hero.primaryCta}
+                    <span aria-hidden="true" className="text-xl">→</span>
+                  </button>
+                </form>
+                <Link href="/pricing" className="cta-button cta-button--outline">
                   {home.hero.secondaryCta}
                 </Link>
               </div>
@@ -114,6 +210,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           </div>
         </div>
       </section>
+
+      <PathwayStrip item={home.paths.items[0]} tone="warm" />
 
       <section id="example" className="border-b border-[#d8c7ad] bg-[#fffaf2]">
         <div className="mx-auto w-full max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
@@ -191,6 +289,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         </div>
       </section>
 
+      <PathwayStrip item={home.paths.items[1]} tone="gold" actionFirst />
+
       <section className="border-y border-[#d8c7ad] bg-[#e8f0e1]">
         <div className="mx-auto w-full max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
           <div className="text-center">
@@ -210,6 +310,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           </div>
         </div>
       </section>
+
+      <PathwayStrip item={home.paths.items[2]} tone="warm" />
 
       <section className="bg-[#f7f1e7]">
         <div className="mx-auto w-full max-w-4xl px-4 py-14 text-center sm:px-6 lg:px-8">
@@ -231,7 +333,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
       <footer className="bg-[#6f513e] text-[#f7eddf]">
         <div className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-          <div className="grid gap-10 border-b border-white/10 pb-10 lg:grid-cols-[1.2fr_0.8fr_0.8fr]">
+          <div className="grid gap-10 border-b border-white/10 pb-10 sm:grid-cols-2 lg:grid-cols-[1.2fr_0.72fr_0.82fr_1.08fr]">
             <div>
               <div className="flex items-center gap-0">
                 <Image
@@ -255,7 +357,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                   {column.links.map((link) => (
                     <Link
                       key={link}
-                      href={navHref(link)}
+                      href={navHref(link) as Route}
                       className="block transition-colors hover:text-white"
                     >
                       {link}
@@ -274,7 +376,6 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               <Link href={"/refunds" as Route} className="hover:text-white">Refunds</Link>
               <Link href={"/support" as Route} className="hover:text-white">Support</Link>
               <Link href={"/bookstore" as Route} className="hover:text-white">Bookstore</Link>
-              <Link href={"/blog" as Route} className="hover:text-white">Blog</Link>
               <LanguageSelect
                 ariaLabel={home.nav.languageLabel}
                 currentLocale={locale}

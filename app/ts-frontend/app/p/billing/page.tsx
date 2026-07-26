@@ -8,8 +8,8 @@ import { getRequestDictionary } from "../../../lib/i18n/server";
 import { ParentModeGuard } from "../parent-mode-guard";
 import { ParentShell } from "../parent-shell";
 import {
+  changeMembershipPlanAction,
   openBillingPortalAction,
-  startCoreSubscriptionCheckoutAction
 } from "../../billing-actions";
 
 type ParentBillingPageProps = {
@@ -17,6 +17,7 @@ type ParentBillingPageProps = {
     lang?: string;
     checkout?: string;
     error?: string;
+    planChanged?: string;
   };
 };
 
@@ -62,6 +63,19 @@ export default async function ParentBillingPage({ searchParams }: ParentBillingP
   const hasCurrentSubscription = Boolean(
     billing.subscription && ["trialing", "active", "past_due"].includes(billing.subscription.status)
   );
+  const planName = billing.subscription?.planTier === "single"
+    ? "Single"
+    : billing.subscription?.planTier === "standard"
+      ? "Standard"
+      : null;
+  const monthlyRenewalPrice = billing.subscription?.planTier === "single" ? "$14" : "$20";
+  const currentMembershipCopy = billing.subscription?.planTier === "single"
+    ? billing.subscription.billingInterval === "yearly"
+      ? "$140/year for one student"
+      : "$14/month for one student"
+    : billing.subscription?.billingInterval === "yearly"
+      ? "$200/year for up to three students, then $50/year for each additional student"
+      : "$20/month for up to three students, then $5/month for each additional student";
 
   return (
     <ParentModeGuard lang={searchParams?.lang} redirectTo={redirectTo}>
@@ -93,6 +107,11 @@ export default async function ParentBillingPage({ searchParams }: ParentBillingP
               {searchParams.error}
             </section>
           ) : null}
+          {searchParams?.planChanged === "1" ? (
+            <section className="rounded-[24px] border border-[#b8cf9f] bg-[#eef5e4] px-6 py-5 text-sm font-semibold text-[#4d6a39]">
+              Your plan change was confirmed. Student capacity will update as soon as Stripe sends its confirmation.
+            </section>
+          ) : null}
           {billing.accessRestricted ? (
             <section className="rounded-[24px] border border-[#d79b91] bg-[#f7e2dd] px-6 py-5">
               <h2 className="text-[26px] font-semibold tracking-[-0.05em] text-[#7f4339]">
@@ -120,14 +139,14 @@ export default async function ParentBillingPage({ searchParams }: ParentBillingP
                     {billing.displayStatus === "trialing"
                       ? dashboard.billing.freeTrialPlan
                       : billing.currentPlan === "premium"
-                      ? dashboard.billing.premiumPlan
+                      ? planName ?? dashboard.billing.premiumPlan
                       : dashboard.billing.freePlan}
                   </h2>
                   <p className="mt-3 text-base leading-[1.75] text-ink/75">
                     {billing.displayStatus === "active_canceling"
                       ? dashboard.billing.cancelAtPeriodEnd
                       : billing.subscription?.introductoryMonth && billing.subscription.currentPeriodEnd
-                        ? `$6 introductory month. Your regular Family Plan begins ${formatDate(billing.subscription.currentPeriodEnd, locale)}.`
+                        ? `First month: $6. Renews at ${monthlyRenewalPrice}/month on ${formatDate(billing.subscription.currentPeriodEnd, locale)}.`
                       : billing.trial.active && billing.trial.endAt
                         ? `${dashboard.billing.trialEnds}: ${formatDate(billing.trial.endAt, locale)}`
                         : dashboard.billing.checkoutUnavailable}
@@ -136,16 +155,34 @@ export default async function ParentBillingPage({ searchParams }: ParentBillingP
               </div>
 
               {!hasCurrentSubscription ? <div className="mt-6">
-                <form action={startCoreSubscriptionCheckoutAction}>
-                  <input type="hidden" name="interval" value="monthly" />
-                  <input type="hidden" name="returnPath" value="/p/billing" />
-                  <button type="submit" className="cta-button cta-button--light w-full">
-                    {dashboard.billing.upgradeMonthly}
-                  </button>
-                </form>
+                <Link href="/pricing" className="cta-button cta-button--light w-full">
+                  Choose a membership plan
+                </Link>
               </div> : null}
 
               <div className="mt-4 flex flex-wrap gap-3">
+                {billing.subscription?.planTier === "single" ? (
+                  <form action={changeMembershipPlanAction}>
+                    <input type="hidden" name="planTier" value="standard" />
+                    <button type="submit" className="cta-button cta-button--light cta-button--small">
+                      Upgrade to Standard
+                    </button>
+                  </form>
+                ) : null}
+                {billing.subscription?.planTier === "standard" ? (
+                  billing.studentSeats.active > 1 ? (
+                    <div className="rounded-[16px] border border-[#dcc8aa] bg-[#fffaf2] px-4 py-3 text-sm font-semibold leading-6 text-ink/66">
+                      Remove {billing.studentSeats.active - 1} student {billing.studentSeats.active - 1 === 1 ? "profile" : "profiles"} before switching to Single.
+                    </div>
+                  ) : (
+                    <form action={changeMembershipPlanAction}>
+                      <input type="hidden" name="planTier" value="single" />
+                      <button type="submit" className="cta-button cta-button--outline cta-button--small">
+                        Switch to Single
+                      </button>
+                    </form>
+                  )
+                ) : null}
                 <form action={openBillingPortalAction}>
                   <button type="submit" className="cta-button cta-button--outline cta-button--small">
                     {dashboard.billing.manageBilling}
@@ -186,11 +223,19 @@ export default async function ParentBillingPage({ searchParams }: ParentBillingP
                   </dd>
                 </div>
                 <div className="flex items-start justify-between gap-4">
-                  <dt>Family pricing</dt>
+                  <dt>Current membership</dt>
                   <dd className="max-w-sm text-right font-semibold text-ink">
-                    $20/month for up to three students, then $5/month for each additional student
+                    {currentMembershipCopy}
                   </dd>
                 </div>
+                {billing.subscription?.planTier === "standard" ? (
+                  <div className="flex items-start justify-between gap-4">
+                    <dt>Single eligibility</dt>
+                    <dd className="max-w-sm text-right text-ink/70">
+                      Downgrading is available after this account has no more than one student profile.
+                    </dd>
+                  </div>
+                ) : null}
                 {billing.subscription?.introductoryMonth ? (
                   <div className="flex items-start justify-between gap-4">
                     <dt>Introductory allowance</dt>

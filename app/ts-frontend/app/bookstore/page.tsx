@@ -40,7 +40,7 @@ export default async function BookstorePage({ searchParams }: Props) {
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <p className="text-xs font-black uppercase tracking-[0.16em] text-[#567b40]">Grades K–4 · Treeschool Bookstore</p>
           <h1 className="mt-3 max-w-4xl text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">Printable elementary homeschool workbooks, ready to plan.</h1>
-          <p className="mt-5 max-w-2xl text-lg leading-8 text-ink/68">Browse by grade or subject. Purchased books are emailed as PDFs and stay in your Treeschool account. Core books can be added directly by Family Plan members.</p>
+          <p className="mt-5 max-w-2xl text-lg leading-8 text-ink/68">Browse by grade or subject. Purchased books are emailed as PDFs and stay in your Treeschool account. Core books can be added directly with an active Treeschool membership.</p>
         </div>
       </section>
 

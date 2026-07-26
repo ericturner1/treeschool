@@ -29,9 +29,12 @@ import {
   setPlanDaySubjectCompletion
 } from "./services/attendance";
 import {
+  completePublicCoreSubscriptionCheckout,
   createCoreSubscriptionCheckout,
+  createPublicCoreSubscriptionCheckout,
   createPlanPackCheckout,
   createCustomerPortalSession,
+  createMembershipPlanChangeSession,
   createStudentProfileWithBilling,
   getPlanGeneratorPricing,
   getBillingOverview,
@@ -1840,9 +1843,9 @@ const server = Bun.serve({
       const body = (await request.json()) as {
         userId?: string;
         interval?: string;
+        planTier?: string;
         successUrl?: string;
         cancelUrl?: string;
-        trialDays?: number;
       };
 
       if (!body.userId || !body.interval || !body.successUrl || !body.cancelUrl) {
@@ -1859,9 +1862,9 @@ const server = Bun.serve({
           await createCoreSubscriptionCheckout({
             userId: body.userId,
             interval: body.interval,
+            planTier: body.planTier,
             successUrl: body.successUrl,
-            cancelUrl: body.cancelUrl,
-            trialDays: body.trialDays
+            cancelUrl: body.cancelUrl
           })
         );
       } catch (error) {
@@ -1869,6 +1872,51 @@ const server = Bun.serve({
           {
             error: error instanceof Error ? error.message : "Failed to create Stripe checkout session."
           },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/billing/public-checkout" && request.method === "POST") {
+      const body = (await request.json()) as {
+        interval?: string;
+        planTier?: string;
+        successUrl?: string;
+        cancelUrl?: string;
+      };
+
+      if (!body.interval || !body.successUrl || !body.cancelUrl) {
+        return Response.json(
+          { error: "interval, successUrl, and cancelUrl are required." },
+          { status: 400 }
+        );
+      }
+
+      try {
+        return Response.json(await createPublicCoreSubscriptionCheckout({
+          interval: body.interval,
+          planTier: body.planTier,
+          successUrl: body.successUrl,
+          cancelUrl: body.cancelUrl
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Failed to create Stripe checkout session." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/billing/public-checkout/complete" && request.method === "POST") {
+      const body = (await request.json()) as { sessionId?: string };
+      if (!body.sessionId) {
+        return Response.json({ error: "sessionId is required." }, { status: 400 });
+      }
+      try {
+        return Response.json(await completePublicCoreSubscriptionCheckout(body.sessionId));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Failed to finish checkout." },
           { status: 400 }
         );
       }
@@ -1935,6 +1983,32 @@ const server = Bun.serve({
           {
             error: error instanceof Error ? error.message : "Failed to create Stripe customer portal session."
           },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/billing/change-plan" && request.method === "POST") {
+      const body = (await request.json()) as {
+        userId?: string;
+        targetPlanTier?: string;
+        returnUrl?: string;
+      };
+      if (!body.userId || !body.targetPlanTier || !body.returnUrl) {
+        return Response.json(
+          { error: "userId, targetPlanTier, and returnUrl are required." },
+          { status: 400 }
+        );
+      }
+      try {
+        return Response.json(await createMembershipPlanChangeSession({
+          userId: body.userId,
+          targetPlanTier: body.targetPlanTier,
+          returnUrl: body.returnUrl
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Failed to change membership plan." },
           { status: 400 }
         );
       }

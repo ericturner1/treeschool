@@ -1,5 +1,8 @@
 import { cookies } from "next/headers";
-import { AUTH_SESSION_COOKIE_MAX_AGE_SECONDS } from "./session-policy";
+import {
+  AUTH_SESSION_ACTIVITY_COOKIE_NAME,
+  AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
+} from "./session-policy";
 import { backendFetch } from "../backend/server";
 
 export const ACCESS_TOKEN_COOKIE_NAME = "treeschool_access_token";
@@ -404,6 +407,18 @@ export function setSessionCookies(session: SupabaseSession) {
     path: "/",
     maxAge: AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
   });
+
+  cookieStore.set(
+    AUTH_SESSION_ACTIVITY_COOKIE_NAME,
+    String(Math.floor(Date.now() / 1000)),
+    {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
+    }
+  );
 }
 
 export function clearSessionCookies() {
@@ -411,6 +426,7 @@ export function clearSessionCookies() {
 
   cookieStore.delete(ACCESS_TOKEN_COOKIE_NAME);
   cookieStore.delete(REFRESH_TOKEN_COOKIE_NAME);
+  cookieStore.delete(AUTH_SESSION_ACTIVITY_COOKIE_NAME);
 }
 
 export type AuthUser = {

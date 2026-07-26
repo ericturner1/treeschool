@@ -74,11 +74,11 @@ export default async function AfterPurchasePage({ searchParams }: AfterPurchaseP
             <span className="text-[54px] font-semibold leading-none tracking-[-0.055em] text-ink">$6</span>
             <span className="pb-2 text-base font-semibold text-ink/62">first month</span>
           </div>
-          <p className="mt-2 text-sm font-semibold text-[#4d6a39]">Up to three children. Then $20/month. Cancel anytime.</p>
+          <p className="mt-2 text-sm font-semibold text-[#4d6a39]">One child. Then $14/month. Cancel anytime.</p>
 
           <div className="mt-7 space-y-3 text-base font-semibold text-ink/78">
             {[
-              "Create one initial plan for each of up to three children",
+              "Create one initial plan for one child",
               "Keep every generated week organized",
               "Enter grades from printed work",
               "Track subject progress as the year unfolds"
@@ -92,6 +92,7 @@ export default async function AfterPurchasePage({ searchParams }: AfterPurchaseP
 
           <form action={startCoreSubscriptionCheckoutAction} className="mt-8">
             <input type="hidden" name="interval" value="monthly" />
+            <input type="hidden" name="planTier" value="single" />
             <input type="hidden" name="returnPath" value="/after-purchase" />
             <input type="hidden" name="successPath" value="/p/dashboard?message=Membership%20active." />
             <button type="submit" className="cta-button cta-button--dark w-full">

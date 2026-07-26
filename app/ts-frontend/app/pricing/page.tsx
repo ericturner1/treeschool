@@ -1,8 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { startCoreSubscriptionCheckoutAction } from "../billing-actions";
+import { startPricingSubscriptionCheckoutAction } from "../billing-actions";
+import { getCurrentUser } from "../../lib/auth/server";
 import { getRequestDictionary } from "../../lib/i18n/server";
+import { MembershipPlanCards } from "./membership-plan-card";
 
 export const metadata: Metadata = {
   title: "Elementary Homeschool Program Pricing for Grades K–4 | Treeschool",
@@ -44,12 +46,12 @@ const membershipFeatures = [
     copy: "Record scores only when useful, see automatic letter grades, and review results across subjects and school years."
   },
   {
-    title: "Up to three children",
-    copy: "Keep each child’s plans, profile, progress, attendance, and grades organized from one parent account."
+    title: "Student profiles that fit your plan",
+    copy: "Single keeps one child organized. Standard includes up to three children, each with separate plans, progress, attendance, and grades."
   },
   {
-    title: "Up to four Teacher users",
-    copy: "Invite other parents, tutors, or teachers to help teach, record attendance, add grades, and mark lessons done—without giving them permission to delete your family’s data."
+    title: "Invite other parents and teachers",
+    copy: "Single includes up to two Teacher users; Standard includes up to four. They can help teach, record attendance, add grades, and mark lessons done—without permission to delete your family’s data."
   },
   {
     title: "Safe updates when plans change",
@@ -76,7 +78,7 @@ const faqs = [
   },
   {
     question: "Can I manage more than one child?",
-    answer: "Yes. Treeschool includes up to three children. Additional children are $2 each during the introductory month, then $5/month each ($50/year on annual billing)."
+    answer: "Yes. Choose Standard for up to three children. Additional children beyond three are $2 each during the introductory month, then $5/month each ($50/year on annual billing)."
   },
   {
     question: "What if I change a workbook later?",
@@ -90,6 +92,17 @@ const faqs = [
     question: "Can I cancel?",
     answer: "Yes. Manage or cancel the subscription from the billing page in your parent account. Cancellation stops future renewals. If a technical failure prevents Treeschool from producing a purchased plan, contact support so we can repair, rerun, or refund that charge."
   }
+];
+
+const planComparison = [
+  { feature: "Student profiles", single: "1", standard: "Up to 3" },
+  { feature: "Complete Treeschool K–4 core curriculum", single: "Included", standard: "Included" },
+  { feature: "Printable weekly and daily lesson plans", single: "Included", standard: "Included" },
+  { feature: "Academic curriculum evaluation", single: "Included", standard: "Included" },
+  { feature: "Attendance, grades, progress, and reports", single: "Included", standard: "Included" },
+  { feature: "Points, rewards, and learning streaks", single: "Included", standard: "Included" },
+  { feature: "Teacher users", single: "Up to 2", standard: "Up to 4" },
+  { feature: "More student profiles", single: "Upgrade to Standard", standard: "$5/month after 3" }
 ];
 
 function CheckIcon() {
@@ -106,7 +119,10 @@ function formatError(error?: string) {
 }
 
 export default async function PricingPage({ searchParams }: PricingPageProps) {
-  const { dictionary } = await getRequestDictionary(searchParams?.lang);
+  const [currentUser, { dictionary }] = await Promise.all([
+    getCurrentUser(),
+    getRequestDictionary(searchParams?.lang)
+  ]);
   const { home } = dictionary;
   const error = formatError(searchParams?.error);
 
@@ -124,8 +140,8 @@ export default async function PricingPage({ searchParams }: PricingPageProps) {
             <Link href="#join" className="cta-button cta-button--light cta-button--small">
               Try for $6
             </Link>
-            <Link href="/p/signin" className="hidden cta-button cta-button--dark cta-button--small sm:inline-flex">
-              Parent sign in
+            <Link href={currentUser ? "/p/dashboard" : "/p/signin"} className="hidden cta-button cta-button--dark cta-button--small sm:inline-flex">
+              {currentUser ? "Dashboard" : "Parent sign in"}
             </Link>
           </div>
         </div>
@@ -141,7 +157,7 @@ export default async function PricingPage({ searchParams }: PricingPageProps) {
               Simple pricing for your whole homeschool.
             </h1>
             <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-ink/74 sm:text-[20px]">
-              One membership includes the complete Treeschool K–4 experience for up to three children and four Teacher users. Choose monthly or annual billing—nothing else to compare.
+              Single and Standard include the same complete Treeschool K–4 experience. Choose only the student capacity your homeschool needs.
             </p>
           </div>
         </div>
@@ -165,46 +181,34 @@ export default async function PricingPage({ searchParams }: PricingPageProps) {
         ) : null}
 
         <section id="join" className="mx-auto max-w-5xl scroll-mt-5">
-          <h2 className="sr-only">Choose monthly or annual billing</h2>
-          <p className="mb-5 text-center text-sm font-semibold text-ink/58">The same membership and features—choose monthly flexibility or save with annual billing.</p>
+          <h2 className="text-center text-4xl font-semibold tracking-[-0.05em] text-ink sm:text-5xl">Choose your plan.</h2>
+          <p className="mx-auto mb-7 mt-3 max-w-2xl text-center text-base leading-7 text-ink/62">
+            Both plans include every Treeschool feature. Standard simply includes more students.
+          </p>
 
-          <div className="grid gap-5 md:grid-cols-2">
-            <form action={startCoreSubscriptionCheckoutAction} className="flex flex-col rounded-[28px] border border-[#dcc8aa] bg-[#fffaf2] p-6 shadow-[0_12px_30px_rgba(68,49,36,0.08)] sm:p-8">
-              <input type="hidden" name="interval" value="monthly" />
-              <input type="hidden" name="returnPath" value="/pricing" />
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-2xl font-semibold text-ink">Monthly</h3>
-                <span className="rounded-full bg-[#dceacd] px-3 py-1 text-xs font-semibold text-[#486338]">Start for $6</span>
-              </div>
-              <div className="mt-6 flex items-end gap-2">
-                <span className="text-[56px] font-semibold leading-none tracking-[-0.06em] text-ink">$6</span>
-                <span className="pb-1.5 text-sm font-semibold text-ink/55">first month</span>
-              </div>
-              <p className="mt-3 text-base font-semibold text-[#486338]">Then $20/month · Up to 3 children · 4 Teacher users</p>
-              <p className="mt-3 text-sm leading-6 text-ink/62">Includes one initial lesson plan per child. Additional children are $2 each initially, then $5/month each.</p>
-              <button type="submit" className="cta-button cta-button--dark mt-7 w-full">Try Treeschool for $6</button>
-            </form>
-
-            <form action={startCoreSubscriptionCheckoutAction} className="flex flex-col rounded-[28px] border-2 border-[#8baa70] bg-[#eef5e4] p-6 shadow-[0_12px_30px_rgba(68,49,36,0.08)] sm:p-8">
-              <input type="hidden" name="interval" value="yearly" />
-              <input type="hidden" name="returnPath" value="/pricing" />
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-2xl font-semibold text-ink">Annual</h3>
-                <span className="rounded-full bg-[#5f823f] px-3 py-1 text-xs font-semibold text-white">Save 17%</span>
-              </div>
-              <div className="mt-6 flex items-end gap-2">
-                <span className="text-[56px] font-semibold leading-none tracking-[-0.06em] text-ink">$200</span>
-                <span className="pb-1.5 text-sm font-semibold text-ink/55">per year</span>
-              </div>
-              <p className="mt-3 text-base font-semibold text-[#486338]">About $16.67/month · Up to 3 children · 4 Teacher users</p>
-              <p className="mt-3 text-sm leading-6 text-ink/62">Billed once per year. Additional children are $50/year each.</p>
-              <button type="submit" className="cta-button cta-button--light mt-7 w-full">Choose annual billing</button>
-            </form>
-          </div>
+          <MembershipPlanCards />
 
           <p className="mx-auto mt-5 max-w-3xl text-center text-sm leading-6 text-ink/58">
             Cancel anytime. You’ll create or sign in to your parent account before Stripe securely handles payment.
           </p>
+        </section>
+
+        <section className="mx-auto mt-14 max-w-5xl">
+          <div className="overflow-hidden rounded-[28px] border border-[#dcc8aa] bg-[#fffaf2]">
+            <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(82px,.6fr)_minmax(82px,.6fr)] items-center border-b border-[#eadbc2] bg-[#f2e6d3] px-4 py-4 sm:px-6">
+              <h2 className="text-lg font-semibold text-ink">Compare plans</h2>
+              <p className="text-center text-sm font-semibold text-ink">Single</p>
+              <p className="text-center text-sm font-semibold text-ink">Standard</p>
+            </div>
+            {planComparison.map((row) => (
+              <div key={row.feature} className="grid grid-cols-[minmax(0,1.4fr)_minmax(82px,.6fr)_minmax(82px,.6fr)] items-center border-b border-[#eadbc2] px-4 py-4 text-sm last:border-b-0 sm:px-6">
+                <p className="pr-3 font-semibold leading-5 text-ink">{row.feature}</p>
+                <p className="text-center leading-5 text-ink/68">{row.single}</p>
+                <p className="text-center font-semibold leading-5 text-[#4d6a39]">{row.standard}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-4 text-center text-sm leading-6 text-ink/58">No feature gates. Choose based only on how many children you are teaching.</p>
         </section>
 
         <section className="mx-auto mt-16 max-w-5xl">
@@ -245,18 +249,20 @@ export default async function PricingPage({ searchParams }: PricingPageProps) {
           <p className="label-font text-sm font-black uppercase tracking-[0.14em] text-earth">Your homeschool stays yours</p>
           <h2 className="mx-auto mt-3 max-w-3xl text-4xl font-semibold tracking-[-0.05em] text-ink sm:text-5xl">Keep your curriculum. Keep learning on paper. Lose the weekly scramble.</h2>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <form action={startCoreSubscriptionCheckoutAction}>
+            <form action={startPricingSubscriptionCheckoutAction} data-revenue-path="pricing-single-monthly-footer">
               <input type="hidden" name="interval" value="monthly" />
+              <input type="hidden" name="planTier" value="single" />
               <input type="hidden" name="returnPath" value="/pricing" />
-              <button type="submit" className="cta-button cta-button--dark">Try Treeschool for $6</button>
+              <button type="submit" className="cta-button cta-button--dark">Try Single for $6</button>
             </form>
-            <form action={startCoreSubscriptionCheckoutAction}>
-              <input type="hidden" name="interval" value="yearly" />
+            <form action={startPricingSubscriptionCheckoutAction} data-revenue-path="pricing-standard-monthly-footer">
+              <input type="hidden" name="interval" value="monthly" />
+              <input type="hidden" name="planTier" value="standard" />
               <input type="hidden" name="returnPath" value="/pricing" />
-              <button type="submit" className="cta-button cta-button--light">Choose annual · Save 17%</button>
+              <button type="submit" className="cta-button cta-button--light">Try Standard for $6</button>
             </form>
           </div>
-          <p className="mt-4 text-sm leading-6 text-ink/62">First month $6, then $20/month for up to three children. Additional children are $5/month each.</p>
+          <p className="mt-4 text-sm leading-6 text-ink/62">The $6 price is an introductory discount for your first month. Then $14/month for Single or $20/month for Standard. Cancel anytime.</p>
         </section>
       </div>
     </main>

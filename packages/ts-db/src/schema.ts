@@ -56,6 +56,10 @@ export const subscriptionStatusEnum = pgEnum("subscription_status", [
   "past_due",
   "canceled"
 ]);
+export const subscriptionPlanTierEnum = pgEnum("subscription_plan_tier", [
+  "single",
+  "standard"
+]);
 export const billingSubjectTypeEnum = pgEnum("billing_subject_type", ["core", "elective"]);
 
 export const profileRoleEnum = pgEnum("profile_role", ["PARENT", "STUDENT"]);
@@ -124,10 +128,12 @@ export const subscriptions = pgTable("subscriptions", {
       onDelete: "cascade"
     }),
   status: subscriptionStatusEnum("status").notNull().default("trialing"),
+  planTier: subscriptionPlanTierEnum("plan_tier").notNull().default("standard"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   billingInterval: text("billing_interval"),
   introductoryOffer: text("introductory_offer"),
+  introductoryOfferEndsAt: timestamp("introductory_offer_ends_at", { withTimezone: true }),
   stripeAdditionalStudentItemId: text("stripe_additional_student_item_id"),
   additionalStudentQuantity: integer("additional_student_quantity").notNull().default(0),
   currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),

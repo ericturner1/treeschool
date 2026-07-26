@@ -68,7 +68,7 @@ export default async function GeneratorFunnelPage({ searchParams }: GeneratorFun
               Homeschool Lesson Plan Generator
             </h1>
             <p className="mx-auto mt-2 max-w-2xl text-[15px] leading-6 text-ink/65 sm:text-base">
-              Set up your K–4 school year, add your curriculum or Treeschool workbooks, and review everything before starting the Family Plan for {new Intl.NumberFormat("en-US", { style: "currency", currency: pricing.currencyCode, minimumFractionDigits: 0 }).format(pricing.subscriptionIntroPriceInCents / 100)}.
+              Set up your K–4 school year, add your curriculum or Treeschool workbooks, and review everything before starting Single for {new Intl.NumberFormat("en-US", { style: "currency", currency: pricing.currencyCode, minimumFractionDigits: 0 }).format(pricing.subscriptionIntroPriceInCents / 100)}.
             </p>
           </div>
 

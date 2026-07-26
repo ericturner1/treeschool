@@ -380,7 +380,7 @@ export default async function ParentStudentOverviewPage({
                 )}
                 <p className="mt-3 text-sm leading-[1.55] text-ink/65">
                   {!metrics.premiumAccess
-                    ? "Available with the Family Plan."
+                    ? "Available with an active Treeschool membership."
                     : metrics.overallGrade?.average == null
                       ? "No grades recorded yet."
                       : `Across ${metrics.overallGrade.gradedEntries} graded ${metrics.overallGrade.gradedEntries === 1 ? "item" : "items"}.`}
@@ -398,7 +398,7 @@ export default async function ParentStudentOverviewPage({
                 )}
                 <p className="mt-3 text-sm leading-[1.55] text-ink/65">
                   {!metrics.premiumAccess
-                    ? "Available with the Family Plan."
+                    ? "Available with an active Treeschool membership."
                     : lastAttendanceLabel
                       ? `Last recorded ${lastAttendanceLabel}.`
                       : "No attendance recorded yet."}

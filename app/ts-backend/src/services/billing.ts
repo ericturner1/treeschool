@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import {
   accountPurchases,
+  accountInvitations,
   accounts,
   profiles,
   studentProfileCheckouts,
@@ -18,32 +19,37 @@ import {
 } from "./native-workbooks";
 import {
   createStudentProfile,
+  ensureProvisionalParentAccountForEmail,
   requireAccountRole,
   type CreateStudentProfileInput
 } from "./accounts";
+import {
+  ADDITIONAL_STUDENT_INTRO_AMOUNT,
+  CORE_MONTHLY_INTRO_AMOUNT,
+  getIntroductoryCouponId,
+  getIntroductoryDiscountAmount,
+  INTRODUCTORY_OFFER_KEY,
+  isIntroductoryOfferActive
+} from "./billing-introductory-offer";
+import {
+  getMembershipPlan,
+  getSinglePlanDowngradeBlocker,
+  inferMembershipTierFromAmount,
+  isMembershipTier,
+  MEMBERSHIP_PLANS,
+  normalizeMembershipTier,
+  type BillingInterval,
+  type MembershipTier
+} from "./membership-plans";
+import { withTreeschoolCheckoutBranding } from "./stripe-checkout";
 
-const CORE_PRODUCT_NAME = "Treeschool Family Plan";
-const CORE_PRODUCT_DESCRIPTION = "Homeschool planning for up to three students, with lessons, attendance, grades, and parent tools.";
 const PLAN_PACK_PRODUCT_NAME = "Treeschool Printable School-Year Planner";
 const PLAN_PACK_PRODUCT_DESCRIPTION =
   "Choose your teaching weeks, upload homeschool workbook PDFs, and generate sequential printable weekly lesson-plan PDFs.";
 const PLAN_PACK_UNIT_AMOUNT = 1499;
-const CORE_INCLUDED_STUDENT_COUNT = 3;
-const CORE_MONTHLY_INTRO_AMOUNT = 600;
-const ADDITIONAL_STUDENT_INTRO_AMOUNT = 200;
-const CORE_MONTHLY_INTRO_TRIAL_DAYS = 30;
-const INTRODUCTORY_OFFER_KEY = "first_month_6_usd";
-
-const CORE_SUBSCRIPTION_PLANS = {
-  monthly: {
-    label: "Monthly",
-    unitAmount: 2000,
-    recurringInterval: "month" as const
-  },
-  yearly: {
-    label: "Yearly",
-    unitAmount: 20000,
-    recurringInterval: "year" as const
+const MEMBERSHIP_CHECKOUT_CUSTOM_TEXT = {
+  submit: {
+    message: "Cancel anytime—it’s easy to manage your membership from your Treeschool billing settings."
   }
 };
 
@@ -69,8 +75,6 @@ type ParentAccountContext = {
   parentEmail: string;
 };
 
-type BillingInterval = keyof typeof CORE_SUBSCRIPTION_PLANS;
-
 type StudentProfileData = Omit<CreateStudentProfileInput, "parentUserId" | "profileId">;
 
 let stripeClient: Stripe | null = null;
@@ -89,23 +93,68 @@ function isBillingInterval(value: string): value is BillingInterval {
 }
 
 async function resolveConfiguredSubscriptionPriceId(
+  tier: MembershipTier,
   interval: BillingInterval,
-  plan: (typeof CORE_SUBSCRIPTION_PLANS)[BillingInterval]
+  plan: (typeof MEMBERSHIP_PLANS)[MembershipTier]["prices"][BillingInterval]
 ) {
-  const priceId = interval === "monthly" ? env.STRIPE_MONTHLY_PRICE_ID : env.STRIPE_YEARLY_PRICE_ID;
-  if (!priceId) return undefined;
+  const stripe = getStripe();
+  const configuredPriceId = tier === "single"
+    ? interval === "monthly"
+      ? env.STRIPE_SINGLE_MONTHLY_PRICE_ID
+      : env.STRIPE_SINGLE_YEARLY_PRICE_ID
+    : interval === "monthly"
+      ? env.STRIPE_MONTHLY_PRICE_ID
+      : env.STRIPE_YEARLY_PRICE_ID;
+
+  if (configuredPriceId) {
+    try {
+      const price = await stripe.prices.retrieve(configuredPriceId);
+      if (isExpectedRecurringPrice(price, plan)) return configuredPriceId;
+    } catch {
+      // Fall through to the stable lookup key so stale configuration cannot misbill a parent.
+    }
+  }
+
+  const existingPrices = await stripe.prices.list({
+    active: true,
+    lookup_keys: [plan.lookupKey],
+    limit: 10
+  });
+  const existingPrice = existingPrices.data.find((price) => isExpectedRecurringPrice(price, plan));
+  if (existingPrice) return existingPrice.id;
+
+  const membership = getMembershipPlan(tier);
+  const products = await stripe.products.list({ active: true, limit: 100 });
+  const product = products.data.find((candidate) =>
+    candidate.metadata.treeschoolCatalogKey === membership.catalogKey
+  ) ?? await stripe.products.create({
+    name: membership.productName,
+    description: membership.productDescription,
+    metadata: {
+      treeschoolCatalogKey: membership.catalogKey,
+      treeschoolPlanTier: tier
+    }
+  });
 
   try {
-    const price = await getStripe().prices.retrieve(priceId);
-    const isExpectedPrice =
-      price.active &&
-      price.currency.toLowerCase() === "usd" &&
-      price.unit_amount === plan.unitAmount &&
-      price.recurring?.interval === plan.recurringInterval;
-
-    return isExpectedPrice ? priceId : undefined;
-  } catch {
-    return undefined;
+    const price = await stripe.prices.create({
+      currency: "usd",
+      unit_amount: plan.unitAmount,
+      recurring: { interval: plan.recurringInterval },
+      product: product.id,
+      lookup_key: plan.lookupKey,
+      nickname: `${membership.productName} (${interval})`
+    });
+    return price.id;
+  } catch (error) {
+    const racedPrices = await stripe.prices.list({
+      active: true,
+      lookup_keys: [plan.lookupKey],
+      limit: 10
+    });
+    const racedPrice = racedPrices.data.find((price) => isExpectedRecurringPrice(price, plan));
+    if (racedPrice) return racedPrice.id;
+    throw error;
   }
 }
 
@@ -152,7 +201,7 @@ async function resolveAdditionalStudentPriceId(interval: BillingInterval) {
     candidate.metadata.treeschoolCatalogKey === "additional_student"
   ) ?? await stripe.products.create({
     name: "Treeschool additional student",
-    description: "One student beyond the three included with the Treeschool Family Plan.",
+    description: "One student beyond the three included with Treeschool Standard.",
     metadata: { treeschoolCatalogKey: "additional_student" }
   });
 
@@ -178,7 +227,11 @@ async function resolveAdditionalStudentPriceId(interval: BillingInterval) {
   }
 }
 
-function buildCoreSubscriptionLineItem(plan: (typeof CORE_SUBSCRIPTION_PLANS)[BillingInterval], priceId?: string) {
+function buildCoreSubscriptionLineItem(
+  tier: MembershipTier,
+  plan: (typeof MEMBERSHIP_PLANS)[MembershipTier]["prices"][BillingInterval],
+  priceId?: string
+) {
   if (priceId) {
     return {
       quantity: 1,
@@ -195,8 +248,12 @@ function buildCoreSubscriptionLineItem(plan: (typeof CORE_SUBSCRIPTION_PLANS)[Bi
         interval: plan.recurringInterval
       },
       product_data: {
-        name: CORE_PRODUCT_NAME,
-        description: CORE_PRODUCT_DESCRIPTION
+        name: getMembershipPlan(tier).productName,
+        description: getMembershipPlan(tier).productDescription,
+        metadata: {
+          treeschoolCatalogKey: getMembershipPlan(tier).catalogKey,
+          treeschoolPlanTier: tier
+        }
       }
     }
   };
@@ -209,32 +266,73 @@ function buildAdditionalStudentSubscriptionLineItem(priceId: string, quantity: n
   };
 }
 
-function buildCoreMonthlyIntroLineItem() {
-  return {
-    quantity: 1,
-    price_data: {
-      currency: "usd",
-      unit_amount: CORE_MONTHLY_INTRO_AMOUNT,
-      product_data: {
-        name: "Treeschool introductory month",
-        description: "First 30 days for up to three students. The Family Plan then renews at $20/month."
-      }
-    }
-  };
+function isMissingStripeResource(error: unknown) {
+  return error instanceof Stripe.errors.StripeInvalidRequestError &&
+    (error.statusCode === 404 || error.code === "resource_missing");
 }
 
-function buildAdditionalStudentIntroLineItem(quantity: number) {
-  return {
-    quantity,
-    price_data: {
+async function resolveIntroductoryCouponId(input: {
+  planTier: MembershipTier;
+  monthlyPlanAmount: number;
+  additionalStudentQuantity: number;
+}) {
+  const stripe = getStripe();
+  const id = getIntroductoryCouponId({
+    planTier: input.planTier,
+    additionalStudentQuantity: input.additionalStudentQuantity
+  });
+  const amountOff = getIntroductoryDiscountAmount({
+    monthlyPlanAmount: input.monthlyPlanAmount,
+    additionalStudentQuantity: input.additionalStudentQuantity
+  });
+
+  try {
+    const existing = await stripe.coupons.retrieve(id);
+    if (
+      existing.valid &&
+      existing.duration === "once" &&
+      existing.currency?.toLowerCase() === "usd" &&
+      existing.amount_off === amountOff
+    ) {
+      return id;
+    }
+    throw new Error("The configured introductory offer does not match the expected first-month price.");
+  } catch (error) {
+    if (!isMissingStripeResource(error)) throw error;
+  }
+
+  try {
+    await stripe.coupons.create({
+      id,
+      name: "Treeschool paid introductory month",
+      duration: "once",
       currency: "usd",
-      unit_amount: ADDITIONAL_STUDENT_INTRO_AMOUNT,
-      product_data: {
-        name: "Additional student — introductory month",
-        description: "One initial lesson-plan generation for an additional student during the introductory month."
+      amount_off: amountOff,
+      metadata: {
+        treeschoolOffer: INTRODUCTORY_OFFER_KEY,
+        planTier: input.planTier,
+        additionalStudentQuantity: String(Math.max(0, Math.floor(input.additionalStudentQuantity)))
+      }
+    });
+    return id;
+  } catch (error) {
+    if (!isMissingStripeResource(error)) {
+      try {
+        const racedCoupon = await stripe.coupons.retrieve(id);
+        if (
+          racedCoupon.valid &&
+          racedCoupon.duration === "once" &&
+          racedCoupon.currency?.toLowerCase() === "usd" &&
+          racedCoupon.amount_off === amountOff
+        ) {
+          return id;
+        }
+      } catch {
+        // Surface the original creation error below.
       }
     }
-  };
+    throw error;
+  }
 }
 
 function buildPlanPackLineItem() {
@@ -269,16 +367,19 @@ async function configuredPriceAmount(priceId: string | undefined, fallback: numb
 }
 
 export async function getPlanGeneratorPricing() {
+  const membership = getMembershipPlan("single");
   const planPackPriceInCents = await configuredPriceAmount(env.STRIPE_PLAN_PACK_PRICE_ID, PLAN_PACK_UNIT_AMOUNT);
   return {
     currencyCode: "USD",
     planPackPriceInCents,
     subscriptionIntroPriceInCents: CORE_MONTHLY_INTRO_AMOUNT,
-    subscriptionMonthlyPriceInCents: CORE_SUBSCRIPTION_PLANS.monthly.unitAmount,
-    includedStudentCount: CORE_INCLUDED_STUDENT_COUNT,
+    subscriptionMonthlyPriceInCents: membership.prices.monthly.unitAmount,
+    subscriptionYearlyPriceInCents: membership.prices.yearly.unitAmount,
+    subscriptionPlanTier: "single" as const,
+    includedStudentCount: membership.includedStudentCount,
     additionalStudentIntroPriceInCents: ADDITIONAL_STUDENT_INTRO_AMOUNT,
     additionalStudentMonthlyPriceInCents: ADDITIONAL_STUDENT_PLANS.monthly.unitAmount,
-    introductoryPlanGenerationLimit: CORE_INCLUDED_STUDENT_COUNT
+    introductoryPlanGenerationLimit: membership.includedStudentCount
   };
 }
 
@@ -357,8 +458,10 @@ export async function getBillingOverview(userId: string) {
   const [subscription] = await db
     .select({
       status: subscriptions.status,
+      planTier: subscriptions.planTier,
       billingInterval: subscriptions.billingInterval,
       introductoryOffer: subscriptions.introductoryOffer,
+      introductoryOfferEndsAt: subscriptions.introductoryOfferEndsAt,
       additionalStudentQuantity: subscriptions.additionalStudentQuantity,
       currentPeriodStart: subscriptions.currentPeriodStart,
       currentPeriodEnd: subscriptions.currentPeriodEnd,
@@ -399,9 +502,10 @@ export async function getBillingOverview(userId: string) {
     subscription: subscription
       ? {
           status: subscription.status,
+          planTier: subscription.planTier,
           billingInterval: subscription.billingInterval,
           introductoryOffer: subscription.introductoryOffer,
-          introductoryMonth: subscription.status === "trialing" && subscription.introductoryOffer === INTRODUCTORY_OFFER_KEY,
+          introductoryMonth: isIntroductoryOfferActive(subscription),
           additionalStudentQuantity: subscription.additionalStudentQuantity,
           currentPeriodStart: subscription.currentPeriodStart?.toISOString() ?? null,
           currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
@@ -423,7 +527,7 @@ export async function getBillingOverview(userId: string) {
     },
     billingGuardEnabled: true,
     studentSeats: {
-      included: CORE_INCLUDED_STUDENT_COUNT,
+      included: getMembershipPlan(subscription?.planTier ?? "standard").includedStudentCount,
       additional: subscription?.additionalStudentQuantity ?? 0,
       active: Number(studentUsage?.count ?? 0),
       additionalMonthlyPriceInCents: ADDITIONAL_STUDENT_PLANS.monthly.unitAmount,
@@ -437,9 +541,9 @@ export async function getBillingOverview(userId: string) {
 export async function createCoreSubscriptionCheckout(input: {
   userId: string;
   interval: string;
+  planTier?: string;
   successUrl: string;
   cancelUrl: string;
-  trialDays?: number;
   intakeId?: string | null;
   nativeCatalogItemIds?: string[];
 }) {
@@ -447,6 +551,8 @@ export async function createCoreSubscriptionCheckout(input: {
   if (!isBillingInterval(input.interval)) {
     throw new Error("Choose monthly or yearly billing.");
   }
+  const planTier = normalizeMembershipTier(input.planTier);
+  const membership = getMembershipPlan(planTier);
 
   const context = await getParentAccountContext(input.userId);
   const [existingSubscription] = await db
@@ -461,19 +567,23 @@ export async function createCoreSubscriptionCheckout(input: {
   if (existingSubscription && ["trialing", "active", "past_due"].includes(existingSubscription.status)) {
     throw new Error("This family already has a subscription. Manage it from the parent billing page.");
   }
-  const plan = CORE_SUBSCRIPTION_PLANS[input.interval];
-  const configuredPriceId = await resolveConfiguredSubscriptionPriceId(input.interval, plan);
+  const plan = membership.prices[input.interval];
+  const configuredPriceId = await resolveConfiguredSubscriptionPriceId(planTier, input.interval, plan);
   const hasUsedSubscription = Boolean(existingSubscription?.stripeSubscriptionId);
   const includesMonthlyIntro = input.interval === "monthly" && !hasUsedSubscription;
-  const requestedTrialDays = input.trialDays && input.trialDays > 0 ? Math.min(input.trialDays, 30) : undefined;
-  const trialDays = includesMonthlyIntro ? CORE_MONTHLY_INTRO_TRIAL_DAYS : requestedTrialDays;
   const [studentUsage] = await db
     .select({ count: sql<number>`count(*)::integer` })
     .from(profiles)
     .where(and(eq(profiles.accountId, context.accountId), eq(profiles.role, "STUDENT")));
+  const activeStudentCount = Number(studentUsage?.count ?? 0);
+  if (planTier === "single" && activeStudentCount > membership.includedStudentCount) {
+    throw new Error(
+      `${membership.label} supports ${membership.includedStudentCount === 1 ? "one student" : `up to ${membership.includedStudentCount} students`}. Choose Standard for this account.`
+    );
+  }
   const additionalStudentQuantity = Math.max(
     0,
-    Number(studentUsage?.count ?? 0) - CORE_INCLUDED_STUDENT_COUNT
+    activeStudentCount - membership.includedStudentCount
   );
   const additionalStudentPriceId = additionalStudentQuantity > 0
     ? await resolveAdditionalStudentPriceId(input.interval)
@@ -486,32 +596,38 @@ export async function createCoreSubscriptionCheckout(input: {
     item.type === "elective" && item.accessState === "purchase_required"
   );
   if (nativeSelections.some((item) => item.currencyCode.toUpperCase() !== "USD")) {
-    throw new Error("The selected workbook currency cannot be combined with the Family Plan checkout.");
+    throw new Error("The selected workbook currency cannot be combined with membership checkout.");
   }
   const paidNativeIds = new Set(paidNativeSelections.map((item) => item.id));
+  const introductoryCouponId = includesMonthlyIntro
+    ? await resolveIntroductoryCouponId({
+        planTier,
+        monthlyPlanAmount: membership.prices.monthly.unitAmount,
+        additionalStudentQuantity
+      })
+    : undefined;
   const stripe = getStripe();
-  const session = await stripe.checkout.sessions.create({
+  const session = await stripe.checkout.sessions.create(withTreeschoolCheckoutBranding({
     mode: "subscription",
     customer: existingSubscription?.stripeCustomerId ?? undefined,
     customer_email: existingSubscription?.stripeCustomerId ? undefined : context.parentEmail,
     client_reference_id: context.accountId,
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
-    allow_promotion_codes: true,
+    allow_promotion_codes: introductoryCouponId ? undefined : true,
+    discounts: introductoryCouponId ? [{ coupon: introductoryCouponId }] : undefined,
+    custom_text: MEMBERSHIP_CHECKOUT_CUSTOM_TEXT,
     line_items: [
-      buildCoreSubscriptionLineItem(plan, configuredPriceId),
+      buildCoreSubscriptionLineItem(planTier, plan, configuredPriceId),
       ...(additionalStudentPriceId
         ? [buildAdditionalStudentSubscriptionLineItem(additionalStudentPriceId, additionalStudentQuantity)]
-        : []),
-      ...(includesMonthlyIntro ? [buildCoreMonthlyIntroLineItem()] : []),
-      ...(includesMonthlyIntro && additionalStudentQuantity > 0
-        ? [buildAdditionalStudentIntroLineItem(additionalStudentQuantity)]
         : []),
       ...paidNativeSelections.map(buildNativeWorkbookLineItem)
     ],
     metadata: {
       accountId: context.accountId,
       userId: input.userId,
+      planTier,
       billingInterval: input.interval,
       additionalStudentQuantity: String(additionalStudentQuantity),
       checkoutKind: "core_subscription",
@@ -520,10 +636,10 @@ export async function createCoreSubscriptionCheckout(input: {
       ...(input.intakeId ? { intakeId: input.intakeId, checkoutSource: "generator_upsell" } : {})
     },
     subscription_data: {
-      trial_period_days: trialDays,
       metadata: {
         accountId: context.accountId,
         userId: input.userId,
+        planTier,
         billingInterval: input.interval,
         additionalStudentQuantity: String(additionalStudentQuantity),
         checkoutKind: "core_subscription",
@@ -531,7 +647,61 @@ export async function createCoreSubscriptionCheckout(input: {
         ...(input.intakeId ? { intakeId: input.intakeId, checkoutSource: "generator_upsell" } : {})
       }
     }
-  });
+  }));
+
+  return {
+    id: session.id,
+    url: session.url
+  };
+}
+
+export async function createPublicCoreSubscriptionCheckout(input: {
+  interval: string;
+  planTier?: string;
+  successUrl: string;
+  cancelUrl: string;
+}) {
+  if (!isBillingInterval(input.interval)) {
+    throw new Error("Choose monthly or yearly billing.");
+  }
+  const planTier = normalizeMembershipTier(input.planTier);
+  const membership = getMembershipPlan(planTier);
+
+  const plan = membership.prices[input.interval];
+  const configuredPriceId = await resolveConfiguredSubscriptionPriceId(planTier, input.interval, plan);
+  const includesMonthlyIntro = input.interval === "monthly";
+  const introductoryCouponId = includesMonthlyIntro
+    ? await resolveIntroductoryCouponId({
+        planTier,
+        monthlyPlanAmount: membership.prices.monthly.unitAmount,
+        additionalStudentQuantity: 0
+      })
+    : undefined;
+  const session = await getStripe().checkout.sessions.create(withTreeschoolCheckoutBranding({
+    mode: "subscription",
+    success_url: input.successUrl,
+    cancel_url: input.cancelUrl,
+    allow_promotion_codes: introductoryCouponId ? undefined : true,
+    discounts: introductoryCouponId ? [{ coupon: introductoryCouponId }] : undefined,
+    custom_text: MEMBERSHIP_CHECKOUT_CUSTOM_TEXT,
+    line_items: [buildCoreSubscriptionLineItem(planTier, plan, configuredPriceId)],
+    metadata: {
+      planTier,
+      billingInterval: input.interval,
+      additionalStudentQuantity: "0",
+      checkoutKind: "public_core_subscription",
+      ...(includesMonthlyIntro ? { introductoryOffer: INTRODUCTORY_OFFER_KEY } : {})
+    },
+    subscription_data: {
+      metadata: {
+        planTier,
+        billingInterval: input.interval,
+        additionalStudentQuantity: "0",
+        checkoutKind: "public_core_subscription",
+        ...(includesMonthlyIntro ? { introductoryOffer: INTRODUCTORY_OFFER_KEY } : {})
+      }
+    }
+  }));
 
   return {
     id: session.id,
@@ -564,7 +734,7 @@ export async function createPlanPackCheckout(input: {
   const paidNativeSelections = nativeSelections.filter((item) => item.accessState === "purchase_required");
   const paidNativeIds = new Set(paidNativeSelections.map((item) => item.id));
   const stripe = getStripe();
-  const session = await stripe.checkout.sessions.create({
+  const session = await stripe.checkout.sessions.create(withTreeschoolCheckoutBranding({
     mode: "payment",
     customer: existingSubscription?.stripeCustomerId ?? undefined,
     customer_email: existingSubscription?.stripeCustomerId ? undefined : context.parentEmail,
@@ -589,7 +759,7 @@ export async function createPlanPackCheckout(input: {
         ...(input.intakeId ? { intakeId: input.intakeId } : {})
       }
     }
-  });
+  }));
 
   return {
     id: session.id,
@@ -654,14 +824,203 @@ export async function createCustomerPortalSession(input: {
     throw new Error("No Stripe customer exists yet.");
   }
 
-  const session = await getStripe().billingPortal.sessions.create({
+  const stripe = getStripe();
+  const configuration = await resolveAccountManagementPortalConfiguration();
+  const session = await stripe.billingPortal.sessions.create({
     customer: subscription.stripeCustomerId,
+    configuration,
     return_url: input.returnUrl
   });
 
   return {
     url: session.url
   };
+}
+
+async function findPortalConfiguration(kind: string) {
+  const configurations = await getStripe().billingPortal.configurations.list({
+    active: true,
+    limit: 100
+  });
+  return configurations.data.find((configuration) =>
+    configuration.metadata?.treeschoolPortalKind === kind
+  );
+}
+
+async function resolveAccountManagementPortalConfiguration() {
+  const stripe = getStripe();
+  const kind = "account_management_v1";
+  const existing = await findPortalConfiguration(kind);
+  if (existing) return existing.id;
+
+  const origin = env.PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://www.treehomeschool.com";
+  const configuration = await stripe.billingPortal.configurations.create({
+    name: "Treeschool account management",
+    default_return_url: `${origin}/p/billing`,
+    business_profile: {
+      headline: "Manage your Treeschool membership.",
+      privacy_policy_url: `${origin}/privacy`,
+      terms_of_service_url: `${origin}/terms`
+    },
+    features: {
+      customer_update: {
+        enabled: true,
+        allowed_updates: ["email", "name"]
+      },
+      invoice_history: { enabled: true },
+      payment_method_update: { enabled: true },
+      subscription_cancel: {
+        enabled: true,
+        mode: "at_period_end",
+        cancellation_reason: {
+          enabled: true,
+          options: ["too_expensive", "unused", "missing_features", "other"]
+        }
+      },
+      subscription_update: { enabled: false }
+    },
+    metadata: { treeschoolPortalKind: kind }
+  });
+  return configuration.id;
+}
+
+async function resolvePlanChangePortalConfiguration() {
+  const stripe = getStripe();
+  const kind = "plan_change_v1";
+  const membershipPrices = await Promise.all(
+    (["single", "standard"] as const).flatMap((tier) =>
+      (["monthly", "yearly"] as const).map(async (interval) => {
+        const plan = getMembershipPlan(tier).prices[interval];
+        const id = await resolveConfiguredSubscriptionPriceId(tier, interval, plan);
+        const price = await stripe.prices.retrieve(id);
+        const productId = typeof price.product === "string" ? price.product : price.product.id;
+        return { id, productId };
+      })
+    )
+  );
+  const products = Array.from(
+    membershipPrices.reduce((grouped, price) => {
+      grouped.set(price.productId, [...(grouped.get(price.productId) ?? []), price.id]);
+      return grouped;
+    }, new Map<string, string[]>())
+  ).map(([product, prices]) => ({ product, prices }));
+  const features = {
+    customer_update: { enabled: false },
+    invoice_history: { enabled: false },
+    payment_method_update: { enabled: false },
+    subscription_cancel: { enabled: false },
+    subscription_update: {
+      enabled: true,
+      default_allowed_updates: ["price" as const],
+      proration_behavior: "create_prorations" as const,
+      products
+    }
+  };
+  const existing = await findPortalConfiguration(kind);
+  if (existing) {
+    const updated = await stripe.billingPortal.configurations.update(existing.id, {
+      features
+    });
+    return updated.id;
+  }
+
+  const origin = env.PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://www.treehomeschool.com";
+  const configuration = await stripe.billingPortal.configurations.create({
+    name: "Treeschool plan changes",
+    default_return_url: `${origin}/p/billing`,
+    business_profile: {
+      headline: "Confirm your Treeschool plan change.",
+      privacy_policy_url: `${origin}/privacy`,
+      terms_of_service_url: `${origin}/terms`
+    },
+    features,
+    metadata: { treeschoolPortalKind: kind }
+  });
+  return configuration.id;
+}
+
+export async function createMembershipPlanChangeSession(input: {
+  userId: string;
+  targetPlanTier: string;
+  returnUrl: string;
+}) {
+  await requireAccountRole(input.userId, ["OWNER", "ADMIN"]);
+  if (!isMembershipTier(input.targetPlanTier)) {
+    throw new Error("Choose Single or Standard.");
+  }
+
+  const context = await getParentAccountContext(input.userId);
+  const [subscription] = await db
+    .select({
+      status: subscriptions.status,
+      planTier: subscriptions.planTier,
+      stripeCustomerId: subscriptions.stripeCustomerId,
+      stripeSubscriptionId: subscriptions.stripeSubscriptionId,
+      additionalStudentQuantity: subscriptions.additionalStudentQuantity
+    })
+    .from(subscriptions)
+    .where(eq(subscriptions.accountId, context.accountId))
+    .limit(1);
+  if (
+    !subscription?.stripeCustomerId ||
+    !subscription.stripeSubscriptionId ||
+    !["trialing", "active"].includes(subscription.status)
+  ) {
+    throw new Error("An active Treeschool subscription is required to change plans.");
+  }
+  if (subscription.planTier === input.targetPlanTier) {
+    throw new Error(`This account is already on ${getMembershipPlan(input.targetPlanTier).label}.`);
+  }
+
+  const [studentCount, teacherUserCount] = await Promise.all([
+    countStudentProfiles(context.accountId),
+    countReservedTeacherUsers(context.accountId)
+  ]);
+  const singleDowngradeBlocker = input.targetPlanTier === "single"
+    ? getSinglePlanDowngradeBlocker({
+        studentCount,
+        additionalStudentQuantity: subscription.additionalStudentQuantity,
+        teacherUserCount
+      })
+    : null;
+  if (singleDowngradeBlocker) {
+    throw new Error(singleDowngradeBlocker);
+  }
+
+  const stripe = getStripe();
+  const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
+  const billing = getStripeSubscriptionBillingDetails(stripeSubscription);
+  if (!billing.coreItem) throw new Error("The current Treeschool subscription price could not be identified.");
+  const targetPlan = getMembershipPlan(input.targetPlanTier).prices[billing.billingInterval];
+  const targetPriceId = await resolveConfiguredSubscriptionPriceId(
+    input.targetPlanTier,
+    billing.billingInterval,
+    targetPlan
+  );
+  const configuration = await resolvePlanChangePortalConfiguration();
+  const session = await stripe.billingPortal.sessions.create({
+    customer: subscription.stripeCustomerId,
+    configuration,
+    return_url: input.returnUrl,
+    flow_data: {
+      type: "subscription_update_confirm",
+      subscription_update_confirm: {
+        subscription: subscription.stripeSubscriptionId,
+        items: [{
+          id: billing.coreItem.id,
+          price: targetPriceId,
+          quantity: 1
+        }]
+      },
+      after_completion: {
+        type: "redirect",
+        redirect: {
+          return_url: `${input.returnUrl}${input.returnUrl.includes("?") ? "&" : "?"}planChanged=1`
+        }
+      }
+    }
+  });
+  return { url: session.url };
 }
 
 function getStripeSubscriptionBillingDetails(subscription: Stripe.Subscription) {
@@ -684,9 +1043,26 @@ function getStripeSubscriptionBillingDetails(subscription: Stripe.Subscription) 
     )
   );
   const coreItem = subscription.items.data.find((item) => item.id !== additionalItem?.id) ?? subscription.items.data[0];
+  const coreInterval = coreItem?.price.recurring?.interval;
+  const coreAmount = coreItem?.price.unit_amount;
+  const recognizedSinglePrice =
+    (coreInterval === "month" && coreAmount === MEMBERSHIP_PLANS.single.prices.monthly.unitAmount) ||
+    (coreInterval === "year" && coreAmount === MEMBERSHIP_PLANS.single.prices.yearly.unitAmount);
+  const recognizedStandardPrice =
+    (coreInterval === "month" && coreAmount === MEMBERSHIP_PLANS.standard.prices.monthly.unitAmount) ||
+    (coreInterval === "year" && coreAmount === MEMBERSHIP_PLANS.standard.prices.yearly.unitAmount);
+  const planTier = recognizedSinglePrice
+    ? "single"
+    : recognizedStandardPrice
+      ? "standard"
+      : isMembershipTier(subscription.metadata.planTier)
+        ? subscription.metadata.planTier
+        : inferMembershipTierFromAmount(coreAmount, coreInterval);
 
   return {
+    planTier,
     billingInterval,
+    coreItem,
     additionalItem,
     additionalStudentQuantity: additionalItem?.quantity ?? 0,
     currentPeriodStart: timestampToDate(coreItem?.current_period_start),
@@ -704,6 +1080,13 @@ async function upsertSubscriptionFromStripeSubscription(subscription: Stripe.Sub
 
   const status = toSubscriptionStatus(subscription.status);
   const billing = getStripeSubscriptionBillingDetails(subscription);
+  const introductoryOffer = subscription.metadata.introductoryOffer ?? null;
+  const introductoryOfferEndsAt = (
+    introductoryOffer === INTRODUCTORY_OFFER_KEY ||
+    (introductoryOffer === "first_month_6_usd" && status === "trialing")
+  )
+    ? billing.currentPeriodEnd
+    : null;
 
   await db.transaction(async (tx) => {
     await tx
@@ -711,10 +1094,12 @@ async function upsertSubscriptionFromStripeSubscription(subscription: Stripe.Sub
       .values({
         accountId,
         status,
+        planTier: billing.planTier,
         stripeCustomerId: customerId,
         stripeSubscriptionId: subscription.id,
         billingInterval: billing.billingInterval,
-        introductoryOffer: subscription.metadata.introductoryOffer ?? null,
+        introductoryOffer,
+        introductoryOfferEndsAt,
         stripeAdditionalStudentItemId: billing.additionalItem?.id ?? null,
         additionalStudentQuantity: billing.additionalStudentQuantity,
         currentPeriodStart: billing.currentPeriodStart,
@@ -726,10 +1111,15 @@ async function upsertSubscriptionFromStripeSubscription(subscription: Stripe.Sub
         target: subscriptions.accountId,
         set: {
           status,
+          planTier: billing.planTier,
           stripeCustomerId: customerId,
           stripeSubscriptionId: subscription.id,
           billingInterval: billing.billingInterval,
-          introductoryOffer: subscription.metadata.introductoryOffer ?? null,
+          introductoryOffer,
+          introductoryOfferEndsAt: sql`coalesce(
+            ${subscriptions.introductoryOfferEndsAt},
+            excluded.introductory_offer_ends_at
+          )`,
           stripeAdditionalStudentItemId: billing.additionalItem?.id ?? null,
           additionalStudentQuantity: billing.additionalStudentQuantity,
           currentPeriodStart: billing.currentPeriodStart,
@@ -763,6 +1153,70 @@ async function upsertSubscriptionFromCheckoutSession(session: Stripe.Checkout.Se
   await upsertSubscriptionFromStripeSubscription(stripeSubscription);
 }
 
+async function provisionPublicCoreSubscriptionFromCheckoutSession(session: Stripe.Checkout.Session) {
+  if (
+    session.mode !== "subscription" ||
+    session.metadata?.checkoutKind !== "public_core_subscription"
+  ) {
+    throw new Error("This is not a public Treeschool membership checkout.");
+  }
+  if (
+    session.status !== "complete" ||
+    !["paid", "no_payment_required"].includes(session.payment_status)
+  ) {
+    throw new Error("Checkout has not been completed yet.");
+  }
+
+  const email = session.customer_details?.email ?? session.customer_email;
+  const subscriptionId = typeof session.subscription === "string"
+    ? session.subscription
+    : session.subscription?.id;
+  if (!email || !subscriptionId) {
+    throw new Error("The completed checkout is missing its customer details.");
+  }
+
+  const parent = await ensureProvisionalParentAccountForEmail(email);
+  const stripe = getStripe();
+  const existingSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const metadata = {
+    ...existingSubscription.metadata,
+    accountId: parent.accountId,
+    userId: parent.userId,
+    checkoutKind: "core_subscription"
+  };
+  const updatedSubscription = await stripe.subscriptions.update(subscriptionId, { metadata });
+  await stripe.checkout.sessions.update(session.id, {
+    metadata: {
+      ...session.metadata,
+      accountId: parent.accountId,
+      userId: parent.userId,
+      checkoutKind: "core_subscription",
+      checkoutSource: "public_pricing"
+    }
+  });
+  await upsertSubscriptionFromStripeSubscription(updatedSubscription);
+
+  return {
+    sessionId: session.id,
+    email: parent.email,
+    accountId: parent.accountId
+  };
+}
+
+export async function completePublicCoreSubscriptionCheckout(sessionId: string) {
+  const session = await getStripe().checkout.sessions.retrieve(sessionId);
+  if (session.metadata?.checkoutSource === "public_pricing" && session.metadata?.accountId) {
+    const email = session.customer_details?.email ?? session.customer_email;
+    if (!email) throw new Error("The completed checkout is missing its customer email.");
+    return {
+      sessionId: session.id,
+      email,
+      accountId: session.metadata.accountId
+    };
+  }
+  return provisionPublicCoreSubscriptionFromCheckoutSession(session);
+}
+
 async function updateSubscriptionFromStripeEvent(subscription: Stripe.Subscription) {
   if (subscription.metadata.accountId) {
     await upsertSubscriptionFromStripeSubscription(subscription);
@@ -779,6 +1233,12 @@ async function updateSubscriptionFromStripeEvent(subscription: Stripe.Subscripti
     .limit(1);
 
   if (!existing) {
+    if (subscription.metadata.checkoutKind === "public_core_subscription") {
+      // The checkout.session.completed event has the purchaser email needed to
+      // create and link the local parent account. Stripe will send another
+      // subscription update after that link is established.
+      return;
+    }
     throw new Error(`No local subscription row found for Stripe subscription ${subscription.id}.`);
   }
 
@@ -792,6 +1252,29 @@ async function countStudentProfiles(accountId: string) {
     .from(profiles)
     .where(and(eq(profiles.accountId, accountId), eq(profiles.role, "STUDENT")));
   return Number(usage?.count ?? 0);
+}
+
+async function countReservedTeacherUsers(accountId: string) {
+  const now = new Date();
+  const [[activeTeacherUsers], [pendingTeacherUsers]] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)::integer` })
+      .from(profiles)
+      .where(and(
+        eq(profiles.accountId, accountId),
+        eq(profiles.role, "PARENT"),
+        eq(profiles.accountRole, "TEACHER")
+      )),
+    db
+      .select({ count: sql<number>`count(*)::integer` })
+      .from(accountInvitations)
+      .where(and(
+        eq(accountInvitations.accountId, accountId),
+        eq(accountInvitations.status, "PENDING"),
+        gt(accountInvitations.expiresAt, now)
+      ))
+  ]);
+  return Number(activeTeacherUsers?.count ?? 0) + Number(pendingTeacherUsers?.count ?? 0);
 }
 
 function proratedSeatAmount(
@@ -841,10 +1324,12 @@ export async function createStudentProfileWithBilling(input: {
   const [subscription] = await db
     .select({
       status: subscriptions.status,
+      planTier: subscriptions.planTier,
       stripeCustomerId: subscriptions.stripeCustomerId,
       stripeSubscriptionId: subscriptions.stripeSubscriptionId,
       billingInterval: subscriptions.billingInterval,
       introductoryOffer: subscriptions.introductoryOffer,
+      introductoryOfferEndsAt: subscriptions.introductoryOfferEndsAt,
       currentPeriodStart: subscriptions.currentPeriodStart,
       currentPeriodEnd: subscriptions.currentPeriodEnd,
       cancelAtPeriodEnd: subscriptions.cancelAtPeriodEnd,
@@ -855,7 +1340,8 @@ export async function createStudentProfileWithBilling(input: {
     .limit(1);
   const studentCount = await countStudentProfiles(context.accountId);
 
-  const paidStudentCapacity = CORE_INCLUDED_STUDENT_COUNT + (subscription?.additionalStudentQuantity ?? 0);
+  const membership = getMembershipPlan(subscription?.planTier ?? "standard");
+  const paidStudentCapacity = membership.includedStudentCount + (subscription?.additionalStudentQuantity ?? 0);
   if (!subscription?.stripeSubscriptionId || studentCount < paidStudentCapacity) {
     const profile = await createStudentProfile({
       ...input.student,
@@ -864,11 +1350,16 @@ export async function createStudentProfileWithBilling(input: {
     return { kind: "created" as const, profile };
   }
 
+  if (subscription.planTier === "single") {
+    throw new Error(
+      `Single includes one student. Upgrade to Standard from Billing before adding ${input.student.firstName}.`
+    );
+  }
   if (!subscription.stripeCustomerId || !["trialing", "active"].includes(subscription.status)) {
-    throw new Error("Restore the Family Plan before adding another student.");
+    throw new Error("Restore your Treeschool membership before adding another student.");
   }
   if (subscription.cancelAtPeriodEnd) {
-    throw new Error("Resume the Family Plan before adding another student seat.");
+    throw new Error("Resume your Treeschool membership before adding another student seat.");
   }
 
   const now = new Date();
@@ -900,8 +1391,7 @@ export async function createStudentProfileWithBilling(input: {
 
   const billingInterval: BillingInterval = subscription.billingInterval === "yearly" ? "yearly" : "monthly";
   const additionalPlan = ADDITIONAL_STUDENT_PLANS[billingInterval];
-  const isIntroductoryMonth = subscription.status === "trialing" &&
-    subscription.introductoryOffer === INTRODUCTORY_OFFER_KEY;
+  const isIntroductoryMonth = isIntroductoryOfferActive(subscription);
   const amountInCents = isIntroductoryMonth
     ? ADDITIONAL_STUDENT_INTRO_AMOUNT
     : proratedSeatAmount(
@@ -912,7 +1402,7 @@ export async function createStudentProfileWithBilling(input: {
       );
   const targetAdditionalStudentQuantity = Math.max(
     subscription.additionalStudentQuantity + 1,
-    studentCount + 1 - CORE_INCLUDED_STUDENT_COUNT
+    studentCount + 1 - membership.includedStudentCount
   );
   const plannedProfileId = randomUUID();
   const [pendingCheckout] = await db.insert(studentProfileCheckouts).values({
@@ -934,7 +1424,7 @@ export async function createStudentProfileWithBilling(input: {
     : `Prorated access for ${input.student.firstName} through ${renewalLabel}. Then ${formatUsd(additionalPlan.unitAmount)}/${recurringLabel}.`;
 
   try {
-    const stripeSession = await getStripe().checkout.sessions.create({
+    const stripeSession = await getStripe().checkout.sessions.create(withTreeschoolCheckoutBranding({
       mode: "payment",
       customer: subscription.stripeCustomerId,
       client_reference_id: context.accountId,
@@ -969,7 +1459,7 @@ export async function createStudentProfileWithBilling(input: {
           plannedProfileId
         }
       }
-    });
+    }));
     const expiresAt = timestampToDate(stripeSession.expires_at);
     await db.update(studentProfileCheckouts).set({
       stripeCheckoutSessionId: stripeSession.id,
@@ -983,8 +1473,8 @@ export async function createStudentProfileWithBilling(input: {
       kind: "checkout" as const,
       url: stripeSession.url,
       paymentCopy: isIntroductoryMonth
-        ? `Your Family Plan includes three students. Add ${input.student.firstName} for ${formatUsd(amountInCents)} today, then ${formatUsd(additionalPlan.unitAmount)}/${recurringLabel} starting ${renewalLabel}. The profile appears after payment succeeds.`
-        : `Your Family Plan includes three students. Add ${input.student.firstName} for ${formatUsd(amountInCents)} today (prorated), then ${formatUsd(additionalPlan.unitAmount)}/${recurringLabel} starting ${renewalLabel}. The profile appears after payment succeeds.`
+        ? `Standard includes three students. Add ${input.student.firstName} for ${formatUsd(amountInCents)} today, then ${formatUsd(additionalPlan.unitAmount)}/${recurringLabel} starting ${renewalLabel}. The profile appears after payment succeeds.`
+        : `Standard includes three students. Add ${input.student.firstName} for ${formatUsd(amountInCents)} today (prorated), then ${formatUsd(additionalPlan.unitAmount)}/${recurringLabel} starting ${renewalLabel}. The profile appears after payment succeeds.`
     };
   } catch (error) {
     await db.update(studentProfileCheckouts).set({
@@ -1116,7 +1606,11 @@ export async function handleStripeWebhook(input: {
   const event = await stripe.webhooks.constructEventAsync(input.body, input.signature, env.STRIPE_WEBHOOK_SECRET);
 
   if (event.type === "checkout.session.completed") {
-    await upsertSubscriptionFromCheckoutSession(event.data.object);
+    if (event.data.object.metadata?.checkoutKind === "public_core_subscription") {
+      await provisionPublicCoreSubscriptionFromCheckoutSession(event.data.object);
+    } else {
+      await upsertSubscriptionFromCheckoutSession(event.data.object);
+    }
     await fulfillAdditionalStudentCheckout(event.data.object);
     await fulfillNativeWorkbookCheckout(event.data.object);
   }

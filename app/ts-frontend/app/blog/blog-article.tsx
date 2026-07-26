@@ -174,7 +174,7 @@ export function BlogArticle({
                   href="/pricing"
                   className="cta-button cta-button--light cta-button--small"
                 >
-                  Explore Family Plan
+                  View membership plans
                 </Link>
                 <Link
                   href="/homeschool-lesson-plan-generator"
