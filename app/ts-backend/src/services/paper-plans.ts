@@ -2206,6 +2206,19 @@ export async function getPdfPageCount(bytes: Uint8Array) {
   }
 }
 
+export async function extractPdfPageTexts(bytes: Uint8Array) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const document = await pdfjs.getDocument({
+    data: bytes.slice(),
+    stopAtErrors: false
+  }).promise;
+  try {
+    return (await extractPageText(document)).map((page) => page.text);
+  } finally {
+    await document.destroy();
+  }
+}
+
 async function inferAcademicLevelFromPdf(
   bytes: Uint8Array,
   label: string,

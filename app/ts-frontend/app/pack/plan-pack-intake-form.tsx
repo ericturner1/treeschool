@@ -255,8 +255,8 @@ function NativeWorkbookChooser({
             const selected = selectedSet.has(item.id);
             return (
               <article key={item.id} className={`flex min-h-36 gap-4 rounded-[22px] border p-4 ${selected ? "border-[#7fa15a] bg-[#eef5e4]" : "border-[#dcc8aa] bg-white"}`}>
-                <div className="h-28 w-20 flex-none overflow-hidden rounded-[10px] border border-[#dcc8aa] bg-[#f8f1e4]">
-                  {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-3xl" aria-hidden="true">📗</div>}
+                <div className={`h-28 flex-none overflow-hidden rounded-[10px] border border-[#dcc8aa] bg-[#f8f1e4] ${item.catalogKind === "bundle" ? "w-28" : "w-20"}`}>
+                  {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" className={`h-full w-full ${item.catalogKind === "bundle" ? "object-contain p-1" : "object-cover"}`} /> : <div className="grid h-full place-items-center text-3xl" aria-hidden="true">📗</div>}
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex flex-wrap gap-1.5 text-[10px] font-black uppercase tracking-[0.08em]">

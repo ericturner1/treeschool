@@ -55,7 +55,7 @@ export function WorkbookPdfReplacement({ workbookId, title }: { workbookId: stri
     let prepared: { workbookId: string; versionId: string } | null = null;
     setBusy(true);
     setError(null);
-    setStatus("Checking that the workbook is still safe to replace…");
+    setStatus("Preparing a protected replacement upload…");
     try {
       const result = await prepareWorkbookReplacementAction({
         workbookId,
@@ -66,7 +66,7 @@ export function WorkbookPdfReplacement({ workbookId, title }: { workbookId: stri
       prepared = result.upload;
       setStatus("Uploading the replacement PDF…");
       await uploadReplacementPdf(result.upload.pdfUploadUrl, pdf);
-      setStatus("Upload complete. Starting indexing and thumbnail regeneration…");
+      setStatus("Upload complete. Starting the page and lesson compatibility check…");
       const completed = await completeWorkbookReplacementAction({
         workbookId: result.upload.workbookId,
         versionId: result.upload.versionId
@@ -114,10 +114,10 @@ export function WorkbookPdfReplacement({ workbookId, title }: { workbookId: stri
               Replace the PDF for “{title}”?
             </h2>
             <p className="mt-3 text-sm leading-6 text-ink/65">
-              Treeschool will index the new file and regenerate its cover and sample thumbnails. The current file remains in place unless the replacement finishes successfully.
+              Treeschool will compare the replacement’s physical page count, lesson order, lesson titles, lesson page ranges, and extracted lesson text with the published workbook.
             </p>
             <p className="mt-2 text-sm leading-6 text-ink/65">
-              This is only allowed while no parent has purchased the workbook or added it to a lesson plan. Treeschool checks that again when you upload.
+              Only a compatible correction will be promoted. Existing purchases, linked lesson plans, grades, attendance, and progress will move to the corrected file automatically. If anything structural changed, the current PDF stays live and Treeschool returns an error.
             </p>
             <label className="mt-5 grid gap-2 text-sm font-semibold text-ink">
               Replacement workbook PDF
@@ -141,7 +141,7 @@ export function WorkbookPdfReplacement({ workbookId, title }: { workbookId: stri
             <div className="mt-6 flex flex-wrap justify-end gap-3">
               <button type="button" disabled={busy} onClick={close} className="cta-button cta-button--outline cta-button--small disabled:opacity-60">Cancel</button>
               <button type="submit" disabled={busy} className="cta-button cta-button--dark cta-button--small disabled:opacity-60">
-                {busy ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white" /> Replacing…</> : "Replace and re-index"}
+                {busy ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white" /> Checking…</> : "Check and replace PDF"}
               </button>
             </div>
           </form>

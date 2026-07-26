@@ -65,14 +65,14 @@ function PurchaseButton({ price }: { price: string }) {
 
 function WorkbookCover({ workbook }: { workbook: NativeWorkbookCatalogItem }) {
   return (
-    <div className="relative h-28 w-20 flex-none overflow-hidden rounded-[10px] border border-[#ddc9aa] bg-white">
+    <div className={`relative h-28 flex-none overflow-hidden rounded-[10px] border border-[#ddc9aa] bg-white ${workbook.catalogKind === "bundle" ? "w-28" : "w-20"}`}>
       <span className="absolute inset-0 grid place-items-center text-[#a9835c]" aria-hidden="true">
         <svg viewBox="0 0 48 48" className="h-10 w-10" fill="none">
           <path d="M10 8.5A4.5 4.5 0 0 1 14.5 4H38v34H14.5A4.5 4.5 0 0 0 10 42.5v-34Z" fill="currentColor" opacity=".18" />
           <path d="M10 8.5A4.5 4.5 0 0 1 14.5 4H38v34H14.5A4.5 4.5 0 0 0 10 42.5v-34Zm0 34A4.5 4.5 0 0 1 14.5 38H38M16 12h15M16 18h11" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </span>
-      {workbook.thumbnailUrl ? <Image src={workbook.thumbnailUrl} alt="" fill unoptimized className="object-cover" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
+      {workbook.thumbnailUrl ? <Image src={workbook.thumbnailUrl} alt="" fill unoptimized className={workbook.catalogKind === "bundle" ? "object-contain p-1" : "object-cover"} onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
     </div>
   );
 }

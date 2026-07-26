@@ -6,6 +6,12 @@ import { getNativeWorkbookNavigation } from "../../lib/native-workbooks/server";
 
 const ADMIN_SECTIONS = [
   {
+    href: "/admin/funnels" as const,
+    title: "Funnels",
+    description: "Review each customer journey from its landing page through checkout, offers, and fulfillment.",
+    status: "Journey maps"
+  },
+  {
     href: "/admin/blog" as const,
     title: "Blog",
     description: "Write, review, optimize, and publish search-focused Treeschool articles.",

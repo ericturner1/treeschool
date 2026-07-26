@@ -30,6 +30,13 @@ const en = {
     paths: {
       items: [
         {
+          eyebrow: "Shopping for a complete first-grade curriculum?",
+          title: "See the whole first-grade year before you buy",
+          copy: "Explore every printable workbook in our coordinated core curriculum, review its standards coverage, and choose the purchase option that fits your family.",
+          href: "/first-grade-homeschool-curriculum",
+          linkLabel: "Explore the full curriculum"
+        },
+        {
           eyebrow: "New to homeschooling?",
           title: "Begin first grade with confidence",
           copy: "Begin with a complete first-grade curriculum, printable weekly plans, and a clear first step.",

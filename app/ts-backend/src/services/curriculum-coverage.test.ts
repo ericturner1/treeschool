@@ -34,6 +34,19 @@ describe("curriculum coverage", () => {
     expect(gradeOne[0]?.id.startsWith("g1.")).toBe(true);
   });
 
+  test("anchors Grade 1 competencies to published U.S. standards", () => {
+    const gradeOne = curriculumCoverageRubricForGrade(1);
+    const operations = gradeOne.find((item) => item.id.endsWith("mathematics.operations"));
+    const reading = gradeOne.find((item) => item.id.endsWith("languageArts.reading_foundations"));
+    const physicalScience = gradeOne.find((item) => item.id.endsWith("science.physical_science"));
+    const civics = gradeOne.find((item) => item.id.endsWith("socialStudies.civics"));
+
+    expect(operations?.standards).toContain("CCSS.Math.Content.1.OA.A–C");
+    expect(reading?.standards).toContain("CCSS.ELA-Literacy.RF.1.1–4");
+    expect(physicalScience?.standards).toContain("NGSS 1-PS4-1–4");
+    expect(civics?.standards).toContain("C3 D2.Civ.K–2");
+  });
+
   test("calculates scores from rubric weights rather than accepting an AI percentage", () => {
     const math = curriculumCoverageRubricForGrade(1).filter((item) => item.area === "mathematics");
     const scores = scoreCompetencyCoverage(1, [

@@ -206,7 +206,7 @@ export function WorkbookBundleEditor({
                 {descriptionMode === "custom" ? <textarea required name="description" rows={4} maxLength={3000} defaultValue={bundle.description} className="mt-3 w-full rounded-[14px] border border-[#c5d5b5] bg-white px-4 py-3" /> : <p className="mt-3 rounded-[14px] bg-[#eef5e4] px-4 py-3 text-sm leading-6 text-ink/60">Treeschool will rebuild the description from the selected workbook titles, subjects, grades, and coverage.</p>}
               </fieldset>
               <div className="flex gap-4 rounded-[18px] border border-[#c5d5b5] bg-white p-4 sm:col-span-2">
-                <div className="relative h-24 w-16 flex-none overflow-hidden rounded-[8px] border border-[#ddc9aa] bg-[#f8f1e4]">{bundle.thumbnailUrl ? <Image src={bundle.thumbnailUrl} alt="Current bundle cover" fill unoptimized className="object-cover" /> : null}</div>
+                <div className="relative h-24 w-24 flex-none overflow-hidden rounded-[8px] border border-[#ddc9aa] bg-[#f8f1e4]">{bundle.thumbnailUrl ? <Image src={bundle.thumbnailUrl} alt="Current bundle cover" fill unoptimized className="object-contain p-1" /> : null}</div>
                 <label className="grid flex-1 gap-2 text-sm font-semibold">Replace bookstore thumbnail <span className="font-normal text-ink/48">(optional)</span><input name="thumbnail" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" className="rounded-[14px] border border-[#c5d5b5] bg-white px-4 py-3" /><span className="text-xs font-normal text-ink/50">Leave empty to keep the current cover.</span></label>
               </div>
             </div>

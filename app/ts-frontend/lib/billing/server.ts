@@ -102,6 +102,7 @@ export async function createParentBillingCheckout(input: {
   planTier: "single" | "standard";
   successUrl: string;
   cancelUrl: string;
+  funnelKey?: string | null;
 }) {
   return postBillingJson<{ url: string | null }>(
     "/internal/billing/checkout",
@@ -115,11 +116,72 @@ export async function createPublicParentBillingCheckout(input: {
   planTier: "single" | "standard";
   successUrl: string;
   cancelUrl: string;
+  funnelKey?: string | null;
 }) {
   return postBillingJson<{ url: string | null }>(
     "/internal/billing/public-checkout",
     input,
     "Failed to create Stripe checkout session."
+  );
+}
+
+export type PostCheckoutWorkbookOfferItem = {
+  id: string;
+  versionId: string;
+  title: string;
+  description: string;
+  priceInCents: number;
+  currencyCode: string;
+  thumbnailUrl: string | null;
+};
+
+export type PostCheckoutWorkbookOffer = {
+  key: string;
+  title: string;
+  description: string;
+  items: PostCheckoutWorkbookOfferItem[];
+  priceInCents: number;
+  currencyCode: string;
+  thumbnailUrl?: string | null;
+};
+
+export type FirstGradePostCheckoutOffer = {
+  sourceCheckoutSessionId: string;
+  offer: {
+    full: PostCheckoutWorkbookOffer | null;
+    starter: PostCheckoutWorkbookOffer | null;
+  };
+  state: string;
+  selectedVariant: string | null;
+  thankYouPath: string;
+};
+
+export async function getFirstGradePostCheckoutOffer(input: { sessionId: string }) {
+  const response = await backendFetch(
+    `${getBackendUrl()}/internal/billing/post-checkout-offer?sessionId=${encodeURIComponent(input.sessionId)}`,
+    { cache: "no-store" }
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "Could not load the post-checkout offer.");
+  }
+  return payload as FirstGradePostCheckoutOffer;
+}
+
+export async function decideFirstGradePostCheckoutOffer(input: {
+  sourceCheckoutSessionId: string;
+  action: "accept_full" | "decline_full" | "accept_starter" | "decline_starter";
+  successUrl: string;
+  cancelUrl: string;
+}) {
+  return postBillingJson<
+    | { status: "complete"; thankYouPath: string }
+    | { status: "downsell" }
+    | { status: "redirect"; url: string | null }
+  >(
+    "/internal/billing/post-checkout-offer/decision",
+    input,
+    "Could not update the post-checkout offer."
   );
 }
 

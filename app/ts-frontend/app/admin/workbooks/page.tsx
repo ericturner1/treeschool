@@ -74,7 +74,7 @@ export default async function AdminWorkbooksPage() {
           {bundles.length ? <div className="mt-5 grid gap-4 lg:grid-cols-2">
             {bundles.map((bundle) => <article key={bundle.id} className="min-w-0 max-w-full overflow-hidden rounded-[24px] border border-[#bfd1ad] bg-[#f3f8ed] p-4 sm:p-5">
               <div className="flex gap-4">
-                <div className="relative flex h-32 w-24 flex-none items-center justify-center overflow-hidden rounded-[12px] border border-[#bfd1ad] bg-white"><WorkbookCoverThumbnail title={bundle.title} thumbnailUrl={bundle.thumbnailUrl} /></div>
+                <div className="relative flex h-32 w-32 flex-none items-center justify-center overflow-hidden rounded-[12px] border border-[#bfd1ad] bg-white"><WorkbookCoverThumbnail title={bundle.title} thumbnailUrl={bundle.thumbnailUrl} fit="contain" /></div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap gap-2"><span className="rounded-full bg-[#dfead4] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-[#4d6a39]">Bundle</span>{bundle.isRecommendedCurriculum ? <span className="rounded-full bg-[#638b48] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-white">Recommended curriculum · {bundle.recommendedGradeLevel === 0 ? "Kindergarten" : `Grade ${bundle.recommendedGradeLevel}`}</span> : null}{!bundle.active ? <span className="rounded-full bg-[#f2e6d3] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-earth">Hidden</span> : null}</div>
                   <h3 className="mt-2 text-xl font-semibold">{bundle.title}</h3>

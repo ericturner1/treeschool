@@ -20,8 +20,12 @@ import {
   nativeWorkbookVersions,
   nativeWorkbooks,
   profiles,
+  studentWorkbookUnitProgress,
   subscriptions,
-  users
+  users,
+  weeklyPlanDayPdfAssets,
+  weeklyPlanItems,
+  weeklyPlanPdfAssets
 } from "ts-db";
 import { db, env } from "../db";
 import { withTreeschoolCheckoutBranding } from "./stripe-checkout";
@@ -37,6 +41,7 @@ import {
 import {
   analyzePdf,
   applyNativeWorkbookCoverageToLearningYearCache,
+  extractPdfPageTexts,
   generateNativeWorkbookCatalogDescription,
   getPdfPageCount
 } from "./paper-plans";
@@ -54,8 +59,11 @@ import {
 import {
   CURRICULUM_COVERAGE_FRAMEWORK_VERSION,
   generateCurriculumCoverageProfile,
-  parseCurriculumCoverageProfile
+  mergeCompetencyCoverage,
+  parseCurriculumCoverageProfile,
+  scoreCompetencyCoverage
 } from "./curriculum-coverage";
+import { checkWorkbookReplacementCompatibility } from "./native-workbook-replacement";
 
 const MAX_NATIVE_WORKBOOK_PAGES = 2_000;
 const MAX_NATIVE_WORKBOOK_JOB_ATTEMPTS = 3;
@@ -83,7 +91,16 @@ type WorkbookReplacementState = {
   previousVersionId: string;
   restoreStatus: string;
   restoreActive: boolean;
+  requiresCompatibilityCheck?: boolean;
+  expectedPageCount?: number;
 };
+
+class WorkbookReplacementCompatibilityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WorkbookReplacementCompatibilityError";
+  }
+}
 
 type NativeWorkbookJobRow = {
   id: string;
@@ -277,10 +294,14 @@ function readWorkbookReplacementState(analysisJson: unknown): WorkbookReplacemen
   return typeof value.previousVersionId === "string" && value.previousVersionId
     && typeof value.restoreStatus === "string" && value.restoreStatus
     && typeof value.restoreActive === "boolean"
-    ? {
+      ? {
         previousVersionId: value.previousVersionId,
         restoreStatus: value.restoreStatus,
-        restoreActive: value.restoreActive
+        restoreActive: value.restoreActive,
+        requiresCompatibilityCheck: value.requiresCompatibilityCheck === true,
+        expectedPageCount: Number.isInteger(Number(value.expectedPageCount))
+          ? Number(value.expectedPageCount)
+          : undefined
       }
     : null;
 }
@@ -564,14 +585,8 @@ async function getNativeWorkbookUsage(workbookId: string) {
 }
 
 function assertNativeWorkbookCanBeReplaced(usage: Awaited<ReturnType<typeof getNativeWorkbookUsage>>) {
-  if (usage.purchaseCount > 0) {
-    throw new Error("This PDF cannot be replaced because the workbook has already been purchased.");
-  }
-  if (usage.attachmentCount > 0) {
-    throw new Error("This PDF cannot be replaced because the workbook has already been added to a family's lesson plan.");
-  }
   if (usage.runningJobCount > 0) {
-    throw new Error("Wait for the current indexing job to finish before replacing this PDF.");
+    throw new Error("Wait for the current workbook job to finish before replacing this PDF.");
   }
 }
 
@@ -629,21 +644,72 @@ async function accessByWorkbookIds(userId: string | null | undefined, workbookId
   return result;
 }
 
+function publicCurriculumCoverageProfile(value: unknown) {
+  const profile = parseCurriculumCoverageProfile(value);
+  return profile?.gradeProfiles.map((gradeProfile) => ({
+    gradeLevel: gradeProfile.gradeLevel,
+    role: gradeProfile.role,
+    scores: gradeProfile.scores,
+    competencies: gradeProfile.competencies.map((competency) => ({
+      competencyId: competency.competencyId,
+      label: competency.label,
+      depth: competency.depth,
+      strength: competency.strength,
+      confidence: competency.confidence
+    }))
+  })) ?? [];
+}
+
+function aggregatePublicCurriculumCoverageProfiles(values: unknown[]) {
+  const profiles = values
+    .map((value) => parseCurriculumCoverageProfile(value))
+    .filter((profile): profile is NonNullable<typeof profile> => Boolean(profile));
+  const gradeLevels = Array.from(new Set(profiles.flatMap((profile) =>
+    profile.gradeProfiles.map((gradeProfile) => gradeProfile.gradeLevel)
+  ))).sort((left, right) => left - right);
+
+  return gradeLevels.map((gradeLevel) => {
+    const matching = profiles.flatMap((profile) =>
+      profile.gradeProfiles.filter((gradeProfile) => gradeProfile.gradeLevel === gradeLevel)
+    );
+    const competencies = mergeCompetencyCoverage(...matching.map((gradeProfile) => gradeProfile.competencies));
+    return {
+      gradeLevel,
+      role: matching.every((gradeProfile) => gradeProfile.role === "core")
+        ? "core" as const
+        : "supplemental" as const,
+      scores: scoreCompetencyCoverage(gradeLevel, competencies),
+      competencies: competencies.map((competency) => ({
+        competencyId: competency.competencyId,
+        label: competency.label,
+        depth: competency.depth,
+        strength: competency.strength,
+        confidence: competency.confidence
+      }))
+    };
+  });
+}
+
 async function serializeCatalogRows<T extends {
   id: string;
   thumbnailObjectPath: string;
+  curriculumCoverageProfile?: unknown;
 }>(rows: T[], userId?: string | null) {
   const access = await accessByWorkbookIds(userId, rows.map((row) => row.id));
-  return Promise.all(rows.map(async (row) => ({
-    ...row,
-    catalogKind: "workbook" as const,
-    memberCount: 1,
-    memberWorkbookIds: [row.id],
-    isRecommendedCurriculum: false,
-    recommendedGradeLevel: null,
-    thumbnailUrl: await getSignedLessonAssetUrl(row.thumbnailObjectPath, 60).catch(() => null),
-    accessState: access.get(row.id) ?? "purchase_required" as AccessState
-  })));
+  return Promise.all(rows.map(async (row) => {
+    const { curriculumCoverageProfile, ...catalogRow } = row;
+    return {
+      ...catalogRow,
+      catalogKind: "workbook" as const,
+      memberCount: 1,
+      memberWorkbookIds: [row.id],
+      isRecommendedCurriculum: false,
+      recommendedGradeLevel: null,
+      curriculumCoverage: publicCurriculumCoverageProfile(curriculumCoverageProfile),
+      thumbnailUrl: await getSignedLessonAssetUrl(row.thumbnailObjectPath, 60).catch(() => null),
+      accessState: access.get(row.id) ?? "purchase_required" as AccessState
+    };
+  }));
 }
 
 async function loadBundleCatalogRows(input: { includeInactive?: boolean; userId?: string | null }) {
@@ -687,7 +753,8 @@ async function loadBundleCatalogRows(input: { includeInactive?: boolean; userId?
     activeVersionId: nativeWorkbooks.activeVersionId,
     active: nativeWorkbooks.active,
     status: nativeWorkbooks.status,
-    pageCount: nativeWorkbookVersions.pageCount
+    pageCount: nativeWorkbookVersions.pageCount,
+    curriculumCoverageProfile: nativeWorkbookVersions.curriculumCoverageProfile
   }).from(nativeWorkbookBundleItems)
     .innerJoin(nativeWorkbooks, eq(nativeWorkbooks.id, nativeWorkbookBundleItems.workbookId))
     .leftJoin(nativeWorkbookVersions, eq(nativeWorkbookVersions.id, nativeWorkbooks.activeVersionId))
@@ -751,6 +818,9 @@ async function loadBundleCatalogRows(input: { includeInactive?: boolean; userId?
       active: bundle.active,
       isRecommendedCurriculum: bundle.isRecommendedCurriculum,
       recommendedGradeLevel: bundle.recommendedGradeLevel,
+      curriculumCoverage: aggregatePublicCurriculumCoverageProfiles(
+        bundleMembers.map((member) => member.curriculumCoverageProfile)
+      ),
       createdAt: bundle.createdAt,
       accessState
     })];
@@ -809,7 +879,8 @@ export async function listNativeWorkbookCatalog(input: {
       currencyCode: nativeWorkbooks.currencyCode,
       thumbnailObjectPath: nativeWorkbooks.thumbnailObjectPath,
       activeVersionId: nativeWorkbooks.activeVersionId,
-      pageCount: nativeWorkbookVersions.pageCount
+      pageCount: nativeWorkbookVersions.pageCount,
+      curriculumCoverageProfile: nativeWorkbookVersions.curriculumCoverageProfile
     })
     .from(nativeWorkbooks)
     .leftJoin(nativeWorkbookVersions, eq(nativeWorkbookVersions.id, nativeWorkbooks.activeVersionId))
@@ -1112,15 +1183,17 @@ export async function listAdminNativeWorkbooks(userId: string) {
     const replacement = readWorkbookReplacementState(row.analysisJson);
     const coverageProfile = parseCurriculumCoverageProfile(row.curriculumCoverageProfile);
     const canReplacePdf = row.versionId != null
-      && !replacement
+      && (!replacement || ["failed", "rejected"].includes(row.analysisStatus ?? ""))
       && !["awaiting_upload", "queued", "analyzing"].includes(row.analysisStatus ?? "")
       && row.status !== "indexing"
-      && usage.purchaseCount === 0
-      && usage.attachmentCount === 0
       && usage.runningJobCount === 0;
+    const safeReplacementError = row.lastError?.startsWith("Replacement rejected:")
+      ? row.lastError
+      : null;
     return {
       ...row,
-      lastError: row.lastError ? PUBLIC_NATIVE_WORKBOOK_ERROR : null,
+      pageCount: replacement?.expectedPageCount ?? row.pageCount,
+      lastError: safeReplacementError ?? (row.lastError ? PUBLIC_NATIVE_WORKBOOK_ERROR : null),
       lastErrorCode: row.lastError && row.versionId
         ? nativeWorkbookErrorReference(row.versionId)
         : null,
@@ -1879,56 +1952,86 @@ export async function prepareNativeWorkbookReplacement(input: {
       id: nativeWorkbooks.id,
       status: nativeWorkbooks.status,
       active: nativeWorkbooks.active,
-      latestVersionId: nativeWorkbookVersions.id,
-      latestVersionNumber: nativeWorkbookVersions.versionNumber,
-      latestEditionLabel: nativeWorkbookVersions.editionLabel,
-      latestAnalysisStatus: nativeWorkbookVersions.analysisStatus,
-      latestAnalysisJson: nativeWorkbookVersions.analysisJson
+      activeVersionId: nativeWorkbooks.activeVersionId
     })
     .from(nativeWorkbooks)
-    .innerJoin(nativeWorkbookVersions, eq(nativeWorkbookVersions.workbookId, nativeWorkbooks.id))
     .where(eq(nativeWorkbooks.id, input.workbookId))
-    .orderBy(desc(nativeWorkbookVersions.versionNumber))
     .limit(1);
   if (!workbook) throw new Error("Workbook not found.");
-  if (["awaiting_upload", "queued", "analyzing"].includes(workbook.latestAnalysisStatus)) {
+  if (!workbook.activeVersionId) {
+    throw new Error("Index and publish this workbook before replacing its PDF.");
+  }
+  const [[latestVersion], [activeVersion]] = await Promise.all([
+    db.select({
+      id: nativeWorkbookVersions.id,
+      versionNumber: nativeWorkbookVersions.versionNumber,
+      objectPath: nativeWorkbookVersions.objectPath,
+      analysisStatus: nativeWorkbookVersions.analysisStatus,
+      analysisJson: nativeWorkbookVersions.analysisJson
+    }).from(nativeWorkbookVersions)
+      .where(eq(nativeWorkbookVersions.workbookId, workbook.id))
+      .orderBy(desc(nativeWorkbookVersions.versionNumber))
+      .limit(1),
+    db.select({
+      id: nativeWorkbookVersions.id,
+      versionNumber: nativeWorkbookVersions.versionNumber,
+      editionLabel: nativeWorkbookVersions.editionLabel,
+      pageCount: nativeWorkbookVersions.pageCount,
+      analysisStatus: nativeWorkbookVersions.analysisStatus,
+      analysisJson: nativeWorkbookVersions.analysisJson
+    }).from(nativeWorkbookVersions)
+      .where(eq(nativeWorkbookVersions.id, workbook.activeVersionId))
+      .limit(1)
+  ]);
+  if (!latestVersion || !activeVersion) throw new Error("The published workbook edition could not be found.");
+  if (activeVersion.analysisStatus !== "ready" || activeVersion.pageCount < 1) {
+    throw new Error("The published workbook must have a complete lesson index before its PDF can be replaced.");
+  }
+  if (["awaiting_upload", "queued", "analyzing"].includes(latestVersion.analysisStatus)) {
     throw new Error("Wait for the current workbook indexing to finish before replacing its PDF.");
   }
-  if (readWorkbookReplacementState(workbook.latestAnalysisJson)) {
+  if (
+    readWorkbookReplacementState(latestVersion.analysisJson) &&
+    !["failed", "rejected"].includes(latestVersion.analysisStatus)
+  ) {
     throw new Error("A replacement PDF is already being processed for this workbook.");
   }
   assertNativeWorkbookCanBeReplaced(await getNativeWorkbookUsage(workbook.id));
+  const staleReplacement = readWorkbookReplacementState(latestVersion.analysisJson);
+  if (staleReplacement && ["failed", "rejected"].includes(latestVersion.analysisStatus)) {
+    await db.delete(nativeWorkbookVersions).where(eq(nativeWorkbookVersions.id, latestVersion.id));
+    await deletePrivateFile(latestVersion.objectPath).catch((error) => {
+      console.warn(`Could not delete superseded replacement upload ${latestVersion.objectPath}:`, error);
+    });
+  }
 
   const versionId = randomUUID();
   const objectPath = `native-workbooks/${workbook.id}/versions/${versionId}/${safeFilename(input.pdfFilename, "workbook.pdf")}`;
-  const descriptionMode = workbook.latestAnalysisJson?.descriptionMode === "auto" ? "auto" : "custom";
+  const descriptionMode = activeVersion.analysisJson?.descriptionMode === "auto" ? "auto" : "custom";
   const replacement: WorkbookReplacementState = {
-    previousVersionId: workbook.latestVersionId,
+    previousVersionId: activeVersion.id,
     restoreStatus: workbook.status,
-    restoreActive: workbook.active
+    restoreActive: workbook.active,
+    requiresCompatibilityCheck: true,
+    expectedPageCount: activeVersion.pageCount
   };
 
-  await db.transaction(async (tx) => {
-    await tx.insert(nativeWorkbookVersions).values({
-      id: versionId,
-      workbookId: workbook.id,
-      versionNumber: workbook.latestVersionNumber + 1,
-      editionLabel: workbook.latestEditionLabel,
-      originalFilename: normalizeText(input.pdfFilename, 240),
-      objectPath,
-      mimeType: "application/pdf",
-      sizeBytes: 1,
-      pageCount: 0,
-      analysisStatus: "awaiting_upload",
-      analysisJson: { descriptionMode, replacement },
-      createdByUserId: input.userId
-    });
-    await tx.update(nativeWorkbooks).set({
-      status: "awaiting_replacement",
-      active: false,
-      updatedAt: new Date()
-    }).where(eq(nativeWorkbooks.id, workbook.id));
+  await db.insert(nativeWorkbookVersions).values({
+    id: versionId,
+    workbookId: workbook.id,
+    versionNumber: latestVersion.versionNumber + 1,
+    editionLabel: activeVersion.editionLabel,
+    originalFilename: normalizeText(input.pdfFilename, 240),
+    objectPath,
+    mimeType: "application/pdf",
+    sizeBytes: 1,
+    pageCount: 0,
+    analysisStatus: "awaiting_upload",
+    analysisJson: { descriptionMode, replacement },
+    createdByUserId: input.userId
   });
+  await db.update(nativeWorkbookVersions).set({ lastError: null })
+    .where(eq(nativeWorkbookVersions.id, activeVersion.id));
 
   try {
     const pdfUploadUrl = await getSignedPrivateUploadUrl({
@@ -1938,14 +2041,8 @@ export async function prepareNativeWorkbookReplacement(input: {
     });
     return { workbookId: workbook.id, versionId, pdfUploadUrl };
   } catch (error) {
-    await db.transaction(async (tx) => {
-      await tx.delete(nativeWorkbookVersions).where(eq(nativeWorkbookVersions.id, versionId));
-      await tx.update(nativeWorkbooks).set({
-        status: replacement.restoreStatus,
-        active: replacement.restoreActive,
-        updatedAt: new Date()
-      }).where(eq(nativeWorkbooks.id, workbook.id));
-    }).catch(() => undefined);
+    await db.delete(nativeWorkbookVersions).where(eq(nativeWorkbookVersions.id, versionId))
+      .catch(() => undefined);
     throw error;
   }
 }
@@ -1972,7 +2069,7 @@ export async function completeNativeWorkbookReplacement(input: {
       eq(nativeWorkbookVersions.id, input.versionId)
     ))
     .limit(1);
-  if (!row || row.workbookStatus !== "awaiting_replacement"
+  if (!row
     || row.analysisStatus !== "awaiting_upload"
     || !readWorkbookReplacementState(row.analysisJson)) {
     throw new Error("The replacement upload is no longer available.");
@@ -2003,8 +2100,6 @@ export async function completeNativeWorkbookReplacement(input: {
           updatedAt: new Date()
         }
       });
-    await tx.update(nativeWorkbooks).set({ status: "indexing", active: false, updatedAt: new Date() })
-      .where(eq(nativeWorkbooks.id, row.workbookId));
   });
   return { queued: true, workbookId: row.workbookId, versionId: row.versionId };
 }
@@ -2031,19 +2126,11 @@ export async function discardNativeWorkbookReplacement(input: {
     ))
     .limit(1);
   const replacement = readWorkbookReplacementState(row?.analysisJson);
-  if (!row || !replacement || row.workbookStatus !== "awaiting_replacement"
-    || row.analysisStatus !== "awaiting_upload") {
+  if (!row || !replacement || row.analysisStatus !== "awaiting_upload") {
     return { discarded: false };
   }
   await deletePrivateFile(row.objectPath).catch(() => undefined);
-  await db.transaction(async (tx) => {
-    await tx.delete(nativeWorkbookVersions).where(eq(nativeWorkbookVersions.id, input.versionId));
-    await tx.update(nativeWorkbooks).set({
-      status: replacement.restoreStatus,
-      active: replacement.restoreActive,
-      updatedAt: new Date()
-    }).where(eq(nativeWorkbooks.id, row.workbookId));
-  });
+  await db.delete(nativeWorkbookVersions).where(eq(nativeWorkbookVersions.id, input.versionId));
   return { discarded: true };
 }
 
@@ -2067,6 +2154,7 @@ export async function retryNativeWorkbookIndexing(input: { userId: string; workb
   const analysisJson = version.analysisJson && typeof version.analysisJson === "object"
     ? version.analysisJson
     : {};
+  const replacement = readWorkbookReplacementState(analysisJson);
   await db.transaction(async (tx) => {
     await tx.update(nativeWorkbookVersions).set({
       analysisStatus: "queued",
@@ -2088,8 +2176,10 @@ export async function retryNativeWorkbookIndexing(input: { userId: string; workb
         target: nativeWorkbookJobs.workbookVersionId,
         set: { status: "queued", attemptCount: 0, availableAt: new Date(), lastError: null, workerId: null, updatedAt: new Date() }
       });
-    await tx.update(nativeWorkbooks).set({ status: "indexing", updatedAt: new Date() })
-      .where(eq(nativeWorkbooks.id, input.workbookId));
+    await tx.update(nativeWorkbooks).set({
+      ...(replacement ? {} : { status: "indexing" }),
+      updatedAt: new Date()
+    }).where(eq(nativeWorkbooks.id, input.workbookId));
   });
   return { queued: true };
 }
@@ -2476,6 +2566,182 @@ async function claimNextNativeWorkbookJob(workerId: string) {
   return job ?? null;
 }
 
+async function promoteCompatibleWorkbookReplacement(input: {
+  job: NativeWorkbookJobRow;
+  version: {
+    id: string;
+    workbookId: string;
+    objectPath: string;
+    originalFilename: string;
+    analysisJson: Record<string, unknown>;
+    title: string;
+  };
+  replacement: WorkbookReplacementState;
+  bytes: Uint8Array;
+  pageCount: number;
+  fingerprint: string;
+  candidateAnalysis: unknown;
+}) {
+  const [publishedVersion] = await db.select({
+    id: nativeWorkbookVersions.id,
+    workbookId: nativeWorkbookVersions.workbookId,
+    objectPath: nativeWorkbookVersions.objectPath,
+    pageCount: nativeWorkbookVersions.pageCount,
+    analysisStatus: nativeWorkbookVersions.analysisStatus,
+    analysisJson: nativeWorkbookVersions.analysisJson,
+    curriculumCoverageProfile: nativeWorkbookVersions.curriculumCoverageProfile,
+    curriculumCoverageFrameworkVersion: nativeWorkbookVersions.curriculumCoverageFrameworkVersion,
+    curriculumCoverageProfiledAt: nativeWorkbookVersions.curriculumCoverageProfiledAt
+  }).from(nativeWorkbookVersions)
+    .where(eq(nativeWorkbookVersions.id, input.replacement.previousVersionId))
+    .limit(1);
+  if (!publishedVersion || publishedVersion.workbookId !== input.version.workbookId) {
+    throw new WorkbookReplacementCompatibilityError(
+      "Replacement rejected: the published workbook version could not be verified."
+    );
+  }
+  if (publishedVersion.analysisStatus !== "ready") {
+    throw new WorkbookReplacementCompatibilityError(
+      "Replacement rejected: the published workbook no longer has a complete lesson index."
+    );
+  }
+
+  const [currentPageTexts, replacementPageTexts] = await Promise.all([
+    downloadPrivateFile(publishedVersion.objectPath).then(extractPdfPageTexts),
+    extractPdfPageTexts(input.bytes)
+  ]);
+  const compatibility = checkWorkbookReplacementCompatibility({
+    currentPageCount: publishedVersion.pageCount,
+    replacementPageCount: input.pageCount,
+    currentAnalysis: publishedVersion.analysisJson,
+    replacementAnalysis: input.candidateAnalysis,
+    currentPageTexts,
+    replacementPageTexts
+  });
+  if (!compatibility.compatible) {
+    throw new WorkbookReplacementCompatibilityError(
+      `Replacement rejected: ${compatibility.reasons.join(" ")} The published PDF and all customer data were left unchanged.`
+    );
+  }
+
+  const thumbnailObjectPath =
+    `native-workbooks/${input.version.workbookId}/versions/${input.version.id}/cover.png`;
+  await createGeneratedCoverImage({ bytes: input.bytes, objectPath: thumbnailObjectPath });
+  const productPreviewImages = await createProductPreviewImages({
+    workbookId: input.version.workbookId,
+    versionId: input.version.id,
+    bytes: input.bytes,
+    pageCount: input.pageCount,
+    // Keep the established lesson contract. Compatibility checking proved the
+    // replacement maps to these same lesson ranges.
+    analysis: publishedVersion.analysisJson
+  });
+
+  const currentAnalysis = publishedVersion.analysisJson && typeof publishedVersion.analysisJson === "object"
+    ? publishedVersion.analysisJson
+    : {};
+  const finalAnalysisJson: Record<string, unknown> = {
+    ...currentAnalysis,
+    contentFingerprint: input.fingerprint,
+    nativeWorkbook: true,
+    productPreviewImages,
+    correctedFromVersionId: publishedVersion.id,
+    compatibilityVerifiedAt: new Date().toISOString(),
+    completedAt: new Date().toISOString()
+  };
+  delete finalAnalysisJson.replacement;
+
+  const affectedWeeklyPlanRows = await db.select({
+    weeklyPlanId: weeklyPlanItems.weeklyPlanId
+  }).from(weeklyPlanItems)
+    .innerJoin(contentDocuments, eq(contentDocuments.id, weeklyPlanItems.documentId))
+    .where(eq(contentDocuments.nativeWorkbookVersionId, publishedVersion.id));
+  const affectedWeeklyPlanIds = Array.from(new Set(
+    affectedWeeklyPlanRows.map((row) => row.weeklyPlanId)
+  ));
+  const [weeklyAssets, dailyAssets] = affectedWeeklyPlanIds.length
+    ? await Promise.all([
+        db.select({ objectPath: weeklyPlanPdfAssets.objectPath })
+          .from(weeklyPlanPdfAssets)
+          .where(inArray(weeklyPlanPdfAssets.weeklyPlanId, affectedWeeklyPlanIds)),
+        db.select({ objectPath: weeklyPlanDayPdfAssets.objectPath })
+          .from(weeklyPlanDayPdfAssets)
+          .where(inArray(weeklyPlanDayPdfAssets.weeklyPlanId, affectedWeeklyPlanIds))
+      ])
+    : [[], []];
+
+  await db.transaction(async (tx) => {
+    await tx.update(nativeWorkbookVersions).set({
+      pageCount: input.pageCount,
+      sizeBytes: input.bytes.byteLength,
+      contentFingerprint: input.fingerprint,
+      analysisStatus: "ready",
+      analysisJson: finalAnalysisJson,
+      curriculumCoverageProfile: publishedVersion.curriculumCoverageProfile,
+      curriculumCoverageFrameworkVersion: publishedVersion.curriculumCoverageFrameworkVersion,
+      curriculumCoverageProfiledAt: publishedVersion.curriculumCoverageProfiledAt,
+      lastError: null,
+      indexedAt: new Date(),
+      ...(input.replacement.restoreActive ? { publishedAt: new Date() } : {})
+    }).where(eq(nativeWorkbookVersions.id, input.version.id));
+    await tx.update(contentDocuments).set({
+      nativeWorkbookVersionId: input.version.id,
+      clientUploadId: `native:${input.version.id}`,
+      originalFilename: input.version.originalFilename,
+      objectPath: input.version.objectPath,
+      mimeType: "application/pdf",
+      sizeBytes: input.bytes.byteLength,
+      pageCount: input.pageCount,
+      analysisStatus: "ready",
+      analysisJson: {
+        ...finalAnalysisJson,
+        nativeWorkbookId: input.version.workbookId,
+        nativeWorkbookVersionId: input.version.id
+      }
+    }).where(eq(contentDocuments.nativeWorkbookVersionId, publishedVersion.id));
+    await tx.update(nativeWorkbookPurchases).set({
+      workbookVersionId: input.version.id
+    }).where(eq(nativeWorkbookPurchases.workbookVersionId, publishedVersion.id));
+    await tx.update(studentWorkbookUnitProgress).set({
+      nativeWorkbookVersionId: input.version.id,
+      updatedAt: new Date()
+    }).where(eq(studentWorkbookUnitProgress.nativeWorkbookVersionId, publishedVersion.id));
+    if (affectedWeeklyPlanIds.length) {
+      await tx.delete(weeklyPlanPdfAssets)
+        .where(inArray(weeklyPlanPdfAssets.weeklyPlanId, affectedWeeklyPlanIds));
+      await tx.delete(weeklyPlanDayPdfAssets)
+        .where(inArray(weeklyPlanDayPdfAssets.weeklyPlanId, affectedWeeklyPlanIds));
+    }
+    await tx.update(nativeWorkbookJobs).set({
+      status: "completed",
+      heartbeatAt: new Date(),
+      lastError: null,
+      updatedAt: new Date()
+    }).where(eq(nativeWorkbookJobs.id, input.job.id));
+    await tx.update(nativeWorkbooks).set({
+      activeVersionId: input.version.id,
+      thumbnailObjectPath,
+      status: input.replacement.restoreStatus,
+      active: input.replacement.restoreActive,
+      updatedAt: new Date()
+    }).where(eq(nativeWorkbooks.id, input.version.workbookId));
+  });
+
+  await Promise.all([...weeklyAssets, ...dailyAssets].map((asset) =>
+    deletePrivateFile(asset.objectPath).catch((error) => {
+      console.warn(`Could not delete invalidated weekly PDF asset ${asset.objectPath}:`, error);
+    })
+  ));
+
+  return {
+    jobId: input.job.id,
+    versionId: input.version.id,
+    outcome: "completed",
+    replacementVerified: true,
+    lessonCount: compatibility.currentLessonCount
+  };
+}
+
 export async function runNextNativeWorkbookJob(workerId: string) {
   const job = await claimNextNativeWorkbookJob(workerId);
   if (!job) return null;
@@ -2510,8 +2776,18 @@ export async function runNextNativeWorkbookJob(workerId: string) {
       .where(eq(nativeWorkbookVersions.id, version.id));
     const bytes = await downloadPrivateFile(version.objectPath);
     const pageCount = await getPdfPageCount(bytes);
-  if (pageCount > MAX_NATIVE_WORKBOOK_PAGES) {
+    if (pageCount > MAX_NATIVE_WORKBOOK_PAGES) {
       throw new Error("This workbook is too large to process as one item.");
+    }
+    const replacement = readWorkbookReplacementState(version.analysisJson);
+    if (
+      replacement?.requiresCompatibilityCheck &&
+      replacement.expectedPageCount != null &&
+      replacement.expectedPageCount !== pageCount
+    ) {
+      throw new WorkbookReplacementCompatibilityError(
+        `Replacement rejected: the replacement has ${pageCount} pages; the published workbook has ${replacement.expectedPageCount}. The published PDF and all customer data were left unchanged.`
+      );
     }
     const fingerprint = createHash("sha256").update(bytes).digest("hex");
     const analysis = await analyzePdf({
@@ -2521,6 +2797,20 @@ export async function runNextNativeWorkbookJob(workerId: string) {
       pageCount,
       usageContext: { nativeWorkbookVersionId: version.id, nativeWorkbookJobId: job.id }
     });
+    if (
+      replacement?.requiresCompatibilityCheck &&
+      replacement.previousVersionId !== version.id
+    ) {
+      return await promoteCompatibleWorkbookReplacement({
+        job,
+        version,
+        replacement,
+        bytes,
+        pageCount,
+        fingerprint,
+        candidateAnalysis: analysis
+      });
+    }
     const curriculumCoverageProfile = await generateCurriculumCoverageProfile({
       title: version.title,
       subjectLabel: version.subjectLabel,
@@ -2584,7 +2874,9 @@ export async function runNextNativeWorkbookJob(workerId: string) {
     const finalDescription = currentCatalogState?.analysisJson?.descriptionMode === "auto"
       ? generatedDescription
       : currentCatalogState?.description ?? generatedDescription;
-    const replacement = readWorkbookReplacementState(currentCatalogState?.analysisJson ?? version.analysisJson);
+    const currentReplacement = readWorkbookReplacementState(
+      currentCatalogState?.analysisJson ?? version.analysisJson
+    );
     const finalAnalysisJson: Record<string, unknown> = {
       ...version.analysisJson,
       ...analysis,
@@ -2594,9 +2886,9 @@ export async function runNextNativeWorkbookJob(workerId: string) {
       completedAt: new Date().toISOString()
     };
     delete finalAnalysisJson.replacement;
-    const restoredStatus = replacement?.restoreActive
+    const restoredStatus = currentReplacement?.restoreActive
       ? "published"
-      : replacement?.restoreStatus === "unpublished"
+      : currentReplacement?.restoreStatus === "unpublished"
         ? "unpublished"
         : "ready";
     await db.transaction(async (tx) => {
@@ -2612,7 +2904,7 @@ export async function runNextNativeWorkbookJob(workerId: string) {
         curriculumCoverageProfiledAt: curriculumCoverageProfile ? new Date() : null,
         lastError: null,
         indexedAt: new Date(),
-        ...(replacement?.restoreActive ? { publishedAt: new Date() } : {})
+        ...(currentReplacement?.restoreActive ? { publishedAt: new Date() } : {})
       }).where(eq(nativeWorkbookVersions.id, version.id));
       await tx.update(contentDocuments).set({
         pageCount,
@@ -2627,10 +2919,10 @@ export async function runNextNativeWorkbookJob(workerId: string) {
         .where(eq(nativeWorkbookJobs.id, job.id));
       await tx.update(nativeWorkbooks).set({
         description: finalDescription,
-        ...(replacement ? {
+        ...(currentReplacement ? {
           activeVersionId: version.id,
           status: restoredStatus,
-          active: replacement.restoreActive
+          active: currentReplacement.restoreActive
         } : { status: "ready" }),
         updatedAt: new Date()
       })
@@ -2639,10 +2931,38 @@ export async function runNextNativeWorkbookJob(workerId: string) {
     return { jobId: job.id, versionId: version.id, outcome: "completed" };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown native workbook indexing error.";
+    const replacement = readWorkbookReplacementState(version.analysisJson);
+    const compatibilityRejected =
+      error instanceof WorkbookReplacementCompatibilityError &&
+      replacement?.requiresCompatibilityCheck === true;
     console.error(
       `[${errorReference}] Native workbook indexing failed for workbook ${version.workbookId}, version ${version.id}, job ${job.id}:`,
       error
     );
+    if (compatibilityRejected && replacement) {
+      await db.transaction(async (tx) => {
+        await tx.update(nativeWorkbookVersions).set({
+          lastError: message
+        }).where(eq(nativeWorkbookVersions.id, replacement.previousVersionId));
+        await tx.delete(nativeWorkbookJobs).where(eq(nativeWorkbookJobs.id, job.id));
+        await tx.delete(nativeWorkbookVersions).where(eq(nativeWorkbookVersions.id, version.id));
+        await tx.update(nativeWorkbooks).set({
+          status: replacement.restoreStatus,
+          active: replacement.restoreActive,
+          activeVersionId: replacement.previousVersionId,
+          updatedAt: new Date()
+        }).where(eq(nativeWorkbooks.id, version.workbookId));
+      });
+      await deletePrivateFile(version.objectPath).catch((cleanupError) => {
+        console.warn(`Could not delete rejected workbook replacement ${version.objectPath}:`, cleanupError);
+      });
+      return {
+        jobId: job.id,
+        versionId: version.id,
+        outcome: "rejected",
+        error: message
+      };
+    }
     const attemptCount = job.attemptCount + 1;
     const retry = attemptCount < MAX_NATIVE_WORKBOOK_JOB_ATTEMPTS;
     await db.transaction(async (tx) => {
@@ -2658,8 +2978,16 @@ export async function runNextNativeWorkbookJob(workerId: string) {
       }).where(eq(nativeWorkbookJobs.id, job.id));
       await tx.update(nativeWorkbookVersions).set({ analysisStatus: retry ? "queued" : "failed", lastError: message })
         .where(eq(nativeWorkbookVersions.id, version.id));
-      await tx.update(nativeWorkbooks).set({ status: retry ? "indexing" : "indexing_failed", updatedAt: new Date() })
-        .where(eq(nativeWorkbooks.id, version.workbookId));
+      await tx.update(nativeWorkbooks).set({
+        ...(replacement ? {
+          status: replacement.restoreStatus,
+          active: replacement.restoreActive,
+          activeVersionId: replacement.previousVersionId
+        } : {
+          status: retry ? "indexing" : "indexing_failed"
+        }),
+        updatedAt: new Date()
+      }).where(eq(nativeWorkbooks.id, version.workbookId));
     });
     return { jobId: job.id, versionId: version.id, outcome: "failed", error: message };
   }
@@ -3083,6 +3411,7 @@ export async function createNativeWorkbookCheckout(input: {
   successUrl: string;
   cancelUrl: string;
   addToLearningYearId?: string | null;
+  funnelKey?: string | null;
 }) {
   const parent = await getOptionalParentContext(input.userId);
   const email = normalizeText(parent?.email || input.email, 320).toLowerCase();
@@ -3094,11 +3423,25 @@ export async function createNativeWorkbookCheckout(input: {
   if (parent && workbook.accessState === "owned") throw new Error("You already own every workbook in this selection.");
   const [subscription] = parent ? await db.select({ stripeCustomerId: subscriptions.stripeCustomerId })
     .from(subscriptions).where(eq(subscriptions.accountId, parent.accountId)).limit(1) : [];
+  const funnelKey = normalizeText(input.funnelKey, 80);
+  const isFirstGradeFunnel = funnelKey === "first_grade_curriculum";
+  const checkoutKind = workbook.catalogKind === "bundle" ? "native_workbook_bundle" : "native_workbook";
+  const checkoutMetadata = {
+    checkoutKind,
+    ...(workbook.catalogKind === "bundle"
+      ? { nativeWorkbookBundleId: workbook.id }
+      : { nativeWorkbookId: workbook.id, nativeWorkbookVersionId: workbook.activeVersionId! }),
+    deliveryEmail: email,
+    ...(parent ? { accountId: parent.accountId, userId: input.userId! } : {}),
+    ...(input.addToLearningYearId ? { addToLearningYearId: input.addToLearningYearId } : {}),
+    ...(funnelKey ? { funnelKey } : {})
+  };
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create(withTreeschoolCheckoutBranding({
     mode: "payment",
     customer: subscription?.stripeCustomerId ?? undefined,
     customer_email: subscription?.stripeCustomerId ? undefined : email,
+    customer_creation: isFirstGradeFunnel && !subscription?.stripeCustomerId ? "always" : undefined,
     client_reference_id: parent?.accountId,
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
@@ -3115,15 +3458,13 @@ export async function createNativeWorkbookCheckout(input: {
             }
           })
     }],
-    metadata: {
-      checkoutKind: workbook.catalogKind === "bundle" ? "native_workbook_bundle" : "native_workbook",
-      ...(workbook.catalogKind === "bundle"
-        ? { nativeWorkbookBundleId: workbook.id }
-        : { nativeWorkbookId: workbook.id, nativeWorkbookVersionId: workbook.activeVersionId! }),
-      deliveryEmail: email,
-      ...(parent ? { accountId: parent.accountId, userId: input.userId! } : {}),
-      ...(input.addToLearningYearId ? { addToLearningYearId: input.addToLearningYearId } : {})
-    }
+    metadata: checkoutMetadata,
+    payment_intent_data: isFirstGradeFunnel
+      ? {
+          setup_future_usage: "off_session",
+          metadata: checkoutMetadata
+        }
+      : undefined
   }));
   return { id: session.id, url: session.url };
 }
@@ -3211,6 +3552,118 @@ export async function createNativeWorkbookCartCheckout(input: {
     }
   }));
   return { id: session.id, url: session.url };
+}
+
+export type PostCheckoutWorkbookOfferItem = {
+  id: string;
+  versionId: string;
+  title: string;
+  description: string;
+  priceInCents: number;
+  currencyCode: string;
+  thumbnailUrl: string | null;
+};
+
+export async function resolveJapanesePostCheckoutWorkbookOffer(input: {
+  accountId?: string | null;
+  email: string;
+}) {
+  const rows = await db
+    .select({
+      id: nativeWorkbooks.id,
+      versionId: nativeWorkbookVersions.id,
+      title: nativeWorkbooks.title,
+      description: nativeWorkbooks.description,
+      subjectKey: nativeWorkbooks.subjectKey,
+      subjectLabel: nativeWorkbooks.subjectLabel,
+      priceInCents: nativeWorkbooks.priceInCents,
+      currencyCode: nativeWorkbooks.currencyCode,
+      thumbnailObjectPath: nativeWorkbooks.thumbnailObjectPath
+    })
+    .from(nativeWorkbooks)
+    .innerJoin(nativeWorkbookVersions, eq(nativeWorkbookVersions.id, nativeWorkbooks.activeVersionId))
+    .where(and(
+      eq(nativeWorkbooks.active, true),
+      eq(nativeWorkbooks.status, "published"),
+      lte(nativeWorkbooks.gradeMin, 1),
+      gte(nativeWorkbooks.gradeMax, 1),
+      or(
+        eq(nativeWorkbooks.subjectKey, "japanese"),
+        ilike(nativeWorkbooks.subjectLabel, "Japanese"),
+        ilike(nativeWorkbooks.title, "Japanese %")
+      )
+    ))
+    .orderBy(asc(nativeWorkbooks.title));
+
+  const letteredRows = rows.filter((row) => /\bjapanese\s+[a-d]\b/i.test(row.title));
+  const candidates = (letteredRows.length ? letteredRows : rows).slice(0, 4);
+  if (!candidates.length) {
+    return { full: null, starter: null };
+  }
+
+  const purchaseConditions = [
+    eq(nativeWorkbookPurchases.status, "paid"),
+    inArray(nativeWorkbookPurchases.workbookId, candidates.map((item) => item.id))
+  ];
+  const ownershipScope = input.accountId
+    ? or(
+        eq(nativeWorkbookPurchases.accountId, input.accountId),
+        eq(nativeWorkbookPurchases.email, input.email.toLowerCase())
+      )
+    : eq(nativeWorkbookPurchases.email, input.email.toLowerCase());
+  const ownedRows = await db
+    .select({ workbookId: nativeWorkbookPurchases.workbookId })
+    .from(nativeWorkbookPurchases)
+    .where(and(...purchaseConditions, ownershipScope));
+  const ownedIds = new Set(ownedRows.map((row) => row.workbookId));
+  const available = candidates.filter((item) => !ownedIds.has(item.id));
+  if (!available.length) {
+    return { full: null, starter: null };
+  }
+
+  const currencies = new Set(available.map((item) => item.currencyCode.toUpperCase()));
+  if (currencies.size !== 1) {
+    throw new Error("The Japanese workbook collection must use one currency.");
+  }
+
+  const serialize = async (items: typeof available): Promise<PostCheckoutWorkbookOfferItem[]> =>
+    Promise.all(items.map(async (item) => ({
+      id: item.id,
+      versionId: item.versionId,
+      title: item.title,
+      description: item.description,
+      priceInCents: item.priceInCents,
+      currencyCode: item.currencyCode,
+      thumbnailUrl: await getSignedLessonAssetUrl(item.thumbnailObjectPath, 60).catch(() => null)
+    })));
+
+  const fullItems = await serialize(available);
+  const starterCandidate = available.find((item) => /\bjapanese\s+a\b/i.test(item.title)) ?? available[0];
+  const starterItems = available.length > 1 ? await serialize([starterCandidate]) : null;
+  return {
+    full: {
+      key: "japanese-a-d",
+      title: fullItems.length > 1
+        ? `Japanese A–${String.fromCharCode(64 + fullItems.length)}`
+        : fullItems[0].title,
+      description: fullItems.length > 1
+        ? "Add a printable Japanese language sequence that can grow with your child beyond the core first-grade subjects."
+        : "Add a printable Japanese language elective alongside the core first-grade subjects.",
+      items: fullItems,
+      priceInCents: fullItems.reduce((total, item) => total + item.priceInCents, 0),
+      currencyCode: fullItems[0].currencyCode
+    },
+    starter: starterItems
+      ? {
+          key: "japanese-a",
+          title: starterItems[0].title,
+          description: "Begin with the first Japanese workbook now. You can add later levels whenever your family is ready.",
+          items: starterItems,
+          priceInCents: starterItems[0].priceInCents,
+          currencyCode: starterItems[0].currencyCode
+        }
+      : null
+  };
 }
 
 function downloadTokenHash(token: string) {
@@ -3478,6 +3931,31 @@ export async function fulfillNativeWorkbookCheckout(session: Stripe.Checkout.Ses
     }).where(inArray(nativeWorkbookPurchases.id, purchaseIds));
   }
   return { handled: true, purchaseIds, downloadUrls: deliveryItems.map((item) => item.downloadUrl) };
+}
+
+export async function fulfillNativeWorkbookPaymentIntent(intent: Stripe.PaymentIntent) {
+  if (
+    intent.status !== "succeeded" ||
+    intent.metadata.checkoutSource !== "post_checkout_offer" ||
+    intent.metadata.checkoutKind !== "native_workbook_cart"
+  ) {
+    return { handled: false };
+  }
+  const deliveryEmail = normalizeText(intent.metadata.deliveryEmail, 320).toLowerCase();
+  if (!deliveryEmail) throw new Error("The post-checkout workbook purchase has no delivery email.");
+
+  const syntheticSession = {
+    id: `post_checkout:${intent.id}`,
+    amount_subtotal: intent.amount,
+    amount_total: intent.amount_received || intent.amount,
+    currency: intent.currency,
+    customer_email: deliveryEmail,
+    customer_details: { email: deliveryEmail },
+    payment_intent: intent.id,
+    metadata: intent.metadata
+  } as unknown as Stripe.Checkout.Session;
+
+  return fulfillNativeWorkbookCheckout(syntheticSession);
 }
 
 export async function getNativeWorkbookDownloadByToken(token: string) {

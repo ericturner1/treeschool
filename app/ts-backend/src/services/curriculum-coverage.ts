@@ -41,6 +41,43 @@ type AreaCompetencyDefinition = {
   laterWeight: number;
 };
 
+const GRADE_ONE_STANDARDS_REFERENCES: Record<
+  CoreCurriculumAreaKey,
+  Record<string, string[]>
+> = {
+  mathematics: {
+    number_sense: ["CCSS.Math.Content.1.NBT.A–C"],
+    operations: ["CCSS.Math.Content.1.OA.A–C"],
+    algebraic_reasoning: ["CCSS.Math.Content.1.OA.D"],
+    measurement_data: ["CCSS.Math.Content.1.MD.A–C"],
+    geometry: ["CCSS.Math.Content.1.G.A"]
+  },
+  languageArts: {
+    reading_foundations: ["CCSS.ELA-Literacy.RF.1.1–4"],
+    reading_comprehension: [
+      "CCSS.ELA-Literacy.RL.1.1–10",
+      "CCSS.ELA-Literacy.RI.1.1–10"
+    ],
+    writing_composition: ["CCSS.ELA-Literacy.W.1.1–8"],
+    language_conventions: ["CCSS.ELA-Literacy.L.1.1–6"],
+    communication_research: ["CCSS.ELA-Literacy.SL.1.1–6"]
+  },
+  science: {
+    scientific_inquiry: ["NGSS science and engineering practices embedded in Grade 1 PEs"],
+    life_science: ["NGSS 1-LS1-1–2", "NGSS 1-LS3-1"],
+    physical_science: ["NGSS 1-PS4-1–4"],
+    earth_space: ["NGSS 1-ESS1-1–2"],
+    engineering: ["NGSS K-2-ETS1-1–3"]
+  },
+  socialStudies: {
+    civics: ["C3 D2.Civ.K–2"],
+    history: ["C3 D2.His.K–2"],
+    geography: ["C3 D2.Geo.K–2"],
+    economics: ["C3 D2.Eco.K–2"],
+    culture_inquiry: ["C3 D1, D3, and D4.K–2"]
+  }
+};
+
 const AREA_COMPETENCIES: Record<CoreCurriculumAreaKey, AreaCompetencyDefinition[]> = {
   mathematics: [
     { key: "number_sense", label: "Number sense", description: "quantities, place value, magnitude, and number relationships", earlyElementaryDescription: "counting, comparing quantities, place value, and number relationships", priority: "essential", earlyElementaryWeight: 28, laterWeight: 22 },
@@ -86,6 +123,7 @@ export type CurriculumCoverageCompetency = {
   area: CoreCurriculumAreaKey;
   label: string;
   description: string;
+  standards: string[];
   weight: number;
   priority: CoveragePriority;
 };
@@ -97,6 +135,9 @@ export function curriculumCoverageRubricForGrade(gradeLevel: number) {
     area,
     label: competency.label,
     description: `${gradeExpectationPrefix(grade)} ${grade <= 2 && competency.earlyElementaryDescription ? competency.earlyElementaryDescription : competency.description}.`,
+    standards: grade === 1
+      ? GRADE_ONE_STANDARDS_REFERENCES[area][competency.key] ?? []
+      : [],
     weight: grade <= 2 ? competency.earlyElementaryWeight : competency.laterWeight,
     priority: grade <= 2 ? competency.priority : competency.laterPriority ?? competency.priority
   })));
@@ -256,7 +297,14 @@ export async function generateCurriculumCoverageProfile(input: {
   if (!units.length) throw new Error("Curriculum coverage profiling requires indexed learning units.");
   const rubrics = gradeLevels.map((gradeLevel) => ({
     gradeLevel,
-    competencies: curriculumCoverageRubricForGrade(gradeLevel).map(({ id, area, label, description, priority }) => ({ id, area, label, description, priority }))
+    competencies: curriculumCoverageRubricForGrade(gradeLevel).map(({
+      id,
+      area,
+      label,
+      description,
+      standards,
+      priority
+    }) => ({ id, area, label, description, standards, priority }))
   }));
   const prompt = `Map an indexed homeschool workbook to Treeschool's fixed curriculum-coverage rubric.
 

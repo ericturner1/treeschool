@@ -74,6 +74,42 @@ test.describe("production purchase paths", () => {
     }
   });
 
+  test("the first-grade curriculum landing page opens both checkout paths", async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto("/first-grade-homeschool-curriculum", { waitUntil: "networkidle" });
+
+    await page.getByRole("button", { name: /Buy the curriculum/ }).click();
+    const bundlePath = page.locator(
+      '[data-revenue-path="first-grade-curriculum-bundle-after-bump"]'
+    );
+    await expect(bundlePath).toHaveCount(1);
+    await expect(bundlePath.locator('input[name="funnelKey"]')).toHaveValue(
+      "first_grade_curriculum"
+    );
+    await bundlePath
+      .getByLabel("Delivery email")
+      .fill(`revenue-smoke+curriculum-${Date.now()}@treehomeschool.com`);
+    await expectStripeCheckout(page, () =>
+      bundlePath.locator('button[type="submit"]').click()
+    );
+
+    await page.context().clearCookies();
+    await page.goto("/first-grade-homeschool-curriculum", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Try Treeschool for $6" }).click();
+    const membershipPath = page.locator(
+      '[data-revenue-path="first-grade-curriculum-membership-bump"]'
+    );
+    await expect(membershipPath).toHaveCount(1);
+    await expect(membershipPath.locator('input[name="planTier"]')).toHaveValue("single");
+    await expect(membershipPath.locator('input[name="interval"]')).toHaveValue("monthly");
+    await expect(membershipPath.locator('input[name="funnelKey"]')).toHaveValue(
+      "first_grade_curriculum"
+    );
+    await expectStripeCheckout(page, () =>
+      membershipPath.locator('button[type="submit"]').click()
+    );
+  });
+
   test("a bookstore product purchase opens Stripe", async ({ page }) => {
     await page.context().clearCookies();
     await page.goto("/bookstore", { waitUntil: "domcontentloaded" });

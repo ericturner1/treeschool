@@ -281,7 +281,7 @@ export function CurriculumCompletenessDialog({
                             const buyUrl = `/bookstore/${encodeURIComponent(workbook.slug)}${learningYearId ? `?addToLearningYearId=${encodeURIComponent(learningYearId)}` : ""}`;
                             return (
                               <div key={workbook.id} className="flex flex-col gap-3 rounded-[16px] border border-[#d7e4c7] bg-white p-3 sm:flex-row sm:items-center">
-                                {workbook.thumbnailUrl ? <img src={workbook.thumbnailUrl} alt="" className="h-20 w-16 flex-none rounded-[8px] border border-[#e5d8c4] object-cover" /> : null}
+                                {workbook.thumbnailUrl ? <img src={workbook.thumbnailUrl} alt="" className={`h-20 flex-none rounded-[8px] border border-[#e5d8c4] ${workbook.catalogKind === "bundle" ? "w-20 object-contain p-1" : "w-16 object-cover"}`} /> : null}
                                 <div className="min-w-0 flex-1">
                                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
                                     <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e7efdd] px-2.5 py-1 font-semibold text-[#4f6e3a]">

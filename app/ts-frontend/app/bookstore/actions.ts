@@ -12,6 +12,9 @@ export async function startWorkbookCheckoutAction(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const email = String(formData.get("email") ?? "").trim();
   const addToLearningYearId = String(formData.get("addToLearningYearId") ?? "").trim() || null;
+  const funnelKey = String(formData.get("funnelKey") ?? "") === "first_grade_curriculum"
+    ? "first_grade_curriculum"
+    : null;
   try {
     const user = await getCurrentUser();
     const workbook = await getNativeWorkbookProduct({ slug, userId: user?.id });
@@ -21,8 +24,13 @@ export async function startWorkbookCheckoutAction(formData: FormData) {
       email: user?.email || email,
       workbookId: workbook.id,
       addToLearningYearId,
-      successUrl: `${base}/bookstore/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${base}/bookstore/${encodeURIComponent(slug)}?checkout=canceled${addToLearningYearId ? `&addToLearningYearId=${encodeURIComponent(addToLearningYearId)}` : ""}`
+      successUrl: funnelKey
+        ? `${base}/offers/us/first-grade-japanese?session_id={CHECKOUT_SESSION_ID}`
+        : `${base}/bookstore/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: funnelKey
+        ? `${base}/first-grade-homeschool-curriculum?checkout=canceled`
+        : `${base}/bookstore/${encodeURIComponent(slug)}?checkout=canceled${addToLearningYearId ? `&addToLearningYearId=${encodeURIComponent(addToLearningYearId)}` : ""}`,
+      funnelKey
     });
     if (!session.url) throw new Error("Stripe did not return a checkout link.");
     redirect(session.url);

@@ -46,6 +46,12 @@ function getMembershipTier(formData: FormData): "single" | "standard" {
   return getField(formData, "planTier") === "single" ? "single" : "standard";
 }
 
+function getFunnelKey(formData: FormData) {
+  return getField(formData, "funnelKey") === "first_grade_curriculum"
+    ? "first_grade_curriculum"
+    : null;
+}
+
 function getSafePath(path: string, fallback: string) {
   if (!path || !path.startsWith("/") || path.startsWith("//")) {
     return fallback;
@@ -107,6 +113,7 @@ export async function startPricingSubscriptionCheckoutAction(formData: FormData)
   const interval = getBillingInterval(formData);
   const planTier = getMembershipTier(formData);
   const returnPath = getSafePath(getField(formData, "returnPath"), "/pricing");
+  const funnelKey = getFunnelKey(formData);
   const origin = getRequestOrigin();
   const currentUser = await getCurrentUser();
 
@@ -135,8 +142,11 @@ export async function startPricingSubscriptionCheckoutAction(formData: FormData)
         userId: currentUser.id,
         interval,
         planTier,
-        successUrl: `${origin}/p/dashboard?checkout=success`,
-        cancelUrl: `${origin}${returnPath}?checkout=canceled`
+        successUrl: funnelKey
+          ? `${origin}/offers/us/first-grade-japanese?session_id={CHECKOUT_SESSION_ID}`
+          : `${origin}/p/dashboard?checkout=success`,
+        cancelUrl: `${origin}${returnPath}?checkout=canceled`,
+        funnelKey
       });
     } catch {
       redirect(`${returnPath}?error=${encodeURIComponent("We couldn’t open secure checkout. Please try again.")}`);
@@ -152,8 +162,11 @@ export async function startPricingSubscriptionCheckoutAction(formData: FormData)
     session = await createPublicParentBillingCheckout({
       interval,
       planTier,
-      successUrl: `${origin}/membership/complete?session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${origin}${returnPath}?checkout=canceled`
+      successUrl: funnelKey
+        ? `${origin}/offers/us/first-grade-japanese?session_id={CHECKOUT_SESSION_ID}`
+        : `${origin}/membership/complete?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${origin}${returnPath}?checkout=canceled`,
+      funnelKey
     });
   } catch {
     redirect(`${returnPath}?error=${encodeURIComponent("We couldn’t open secure checkout. Please try again.")}`);

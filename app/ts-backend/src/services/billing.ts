@@ -5,6 +5,7 @@ import {
   accountPurchases,
   accountInvitations,
   accounts,
+  postCheckoutOffers,
   profiles,
   studentProfileCheckouts,
   subjects,
@@ -14,7 +15,9 @@ import {
 import { db, env } from "../db";
 import { getPremiumFeatureAccess } from "./entitlements";
 import {
+  fulfillNativeWorkbookPaymentIntent,
   fulfillNativeWorkbookCheckout,
+  resolveJapanesePostCheckoutWorkbookOffer,
   resolveNativeWorkbookCheckoutSelections
 } from "./native-workbooks";
 import {
@@ -52,6 +55,8 @@ const MEMBERSHIP_CHECKOUT_CUSTOM_TEXT = {
     message: "Cancel anytime—it’s easy to manage your membership from your Treeschool billing settings."
   }
 };
+const FIRST_GRADE_FUNNEL_KEY = "first_grade_curriculum";
+const FIRST_GRADE_JAPANESE_OFFER_KEY = "first_grade_japanese";
 
 const ADDITIONAL_STUDENT_PLANS = {
   monthly: {
@@ -546,6 +551,7 @@ export async function createCoreSubscriptionCheckout(input: {
   cancelUrl: string;
   intakeId?: string | null;
   nativeCatalogItemIds?: string[];
+  funnelKey?: string | null;
 }) {
   await requireAccountRole(input.userId, ["OWNER", "ADMIN"]);
   if (!isBillingInterval(input.interval)) {
@@ -607,6 +613,7 @@ export async function createCoreSubscriptionCheckout(input: {
       })
     : undefined;
   const stripe = getStripe();
+  const funnelKey = input.funnelKey === FIRST_GRADE_FUNNEL_KEY ? FIRST_GRADE_FUNNEL_KEY : null;
   const session = await stripe.checkout.sessions.create(withTreeschoolCheckoutBranding({
     mode: "subscription",
     customer: existingSubscription?.stripeCustomerId ?? undefined,
@@ -631,6 +638,7 @@ export async function createCoreSubscriptionCheckout(input: {
       billingInterval: input.interval,
       additionalStudentQuantity: String(additionalStudentQuantity),
       checkoutKind: "core_subscription",
+      ...(funnelKey ? { funnelKey } : {}),
       ...(includesMonthlyIntro ? { introductoryOffer: INTRODUCTORY_OFFER_KEY } : {}),
       ...nativeSelectionMetadata(nativeSelections, paidNativeIds),
       ...(input.intakeId ? { intakeId: input.intakeId, checkoutSource: "generator_upsell" } : {})
@@ -643,6 +651,7 @@ export async function createCoreSubscriptionCheckout(input: {
         billingInterval: input.interval,
         additionalStudentQuantity: String(additionalStudentQuantity),
         checkoutKind: "core_subscription",
+        ...(funnelKey ? { funnelKey } : {}),
         ...(includesMonthlyIntro ? { introductoryOffer: INTRODUCTORY_OFFER_KEY } : {}),
         ...(input.intakeId ? { intakeId: input.intakeId, checkoutSource: "generator_upsell" } : {})
       }
@@ -660,6 +669,7 @@ export async function createPublicCoreSubscriptionCheckout(input: {
   planTier?: string;
   successUrl: string;
   cancelUrl: string;
+  funnelKey?: string | null;
 }) {
   if (!isBillingInterval(input.interval)) {
     throw new Error("Choose monthly or yearly billing.");
@@ -677,6 +687,7 @@ export async function createPublicCoreSubscriptionCheckout(input: {
         additionalStudentQuantity: 0
       })
     : undefined;
+  const funnelKey = input.funnelKey === FIRST_GRADE_FUNNEL_KEY ? FIRST_GRADE_FUNNEL_KEY : null;
   const session = await getStripe().checkout.sessions.create(withTreeschoolCheckoutBranding({
     mode: "subscription",
     success_url: input.successUrl,
@@ -690,6 +701,7 @@ export async function createPublicCoreSubscriptionCheckout(input: {
       billingInterval: input.interval,
       additionalStudentQuantity: "0",
       checkoutKind: "public_core_subscription",
+      ...(funnelKey ? { funnelKey } : {}),
       ...(includesMonthlyIntro ? { introductoryOffer: INTRODUCTORY_OFFER_KEY } : {})
     },
     subscription_data: {
@@ -698,6 +710,7 @@ export async function createPublicCoreSubscriptionCheckout(input: {
         billingInterval: input.interval,
         additionalStudentQuantity: "0",
         checkoutKind: "public_core_subscription",
+        ...(funnelKey ? { funnelKey } : {}),
         ...(includesMonthlyIntro ? { introductoryOffer: INTRODUCTORY_OFFER_KEY } : {})
       }
     }
@@ -1590,6 +1603,389 @@ async function expireAdditionalStudentCheckout(session: Stripe.Checkout.Session)
   ));
 }
 
+type FirstGradePostCheckoutVariant = "full" | "starter";
+type FirstGradePostCheckoutAction =
+  | "accept_full"
+  | "decline_full"
+  | "accept_starter"
+  | "decline_starter";
+
+function stripeObjectId(value: string | { id: string } | null | undefined) {
+  return typeof value === "string" ? value : value?.id ?? null;
+}
+
+function firstGradePostCheckoutThankYouPath(
+  sourceKind: string,
+  sourceCheckoutSessionId: string
+) {
+  if (sourceKind === "public_core_subscription") {
+    return `/membership/complete?session_id=${encodeURIComponent(sourceCheckoutSessionId)}`;
+  }
+  if (sourceKind === "core_subscription") {
+    return "/p/dashboard?checkout=success";
+  }
+  return `/bookstore/success?session_id=${encodeURIComponent(sourceCheckoutSessionId)}`;
+}
+
+async function resolvePostCheckoutPaymentMethod(
+  session: Stripe.Checkout.Session,
+  customerId: string | null
+) {
+  const stripe = getStripe();
+  const paymentIntentId = stripeObjectId(session.payment_intent);
+  if (paymentIntentId) {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    const paymentMethodId = stripeObjectId(paymentIntent.payment_method);
+    if (paymentMethodId) return paymentMethodId;
+  }
+
+  const subscriptionId = stripeObjectId(session.subscription);
+  if (subscriptionId) {
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const paymentMethodId = stripeObjectId(subscription.default_payment_method);
+    if (paymentMethodId) return paymentMethodId;
+  }
+
+  if (customerId) {
+    const customer = await stripe.customers.retrieve(customerId);
+    if (!customer.deleted) {
+      return stripeObjectId(customer.invoice_settings.default_payment_method);
+    }
+  }
+  return null;
+}
+
+async function resolveVerifiedFirstGradeCheckout(sourceCheckoutSessionId: string) {
+  const stripe = getStripe();
+  let session = await stripe.checkout.sessions.retrieve(sourceCheckoutSessionId);
+  const sourceKind = session.metadata?.checkoutSource === "public_pricing"
+    ? "public_core_subscription"
+    : session.metadata?.checkoutKind ?? "";
+  if (
+    session.metadata?.funnelKey !== FIRST_GRADE_FUNNEL_KEY ||
+    !["public_core_subscription", "core_subscription", "native_workbook_bundle"].includes(sourceKind)
+  ) {
+    throw new Error("This checkout is not eligible for the first-grade curriculum offer.");
+  }
+  if (
+    session.status !== "complete" ||
+    !["paid", "no_payment_required"].includes(session.payment_status)
+  ) {
+    throw new Error("The original checkout has not been completed.");
+  }
+
+  if (sourceKind === "public_core_subscription") {
+    await completePublicCoreSubscriptionCheckout(sourceCheckoutSessionId);
+    session = await stripe.checkout.sessions.retrieve(sourceCheckoutSessionId);
+  }
+
+  const email = (
+    session.customer_details?.email ??
+    session.customer_email ??
+    session.metadata?.deliveryEmail ??
+    ""
+  ).trim().toLowerCase();
+  if (!email) throw new Error("The completed checkout has no customer email.");
+  const accountId = session.metadata?.accountId ?? session.client_reference_id ?? null;
+  const customerId = stripeObjectId(session.customer);
+  const paymentMethodId = await resolvePostCheckoutPaymentMethod(session, customerId);
+
+  return {
+    session,
+    sourceKind,
+    email,
+    accountId,
+    customerId,
+    paymentMethodId,
+    thankYouPath: firstGradePostCheckoutThankYouPath(sourceKind, sourceCheckoutSessionId)
+  };
+}
+
+export async function getFirstGradePostCheckoutOffer(sourceCheckoutSessionId: string) {
+  const source = await resolveVerifiedFirstGradeCheckout(sourceCheckoutSessionId);
+  const offer = await resolveJapanesePostCheckoutWorkbookOffer({
+    accountId: source.accountId,
+    email: source.email
+  });
+  const [record] = await db
+    .insert(postCheckoutOffers)
+    .values({
+      sourceCheckoutSessionId,
+      sourceCheckoutKind: source.sourceKind,
+      offerKey: FIRST_GRADE_JAPANESE_OFFER_KEY,
+      accountId: source.accountId,
+      email: source.email,
+      stripeCustomerId: source.customerId,
+      stripePaymentMethodId: source.paymentMethodId,
+      state: "shown",
+      updatedAt: new Date()
+    })
+    .onConflictDoUpdate({
+      target: [
+        postCheckoutOffers.sourceCheckoutSessionId,
+        postCheckoutOffers.offerKey
+      ],
+      set: {
+        accountId: source.accountId,
+        email: source.email,
+        stripeCustomerId: source.customerId,
+        stripePaymentMethodId: source.paymentMethodId,
+        updatedAt: new Date()
+      }
+    })
+    .returning({
+      state: postCheckoutOffers.state,
+      selectedVariant: postCheckoutOffers.selectedVariant
+    });
+
+  return {
+    sourceCheckoutSessionId,
+    offer,
+    state: record.state,
+    selectedVariant: record.selectedVariant,
+    thankYouPath: source.thankYouPath
+  };
+}
+
+function postCheckoutWorkbookMetadata(input: {
+  sourceCheckoutSessionId: string;
+  accountId: string | null;
+  email: string;
+  variant: FirstGradePostCheckoutVariant;
+  items: NonNullable<Awaited<ReturnType<typeof resolveJapanesePostCheckoutWorkbookOffer>>["full"]>["items"];
+}) {
+  return {
+    checkoutKind: "native_workbook_cart",
+    checkoutSource: "post_checkout_offer",
+    sourceCheckoutSessionId: input.sourceCheckoutSessionId,
+    postCheckoutOfferKey: FIRST_GRADE_JAPANESE_OFFER_KEY,
+    postCheckoutVariant: input.variant,
+    itemCount: String(input.items.length),
+    deliveryEmail: input.email,
+    ...(input.accountId ? { accountId: input.accountId } : {}),
+    ...Object.fromEntries(input.items.flatMap((item, index) => [
+      [`kind${index}`, "workbook"],
+      [`item${index}`, item.id],
+      [`version${index}`, item.versionId],
+      [`amount${index}`, String(item.priceInCents)]
+    ]))
+  };
+}
+
+async function createPostCheckoutFallbackSession(input: {
+  sourceCheckoutSessionId: string;
+  source: Awaited<ReturnType<typeof resolveVerifiedFirstGradeCheckout>>;
+  variant: FirstGradePostCheckoutVariant;
+  selectedOffer: NonNullable<Awaited<ReturnType<typeof resolveJapanesePostCheckoutWorkbookOffer>>["full"]>;
+  successUrl: string;
+  cancelUrl: string;
+}) {
+  const metadata = postCheckoutWorkbookMetadata({
+    sourceCheckoutSessionId: input.sourceCheckoutSessionId,
+    accountId: input.source.accountId,
+    email: input.source.email,
+    variant: input.variant,
+    items: input.selectedOffer.items
+  });
+  const session = await getStripe().checkout.sessions.create(
+    withTreeschoolCheckoutBranding({
+      mode: "payment",
+      customer: input.source.customerId ?? undefined,
+      customer_email: input.source.customerId ? undefined : input.source.email,
+      client_reference_id: input.source.accountId ?? undefined,
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      line_items: input.selectedOffer.items.map((item) => ({
+        quantity: 1,
+        price_data: {
+          currency: item.currencyCode.toLowerCase(),
+          unit_amount: item.priceInCents,
+          product_data: {
+            name: item.title,
+            description: item.description.slice(0, 500)
+          }
+        }
+      })),
+      metadata,
+      payment_intent_data: { metadata }
+    }),
+    { idempotencyKey: `post-checkout-fallback:${input.sourceCheckoutSessionId}:${input.variant}` }
+  );
+  await db.update(postCheckoutOffers).set({
+    state: "checkout_required",
+    selectedVariant: input.variant,
+    stripeCheckoutSessionId: session.id,
+    lastError: null,
+    updatedAt: new Date()
+  }).where(and(
+    eq(postCheckoutOffers.sourceCheckoutSessionId, input.sourceCheckoutSessionId),
+    eq(postCheckoutOffers.offerKey, FIRST_GRADE_JAPANESE_OFFER_KEY)
+  ));
+  return { status: "redirect" as const, url: session.url };
+}
+
+async function expireOpenPostCheckoutSession(sourceCheckoutSessionId: string) {
+  const [record] = await db.select({
+    stripeCheckoutSessionId: postCheckoutOffers.stripeCheckoutSessionId
+  }).from(postCheckoutOffers).where(and(
+    eq(postCheckoutOffers.sourceCheckoutSessionId, sourceCheckoutSessionId),
+    eq(postCheckoutOffers.offerKey, FIRST_GRADE_JAPANESE_OFFER_KEY)
+  )).limit(1);
+  if (!record?.stripeCheckoutSessionId) return;
+  const session = await getStripe().checkout.sessions
+    .retrieve(record.stripeCheckoutSessionId)
+    .catch(() => null);
+  if (session?.status === "open") {
+    await getStripe().checkout.sessions.expire(session.id).catch(() => undefined);
+  }
+}
+
+export async function decideFirstGradePostCheckoutOffer(input: {
+  sourceCheckoutSessionId: string;
+  action: FirstGradePostCheckoutAction;
+  successUrl: string;
+  cancelUrl: string;
+}) {
+  const source = await resolveVerifiedFirstGradeCheckout(input.sourceCheckoutSessionId);
+  const current = await getFirstGradePostCheckoutOffer(input.sourceCheckoutSessionId);
+  if (["accepted", "downsell_accepted"].includes(current.state)) {
+    return { status: "complete" as const, thankYouPath: source.thankYouPath };
+  }
+
+  if (input.action === "decline_full") {
+    await expireOpenPostCheckoutSession(input.sourceCheckoutSessionId);
+    const state = current.offer.starter ? "downsell_shown" : "declined";
+    await db.update(postCheckoutOffers).set({
+      state,
+      stripeCheckoutSessionId: null,
+      updatedAt: new Date()
+    }).where(and(
+      eq(postCheckoutOffers.sourceCheckoutSessionId, input.sourceCheckoutSessionId),
+      eq(postCheckoutOffers.offerKey, FIRST_GRADE_JAPANESE_OFFER_KEY)
+    ));
+    return current.offer.starter
+      ? { status: "downsell" as const }
+      : { status: "complete" as const, thankYouPath: source.thankYouPath };
+  }
+
+  if (input.action === "decline_starter") {
+    await expireOpenPostCheckoutSession(input.sourceCheckoutSessionId);
+    await db.update(postCheckoutOffers).set({
+      state: "declined",
+      stripeCheckoutSessionId: null,
+      updatedAt: new Date()
+    }).where(and(
+      eq(postCheckoutOffers.sourceCheckoutSessionId, input.sourceCheckoutSessionId),
+      eq(postCheckoutOffers.offerKey, FIRST_GRADE_JAPANESE_OFFER_KEY)
+    ));
+    return { status: "complete" as const, thankYouPath: source.thankYouPath };
+  }
+
+  const variant: FirstGradePostCheckoutVariant =
+    input.action === "accept_starter" ? "starter" : "full";
+  if (
+    variant === "starter" &&
+    !["downsell_shown", "checkout_required"].includes(current.state)
+  ) {
+    throw new Error("The starter offer is not available at this stage.");
+  }
+  if (
+    variant === "full" &&
+    (
+      current.state === "downsell_shown" ||
+      (current.state === "checkout_required" && current.selectedVariant === "starter")
+    )
+  ) {
+    throw new Error("The full offer is no longer available at this stage.");
+  }
+  const selectedOffer = variant === "starter" ? current.offer.starter : current.offer.full;
+  if (!selectedOffer) {
+    return { status: "complete" as const, thankYouPath: source.thankYouPath };
+  }
+
+  if (!source.customerId || !source.paymentMethodId) {
+    return createPostCheckoutFallbackSession({
+      sourceCheckoutSessionId: input.sourceCheckoutSessionId,
+      source,
+      variant,
+      selectedOffer,
+      successUrl: input.successUrl,
+      cancelUrl: input.cancelUrl
+    });
+  }
+
+  const metadata = postCheckoutWorkbookMetadata({
+    sourceCheckoutSessionId: input.sourceCheckoutSessionId,
+    accountId: source.accountId,
+    email: source.email,
+    variant,
+    items: selectedOffer.items
+  });
+  try {
+    const paymentIntent = await getStripe().paymentIntents.create({
+      amount: selectedOffer.priceInCents,
+      currency: selectedOffer.currencyCode.toLowerCase(),
+      customer: source.customerId,
+      payment_method: source.paymentMethodId,
+      confirm: true,
+      off_session: true,
+      description: `Treeschool ${selectedOffer.title}`,
+      metadata
+    }, {
+      idempotencyKey: `post-checkout-offer:${input.sourceCheckoutSessionId}:${variant}`
+    });
+    if (paymentIntent.status === "succeeded") {
+      await fulfillNativeWorkbookPaymentIntent(paymentIntent);
+      await db.update(postCheckoutOffers).set({
+        state: variant === "starter" ? "downsell_accepted" : "accepted",
+        selectedVariant: variant,
+        stripePaymentIntentId: paymentIntent.id,
+        stripeCheckoutSessionId: null,
+        lastError: null,
+        updatedAt: new Date()
+      }).where(and(
+        eq(postCheckoutOffers.sourceCheckoutSessionId, input.sourceCheckoutSessionId),
+        eq(postCheckoutOffers.offerKey, FIRST_GRADE_JAPANESE_OFFER_KEY)
+      ));
+      return { status: "complete" as const, thankYouPath: source.thankYouPath };
+    }
+    if (paymentIntent.status === "processing") {
+      await db.update(postCheckoutOffers).set({
+        state: variant === "starter" ? "downsell_accepted" : "accepted",
+        selectedVariant: variant,
+        stripePaymentIntentId: paymentIntent.id,
+        stripeCheckoutSessionId: null,
+        lastError: null,
+        updatedAt: new Date()
+      }).where(and(
+        eq(postCheckoutOffers.sourceCheckoutSessionId, input.sourceCheckoutSessionId),
+        eq(postCheckoutOffers.offerKey, FIRST_GRADE_JAPANESE_OFFER_KEY)
+      ));
+      return { status: "complete" as const, thankYouPath: source.thankYouPath };
+    }
+    if (["requires_payment_method", "requires_confirmation", "requires_action"].includes(paymentIntent.status)) {
+      await getStripe().paymentIntents.cancel(paymentIntent.id).catch(() => undefined);
+    }
+  } catch (error) {
+    await db.update(postCheckoutOffers).set({
+      lastError: error instanceof Error ? error.message.slice(0, 1000) : "Saved payment method could not be charged.",
+      updatedAt: new Date()
+    }).where(and(
+      eq(postCheckoutOffers.sourceCheckoutSessionId, input.sourceCheckoutSessionId),
+      eq(postCheckoutOffers.offerKey, FIRST_GRADE_JAPANESE_OFFER_KEY)
+    ));
+  }
+
+  return createPostCheckoutFallbackSession({
+    sourceCheckoutSessionId: input.sourceCheckoutSessionId,
+    source,
+    variant,
+    selectedOffer,
+    successUrl: input.successUrl,
+    cancelUrl: input.cancelUrl
+  });
+}
+
 export async function handleStripeWebhook(input: {
   body: string;
   signature: string | null;
@@ -1613,6 +2009,28 @@ export async function handleStripeWebhook(input: {
     }
     await fulfillAdditionalStudentCheckout(event.data.object);
     await fulfillNativeWorkbookCheckout(event.data.object);
+    if (event.data.object.metadata?.checkoutSource === "post_checkout_offer") {
+      await db.update(postCheckoutOffers).set({
+        state: event.data.object.metadata.postCheckoutVariant === "starter"
+          ? "downsell_accepted"
+          : "accepted",
+        selectedVariant: event.data.object.metadata.postCheckoutVariant ?? null,
+        stripePaymentIntentId: stripeObjectId(event.data.object.payment_intent),
+        stripeCheckoutSessionId: null,
+        lastError: null,
+        updatedAt: new Date()
+      }).where(and(
+        eq(
+          postCheckoutOffers.sourceCheckoutSessionId,
+          event.data.object.metadata.sourceCheckoutSessionId ?? ""
+        ),
+        eq(postCheckoutOffers.offerKey, FIRST_GRADE_JAPANESE_OFFER_KEY)
+      ));
+    }
+  }
+
+  if (event.type === "payment_intent.succeeded") {
+    await fulfillNativeWorkbookPaymentIntent(event.data.object);
   }
 
   if (event.type === "checkout.session.async_payment_succeeded") {

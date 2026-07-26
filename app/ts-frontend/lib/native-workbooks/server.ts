@@ -54,6 +54,23 @@ export type NativeWorkbookCatalogItem = {
   memberWorkbookIds: string[];
   isRecommendedCurriculum: boolean;
   recommendedGradeLevel: number | null;
+  curriculumCoverage: Array<{
+    gradeLevel: number;
+    role: "core" | "supplemental" | "remedial" | "enrichment";
+    scores: {
+      mathematics: number;
+      languageArts: number;
+      science: number;
+      socialStudies: number;
+    };
+    competencies: Array<{
+      competencyId: string;
+      label: string;
+      depth: "introduced" | "practiced" | "assessed" | "comprehensive";
+      strength: number;
+      confidence: "low" | "medium" | "high";
+    }>;
+  }>;
   progressSummary?: {
     total: number;
     completed: number;
@@ -404,6 +421,7 @@ export function createNativeWorkbookCheckout(input: {
   successUrl: string;
   cancelUrl: string;
   addToLearningYearId?: string | null;
+  funnelKey?: string | null;
 }) {
   return postJson<{ id: string; url: string | null }>(
     "/internal/native-workbooks/checkout",

@@ -36,6 +36,8 @@ import {
   createCustomerPortalSession,
   createMembershipPlanChangeSession,
   createStudentProfileWithBilling,
+  decideFirstGradePostCheckoutOffer,
+  getFirstGradePostCheckoutOffer,
   getPlanGeneratorPricing,
   getBillingOverview,
   handleStripeWebhook,
@@ -1846,6 +1848,7 @@ const server = Bun.serve({
         planTier?: string;
         successUrl?: string;
         cancelUrl?: string;
+        funnelKey?: string | null;
       };
 
       if (!body.userId || !body.interval || !body.successUrl || !body.cancelUrl) {
@@ -1864,7 +1867,8 @@ const server = Bun.serve({
             interval: body.interval,
             planTier: body.planTier,
             successUrl: body.successUrl,
-            cancelUrl: body.cancelUrl
+            cancelUrl: body.cancelUrl,
+            funnelKey: body.funnelKey
           })
         );
       } catch (error) {
@@ -1883,6 +1887,7 @@ const server = Bun.serve({
         planTier?: string;
         successUrl?: string;
         cancelUrl?: string;
+        funnelKey?: string | null;
       };
 
       if (!body.interval || !body.successUrl || !body.cancelUrl) {
@@ -1897,7 +1902,8 @@ const server = Bun.serve({
           interval: body.interval,
           planTier: body.planTier,
           successUrl: body.successUrl,
-          cancelUrl: body.cancelUrl
+          cancelUrl: body.cancelUrl,
+          funnelKey: body.funnelKey
         }));
       } catch (error) {
         return Response.json(
@@ -1917,6 +1923,49 @@ const server = Bun.serve({
       } catch (error) {
         return Response.json(
           { error: error instanceof Error ? error.message : "Failed to finish checkout." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/billing/post-checkout-offer" && request.method === "GET") {
+      const sessionId = url.searchParams.get("sessionId");
+      if (!sessionId) {
+        return Response.json({ error: "sessionId is required." }, { status: 400 });
+      }
+      try {
+        return Response.json(await getFirstGradePostCheckoutOffer(sessionId));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Could not load the offer." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/billing/post-checkout-offer/decision" && request.method === "POST") {
+      const body = (await request.json()) as {
+        sourceCheckoutSessionId?: string;
+        action?: "accept_full" | "decline_full" | "accept_starter" | "decline_starter";
+        successUrl?: string;
+        cancelUrl?: string;
+      };
+      if (!body.sourceCheckoutSessionId || !body.action || !body.successUrl || !body.cancelUrl) {
+        return Response.json(
+          { error: "sourceCheckoutSessionId, action, successUrl, and cancelUrl are required." },
+          { status: 400 }
+        );
+      }
+      try {
+        return Response.json(await decideFirstGradePostCheckoutOffer({
+          sourceCheckoutSessionId: body.sourceCheckoutSessionId,
+          action: body.action,
+          successUrl: body.successUrl,
+          cancelUrl: body.cancelUrl
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Could not update the offer." },
           { status: 400 }
         );
       }

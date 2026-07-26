@@ -115,14 +115,14 @@ export function BookstoreCatalog({
             const cartFull = cartIds.length >= MAX_CART_ITEMS && !inCart;
             return (
               <article key={workbook.id} className="flex min-h-48 w-full max-w-60 flex-col items-center px-1 py-2 text-center">
-                <Link href={`/bookstore/${workbook.slug}`} className="relative mb-5 block aspect-[3/4] w-full max-w-44 overflow-hidden rounded-[14px] bg-white shadow-[0_8px_20px_rgba(80,58,39,0.10)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_26px_rgba(80,58,39,0.15)]" aria-label={`View ${workbook.title}`}>
+                <Link href={`/bookstore/${workbook.slug}`} className={`relative mb-5 block w-full max-w-44 overflow-hidden rounded-[14px] bg-white shadow-[0_8px_20px_rgba(80,58,39,0.10)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_26px_rgba(80,58,39,0.15)] ${workbook.catalogKind === "bundle" ? "aspect-square" : "aspect-[3/4]"}`} aria-label={`View ${workbook.title}`}>
                   <span className="absolute inset-0 grid place-items-center text-[#a9835c]" aria-hidden="true">
                     <svg viewBox="0 0 48 48" className="h-14 w-14" fill="none">
                       <path d="M10 8.5A4.5 4.5 0 0 1 14.5 4H38v34H14.5A4.5 4.5 0 0 0 10 42.5v-34Z" fill="currentColor" opacity=".18" />
                       <path d="M10 8.5A4.5 4.5 0 0 1 14.5 4H38v34H14.5A4.5 4.5 0 0 0 10 42.5m0-34v34m0 0A4.5 4.5 0 0 1 14.5 38H38M16 12h15M16 18h11" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </span>
-                  {workbook.thumbnailUrl ? <Image src={workbook.thumbnailUrl} alt={`${workbook.title} cover`} fill unoptimized className="object-cover" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
+                  {workbook.thumbnailUrl ? <Image src={workbook.thumbnailUrl} alt={`${workbook.title} cover`} fill unoptimized className={workbook.catalogKind === "bundle" ? "object-contain p-1" : "object-cover"} onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
                 </Link>
                 <Link href={`/bookstore/${workbook.slug}`} className="text-2xl font-semibold leading-tight tracking-[-0.035em] hover:text-[#567b40] hover:underline hover:underline-offset-4">{workbook.title}</Link>
                 {workbook.catalogKind === "bundle" ? <p className="mt-2 rounded-full bg-[#e7f0de] px-3 py-1 text-xs font-black text-[#4f7339]">Bundle · {workbook.memberCount} workbooks</p> : null}

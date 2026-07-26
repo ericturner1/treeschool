@@ -45,7 +45,7 @@ type PathwayStripProps = {
     href: string;
     linkLabel: string;
   };
-  tone: "green" | "cream" | "warm" | "gold";
+  tone: "green" | "cream" | "blue" | "lavender";
   actionFirst?: boolean;
 };
 
@@ -53,23 +53,35 @@ function PathwayStrip({ item, tone, actionFirst = false }: PathwayStripProps) {
   const toneClass =
     tone === "green"
       ? "border-[#b8cba7] bg-[#e8f0e1]"
-      : tone === "gold"
-        ? "border-[#d0b674] bg-[#eee1b9]"
-      : tone === "warm"
-        ? "border-[#d7bd98] bg-[#f2e6d3]"
+      : tone === "blue"
+        ? "border-[#b9ccd7] bg-[#e9f1f5]"
+      : tone === "lavender"
+        ? "border-[#d1c8dc] bg-[#f0edf5]"
         : "border-[#dfcfb8] bg-[#fffaf2]";
+  const accentClass =
+    tone === "blue"
+      ? "text-[#496a78]"
+      : tone === "lavender"
+        ? "text-[#675d7a]"
+        : tone === "green"
+          ? "text-[#486338]"
+          : "text-earth";
   const buttonClass =
     tone === "green"
       ? "cta-button--light"
-      : tone === "cream" || tone === "gold"
+      : tone === "blue"
+        ? "border-[#3f6371] bg-[#557b8a] text-white shadow-[0_7px_0_#3f6371] hover:bg-[#496f7e] hover:shadow-[0_11px_0_#345561]"
+      : tone === "lavender"
+        ? "border-[#514861] bg-[#706583] text-white shadow-[0_7px_0_#514861] hover:bg-[#645a77] hover:shadow-[0_11px_0_#453d53]"
+      : tone === "cream"
         ? "cta-button--dark"
-        : "border-[#8f6544] bg-[#b47b42] text-white shadow-[0_7px_0_#8f6544] hover:bg-[#a66f3a] hover:shadow-[0_11px_0_#795536]";
+        : "cta-button--dark";
 
   return (
     <section className={`border-b ${toneClass}`}>
       <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="text-center">
-          <p className="label-font text-xs font-black uppercase tracking-[0.09em] text-earth">
+          <p className={`label-font text-xs font-black uppercase tracking-[0.09em] ${accentClass}`}>
             {item.eyebrow}
           </p>
           <h2 className="mt-1.5 text-2xl font-semibold tracking-[-0.03em] text-ink sm:text-[28px]">
@@ -211,7 +223,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         </div>
       </section>
 
-      <PathwayStrip item={home.paths.items[0]} tone="warm" />
+      <PathwayStrip item={home.paths.items[0]} tone="blue" />
 
       <section id="example" className="border-b border-[#d8c7ad] bg-[#fffaf2]">
         <div className="mx-auto w-full max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
@@ -289,7 +301,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         </div>
       </section>
 
-      <PathwayStrip item={home.paths.items[1]} tone="gold" actionFirst />
+      <PathwayStrip item={home.paths.items[1]} tone="lavender" actionFirst />
 
       <section className="border-y border-[#d8c7ad] bg-[#e8f0e1]">
         <div className="mx-auto w-full max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
@@ -311,7 +323,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         </div>
       </section>
 
-      <PathwayStrip item={home.paths.items[2]} tone="warm" />
+      <PathwayStrip item={home.paths.items[2]} tone="blue" />
 
       <section className="bg-[#f7f1e7]">
         <div className="mx-auto w-full max-w-4xl px-4 py-14 text-center sm:px-6 lg:px-8">
@@ -330,6 +342,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           </div>
         </div>
       </section>
+
+      <PathwayStrip item={home.paths.items[3]} tone="green" actionFirst />
 
       <footer className="bg-[#6f513e] text-[#f7eddf]">
         <div className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8">

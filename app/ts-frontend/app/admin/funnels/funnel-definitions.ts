@@ -1,0 +1,184 @@
+export type FunnelStep = {
+  name: string;
+  description: string;
+  href?: string;
+  linkLabel?: string;
+  kind?: "landing" | "checkout" | "offer" | "fulfillment";
+};
+
+export type Funnel = {
+  id: string;
+  name: string;
+  status: string;
+  audience: string;
+  objective: string;
+  landingHref: string;
+  landingLabel: string;
+  steps: FunnelStep[];
+};
+
+export const FUNNELS: Funnel[] = [
+  {
+    id: "first-grade-curriculum",
+    name: "First-grade curriculum",
+    status: "Primary launch funnel",
+    audience: "Parents looking for a complete, printable first-grade curriculum.",
+    objective: "Sell the core curriculum once or convert the parent to a Treeschool membership.",
+    landingHref: "/first-grade-homeschool-curriculum",
+    landingLabel: "First-grade curriculum landing page",
+    steps: [
+      {
+        name: "Landing page",
+        description: "Introduces the complete first-grade curriculum, standards coverage, included workbooks, and both buying paths.",
+        href: "/first-grade-homeschool-curriculum",
+        linkLabel: "Open landing page",
+        kind: "landing"
+      },
+      {
+        name: "Purchase choice",
+        description: "An order-bump dialog asks whether the parent wants the curriculum alone or the curriculum with Treeschool planning and records.",
+        href: "/first-grade-homeschool-curriculum#choose-your-path",
+        linkLabel: "Open buying section",
+        kind: "checkout"
+      },
+      {
+        name: "Stripe checkout",
+        description: "Stripe securely completes either the one-time curriculum purchase or the selected membership checkout.",
+        kind: "checkout"
+      },
+      {
+        name: "Beginner Japanese upsell",
+        description: "Offers the complete Beginner Japanese PDF workbook bundle as a separate one-time addition.",
+        href: "/admin/funnels/first-grade-curriculum/upsell",
+        linkLabel: "Preview upsell",
+        kind: "offer"
+      },
+      {
+        name: "Japanese A downsell",
+        description: "If the bundle is declined, offers the first Japanese workbook by itself at a lower entry price.",
+        href: "/admin/funnels/first-grade-curriculum/downsell",
+        linkLabel: "Preview downsell",
+        kind: "offer"
+      },
+      {
+        name: "Thank you and fulfillment",
+        description: "Confirms the order, emails secure PDF download links, grants account access, and starts membership setup when applicable.",
+        kind: "fulfillment"
+      }
+    ]
+  },
+  {
+    id: "first-time-homeschooler",
+    name: "First-time homeschooler",
+    status: "Audience funnel",
+    audience: "Parents preparing to homeschool a first grader for the first time.",
+    objective: "Build confidence, explain the paper-based system, and lead the parent toward a Treeschool plan.",
+    landingHref: "/first-grade-homeschool",
+    landingLabel: "First-time homeschool landing page",
+    steps: [
+      {
+        name: "Landing page",
+        description: "Answers the beginner parent’s first questions and presents a clear way to begin first grade.",
+        href: "/first-grade-homeschool",
+        linkLabel: "Open landing page",
+        kind: "landing"
+      },
+      {
+        name: "Plans",
+        description: "Compares Single and Standard membership options and explains the introductory first month.",
+        href: "/pricing",
+        linkLabel: "Open plans",
+        kind: "checkout"
+      },
+      {
+        name: "Stripe checkout",
+        description: "Collects payment details and creates the selected recurring membership.",
+        kind: "checkout"
+      },
+      {
+        name: "Account setup",
+        description: "The parent signs in, adds a student, selects the curriculum, and begins building the school year.",
+        kind: "fulfillment"
+      }
+    ]
+  },
+  {
+    id: "switch-to-paper",
+    name: "Switch to paper-based homeschool",
+    status: "Audience funnel",
+    audience: "Families already homeschooling who want less screen time, a calmer routine, or a lower-cost alternative.",
+    objective: "Position Treeschool as the practical paper-based replacement for a screen-heavy homeschool platform.",
+    landingHref: "/switch-to-paper-based-homeschool",
+    landingLabel: "Switch-to-paper landing page",
+    steps: [
+      {
+        name: "Landing page",
+        description: "Names the screen-time problem and shows how printable workbooks and weekly plans change the daily experience.",
+        href: "/switch-to-paper-based-homeschool",
+        linkLabel: "Open landing page",
+        kind: "landing"
+      },
+      {
+        name: "Plans",
+        description: "Lets the parent compare the student and teacher limits of the available memberships.",
+        href: "/pricing",
+        linkLabel: "Open plans",
+        kind: "checkout"
+      },
+      {
+        name: "Stripe checkout",
+        description: "Completes the selected membership purchase securely.",
+        kind: "checkout"
+      },
+      {
+        name: "Move the school year",
+        description: "The parent adds Treeschool or existing PDF workbooks and creates a printable lesson plan without losing the paper-first routine.",
+        kind: "fulfillment"
+      }
+    ]
+  },
+  {
+    id: "no-subscription",
+    name: "Homeschool without a subscription",
+    status: "One-time purchase funnel",
+    audience: "Parents who want printable curriculum but do not want another recurring subscription.",
+    objective: "Sell standalone workbooks and bundles while introducing Treeschool’s broader paper-based approach.",
+    landingHref: "/homeschool-without-a-subscription",
+    landingLabel: "No-subscription landing page",
+    steps: [
+      {
+        name: "Landing page",
+        description: "Leads with ownership, printable PDFs, and the freedom to buy without beginning a membership.",
+        href: "/homeschool-without-a-subscription",
+        linkLabel: "Open landing page",
+        kind: "landing"
+      },
+      {
+        name: "Bookstore",
+        description: "Lets the parent browse available grades, subjects, individual workbooks, and bundles.",
+        href: "/bookstore",
+        linkLabel: "Open bookstore",
+        kind: "checkout"
+      },
+      {
+        name: "Product detail",
+        description: "Explains the workbook or bundle, previews its pages, and collects the delivery email.",
+        kind: "checkout"
+      },
+      {
+        name: "Stripe checkout",
+        description: "Completes the one-time purchase without creating a recurring charge.",
+        kind: "checkout"
+      },
+      {
+        name: "Email delivery",
+        description: "Emails secure PDF download links and keeps owned workbooks available in the parent’s account.",
+        kind: "fulfillment"
+      }
+    ]
+  }
+];
+
+export function getFunnel(id: string) {
+  return FUNNELS.find((funnel) => funnel.id === id) ?? null;
+}

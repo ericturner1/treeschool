@@ -11,6 +11,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ["/pricing", 0.9, "monthly"],
     ["/homeschool-lesson-plan-generator", 0.9, "monthly"],
     ["/first-grade-homeschool", 0.9, "monthly"],
+    ["/first-grade-homeschool-curriculum", 0.95, "weekly"],
     ["/switch-to-paper-based-homeschool", 0.9, "monthly"],
     ["/homeschool-without-a-subscription", 0.85, "monthly"],
     ["/bookstore", 0.8, "weekly"],

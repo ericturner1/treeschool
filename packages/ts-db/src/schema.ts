@@ -744,6 +744,40 @@ export const nativeWorkbookPurchases = pgTable(
   })
 );
 
+export const postCheckoutOffers = pgTable(
+  "post_checkout_offers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sourceCheckoutSessionId: text("source_checkout_session_id").notNull(),
+    sourceCheckoutKind: text("source_checkout_kind").notNull(),
+    offerKey: text("offer_key").notNull(),
+    accountId: uuid("account_id").references(() => accounts.id, { onDelete: "set null" }),
+    email: text("email").notNull(),
+    stripeCustomerId: text("stripe_customer_id"),
+    stripePaymentMethodId: text("stripe_payment_method_id"),
+    state: text("state").notNull().default("shown"),
+    selectedVariant: text("selected_variant"),
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
+    stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    sourceOfferUnique: unique("post_checkout_offers_source_offer_unique").on(
+      table.sourceCheckoutSessionId,
+      table.offerKey
+    ),
+    paymentIntentUnique: unique("post_checkout_offers_payment_intent_unique").on(
+      table.stripePaymentIntentId
+    ),
+    accountIndex: index("post_checkout_offers_account_idx").on(
+      table.accountId,
+      table.createdAt
+    )
+  })
+);
+
 export const nativeWorkbookDownloadLinks = pgTable(
   "native_workbook_download_links",
   {

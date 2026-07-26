@@ -14,8 +14,8 @@ export const firstGradeHomeschoolConfig: MarketingFunnelConfig = {
   },
   secondaryCta: {
     kind: "link",
-    label: "See how it works",
-    href: "#how-it-works"
+    label: "Explore the curriculum",
+    href: "/first-grade-homeschool-curriculum"
   },
   heroCard: {
     eyebrow: "Your first week",

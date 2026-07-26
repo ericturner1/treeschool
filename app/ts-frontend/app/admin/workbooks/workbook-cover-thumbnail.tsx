@@ -3,7 +3,15 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
-export function WorkbookCoverThumbnail({ title, thumbnailUrl }: { title: string; thumbnailUrl: string | null }) {
+export function WorkbookCoverThumbnail({
+  title,
+  thumbnailUrl,
+  fit = "cover"
+}: {
+  title: string;
+  thumbnailUrl: string | null;
+  fit?: "cover" | "contain";
+}) {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -19,5 +27,5 @@ export function WorkbookCoverThumbnail({ title, thumbnailUrl }: { title: string;
     );
   }
 
-  return <Image src={thumbnailUrl} alt={`${title} cover`} fill unoptimized className="object-cover" onError={() => setFailed(true)} />;
+  return <Image src={thumbnailUrl} alt={`${title} cover`} fill unoptimized className={fit === "contain" ? "object-contain p-1" : "object-cover"} onError={() => setFailed(true)} />;
 }

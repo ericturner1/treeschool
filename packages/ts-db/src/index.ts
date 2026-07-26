@@ -45,6 +45,7 @@ export {
   nativeWorkbookBundles,
   nativeWorkbookDownloadLinks,
   nativeWorkbookJobs,
+  postCheckoutOffers,
   nativeWorkbookPurchases,
   nativeWorkbookVersions,
   nativeWorkbooks,
