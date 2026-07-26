@@ -75,15 +75,18 @@ test.describe("production purchase paths", () => {
   });
 
   test("a bookstore product purchase opens Stripe", async ({ page }) => {
+    await page.context().clearCookies();
     await page.goto("/bookstore", { waitUntil: "domcontentloaded" });
     const product = page.locator('article a[aria-label^="View "]').first();
     await expect(product).toBeVisible();
-    await product.click();
+    await Promise.all([
+      page.waitForURL(/\/bookstore\/[^/?#]+$/),
+      product.click()
+    ]);
 
     const email = page.getByLabel("Where should we send your workbook?");
-    if (await email.isVisible()) {
-      await email.fill(`revenue-smoke+product-${Date.now()}@treehomeschool.com`);
-    }
+    await expect(email).toBeVisible();
+    await email.fill(`revenue-smoke+product-${Date.now()}@treehomeschool.com`);
     await expectStripeCheckout(page, () =>
       page.getByRole("button", { name: /Buy (and download|standalone PDF|bundle)/ }).click()
     );
