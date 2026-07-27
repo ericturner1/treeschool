@@ -127,7 +127,7 @@ const en = {
       columns: [
         {
           title: "Explore",
-          links: ["Pricing", "Bookstore", "Blog"]
+          links: ["Pricing", "Bookstore", "Blog", "FAQ"]
         },
         {
           title: "Get started",

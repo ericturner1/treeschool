@@ -18,7 +18,8 @@ import {
 } from "../../../../../lib/paper-plans/server";
 import {
   attachNativeWorkbook,
-  createNativeWorkbookCheckout
+  createNativeWorkbookCheckout,
+  upgradeNativeWorkbookEdition
 } from "../../../../../lib/native-workbooks/server";
 import {
   evaluatePaperPlanCompleteness,
@@ -118,6 +119,30 @@ export async function addNativeWorkbooksToPlanAction(formData: FormData) {
   } catch (error) {
     if (error && typeof error === "object" && "digest" in error) throw error;
     redirect(destination(profileId, "error", error instanceof Error ? error.message : "Could not add the selected workbooks."));
+  }
+}
+
+export async function upgradeNativeWorkbookEditionAction(formData: FormData) {
+  const userId = await requireUserId(formData);
+  const profileId = field(formData, "profileId");
+  try {
+    const result = await upgradeNativeWorkbookEdition({
+      userId,
+      learningYearId: field(formData, "learningYearId"),
+      documentId: field(formData, "documentId")
+    });
+    revalidateCurriculum(profileId);
+    const message = result.planningStarted
+      ? `${result.editionLabel} is now selected. Treeschool is rebuilding only the untouched future weeks.`
+      : `${result.editionLabel} is now selected. ${result.planningMessage ?? "Continue building the lesson plan when you are ready."}`;
+    redirect(destination(profileId, "message", message));
+  } catch (error) {
+    if (error && typeof error === "object" && "digest" in error) throw error;
+    redirect(destination(
+      profileId,
+      "error",
+      error instanceof Error ? error.message : "Could not update the workbook edition."
+    ));
   }
 }
 

@@ -4,12 +4,13 @@ import { getCurrentUser } from "../../../lib/auth/server";
 import { listAdminNativeWorkbooks } from "../../../lib/native-workbooks/server";
 import { formatNativeWorkbookGradeRange } from "../../../lib/native-workbooks/grades";
 import { curriculumAreaLabel } from "../../../lib/native-workbooks/curriculum-areas";
-import { publishWorkbookAction, retryWorkbookIndexingAction, setWorkbookBundleRecommendationAction, setWorkbookBundleVisibilityAction, setWorkbookVisibilityAction } from "./actions";
+import { discardWorkbookEditionFormAction, publishWorkbookAction, retryWorkbookIndexingAction, setWorkbookBundleRecommendationAction, setWorkbookBundleVisibilityAction, setWorkbookVisibilityAction } from "./actions";
 import { CatalogItemCreator } from "./catalog-item-creator";
 import { WorkbookDeleteButton } from "./workbook-delete-button";
 import { WorkbookDetailsEditor } from "./workbook-details-editor";
 import { WorkbookCoverThumbnail } from "./workbook-cover-thumbnail";
 import { WorkbookPdfReplacement } from "./workbook-pdf-replacement";
+import { WorkbookEditionCreator } from "./workbook-edition-creator";
 import { WorkbookBundleEditor } from "./workbook-bundle-editor";
 import { PackAutoRefresh } from "../../pack/upload/auto-refresh";
 
@@ -22,6 +23,20 @@ function bundleSharedGradeLevels(members: Array<{ gradeMin: number; gradeMax: nu
   const minimum = Math.max(...members.map((member) => member.gradeMin));
   const maximum = Math.min(...members.map((member) => member.gradeMax));
   return minimum <= maximum ? Array.from({ length: maximum - minimum + 1 }, (_, index) => minimum + index) : [];
+}
+
+function ordinal(value: number) {
+  const remainder100 = value % 100;
+  const suffix = remainder100 >= 11 && remainder100 <= 13
+    ? "th"
+    : value % 10 === 1
+      ? "st"
+      : value % 10 === 2
+        ? "nd"
+        : value % 10 === 3
+          ? "rd"
+          : "th";
+  return `${value}${suffix} edition`;
 }
 
 export default async function AdminWorkbooksPage() {
@@ -159,15 +174,54 @@ export default async function AdminWorkbooksPage() {
                       </>
                     ) : (
                       <>
-                        {workbook.analysisStatus === "ready" && !workbook.active ? <form action={publishWorkbookAction.bind(null, workbook.id)}><button className="cta-button cta-button--dark cta-button--small">Publish</button></form> : null}
+                        {workbook.canPublishVersion ? <form action={publishWorkbookAction.bind(null, workbook.id)}><button className="cta-button cta-button--dark cta-button--small">Publish new edition</button></form> : null}
+                        {workbook.analysisStatus === "ready" && !workbook.active && !workbook.canPublishVersion ? <form action={publishWorkbookAction.bind(null, workbook.id)}><button className="cta-button cta-button--dark cta-button--small">Publish</button></form> : null}
                         {workbook.analysisStatus === "failed" ? <form action={retryWorkbookIndexingAction.bind(null, workbook.id)}><button className="cta-button cta-button--dark cta-button--small">Retry indexing</button></form> : null}
+                        {workbook.versionId && workbook.releaseStatus === "draft" && workbook.analysisStatus === "failed" ? (
+                          <form action={discardWorkbookEditionFormAction.bind(
+                            null,
+                            workbook.id,
+                            workbook.versionId
+                          )}>
+                            <button className="cta-button cta-button--outline cta-button--small">Discard draft edition</button>
+                          </form>
+                        ) : null}
                         {workbook.active ? <form action={setWorkbookVisibilityAction.bind(null, workbook.id, false)}><button className="cta-button cta-button--outline cta-button--small">Hide from store</button></form> : workbook.status === "unpublished" ? <form action={setWorkbookVisibilityAction.bind(null, workbook.id, true)}><button className="cta-button cta-button--light cta-button--small">Republish</button></form> : null}
                         <WorkbookDetailsEditor workbook={workbook} prerequisiteChoices={prerequisiteChoices.filter((choice) => choice.id !== workbook.id)} subjects={subjects} />
                         {workbook.canReplacePdf ? <WorkbookPdfReplacement workbookId={workbook.id} title={workbook.title} /> : null}
+                        {workbook.isActiveVersion && workbook.analysisStatus === "ready" ? (
+                          <WorkbookEditionCreator
+                            workbookId={workbook.id}
+                            title={workbook.title}
+                            nextEditionLabel={ordinal(new Set(workbook.releases.map((release) => release.editionId)).size + 1)}
+                          />
+                        ) : null}
                         <WorkbookDeleteButton workbookId={workbook.id} title={workbook.title} />
                       </>
                     )}
                   </div>
+                  {workbook.releases.length ? (
+                    <details className="mt-4 rounded-[14px] border border-[#eadbc5] bg-white/65 px-3 py-2">
+                      <summary className="cursor-pointer text-xs font-bold text-earth">
+                        Release history · {new Set(workbook.releases.map((release) => release.editionId)).size} edition{new Set(workbook.releases.map((release) => release.editionId)).size === 1 ? "" : "s"} · {workbook.releases.length} revision{workbook.releases.length === 1 ? "" : "s"}
+                      </summary>
+                      <ol className="mt-2 grid gap-2">
+                        {workbook.releases.map((release) => (
+                          <li key={release.versionId} className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] bg-[#fffaf2] px-3 py-2 text-xs text-ink/65">
+                            <span>
+                              <strong className="text-ink">{release.editionLabel}</strong>
+                              {" · "}Revision {release.revisionNumber}
+                              {" · "}{release.pageCount || "—"} pages
+                            </span>
+                            <span className="rounded-full bg-[#edf3e5] px-2 py-1 font-bold capitalize text-[#52713f]">
+                              {release.releaseStatus === "draft" ? release.analysisStatus.replaceAll("_", " ") : release.releaseStatus}
+                            </span>
+                            {release.changeNotes ? <span className="w-full text-ink/50">{release.changeNotes}</span> : null}
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
+                  ) : null}
                 </article>
               );})}
             </div>

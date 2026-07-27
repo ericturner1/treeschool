@@ -17,16 +17,18 @@ import {
   planVersionWeeks,
   profiles,
   studentLessonDispositions,
+  studentWorkbookEditionUnitCarryovers,
   studentWorkbookUnitProgress,
   weeklyPlanJobs,
   weeklyPlanDayPdfAssets,
+  weeklyPlanDownloadEvents,
   weeklyPlanDaySubjectGrades,
   weeklyPlanItems,
   weeklyPlanPdfAssets,
   weeklyPlanSubjectGrades,
   weeklyPlans
 } from "ts-db";
-import { and, asc, desc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -4939,15 +4941,47 @@ async function loadMaterialPrerequisiteMap(learningYearId: string) {
 
 async function loadPlanningProgress(
   profileId: string,
+  learningYearId: string,
   documents: Array<{ id: string; nativeWorkbookVersionId: string | null }>
 ) {
-  const progressByDocument = await loadWorkbookProgressByDocument({ profileId, documents });
+  const targetVersionIds = Array.from(new Set(documents.flatMap((document) =>
+    document.nativeWorkbookVersionId ? [document.nativeWorkbookVersionId] : []
+  )));
+  const [progressByDocument, carryovers] = await Promise.all([
+    loadWorkbookProgressByDocument({ profileId, documents }),
+    targetVersionIds.length
+      ? db.select({
+          nativeWorkbookVersionId:
+            studentWorkbookEditionUnitCarryovers.toNativeWorkbookVersionId,
+          sourceUnitId: studentWorkbookEditionUnitCarryovers.toSourceUnitId
+        }).from(studentWorkbookEditionUnitCarryovers).where(and(
+          eq(studentWorkbookEditionUnitCarryovers.profileId, profileId),
+          eq(studentWorkbookEditionUnitCarryovers.sourceLearningYearId, learningYearId),
+          inArray(
+            studentWorkbookEditionUnitCarryovers.toNativeWorkbookVersionId,
+            targetVersionIds
+          )
+        ))
+      : Promise.resolve([])
+  ]);
+  const carryoversByVersionId = new Map<string, string[]>();
+  for (const carryover of carryovers) {
+    carryoversByVersionId.set(carryover.nativeWorkbookVersionId, [
+      ...(carryoversByVersionId.get(carryover.nativeWorkbookVersionId) ?? []),
+      carryover.sourceUnitId
+    ]);
+  }
   return new Map(documents.map((document) => [
     document.id,
     {
-      excludedSourceUnitIds: (progressByDocument.get(document.id) ?? [])
-        .filter((progress) => progress.status === "completed" || progress.status === "mastered")
-        .map((progress) => progress.sourceUnitId),
+      excludedSourceUnitIds: Array.from(new Set([
+        ...(progressByDocument.get(document.id) ?? [])
+          .filter((progress) => progress.status === "completed" || progress.status === "mastered")
+          .map((progress) => progress.sourceUnitId),
+        ...(document.nativeWorkbookVersionId
+          ? carryoversByVersionId.get(document.nativeWorkbookVersionId) ?? []
+          : [])
+      ])),
       deferredSourceUnitIds: (progressByDocument.get(document.id) ?? [])
         .filter((progress) => progress.status === "deferred")
         .map((progress) => progress.sourceUnitId)
@@ -4957,9 +4991,10 @@ async function loadPlanningProgress(
 
 async function loadPlanningProgressExclusions(
   profileId: string,
+  learningYearId: string,
   documents: Array<{ id: string; nativeWorkbookVersionId: string | null }>
 ) {
-  const progress = await loadPlanningProgress(profileId, documents);
+  const progress = await loadPlanningProgress(profileId, learningYearId, documents);
   return new Map(Array.from(progress, ([documentId, state]) => [
     documentId,
     state.excludedSourceUnitIds
@@ -4993,6 +5028,7 @@ async function generateOneWeekPlan(input: {
   );
   const progressByDocument = await loadPlanningProgress(
     input.year.profileId,
+    input.year.id,
     input.printableDocuments
   );
   const deterministicWeeks = repairStagedPlanMetadata({
@@ -5447,7 +5483,11 @@ async function validatePersistedLearningYearMetadata(
       }).from(contentDocuments).where(inArray(contentDocuments.id, documentIds))
     : [];
   const materialSetById = await loadMaterialPrerequisiteMap(year.id);
-  const excludedUnitIdsByDocument = await loadPlanningProgressExclusions(year.profileId, documents);
+  const excludedUnitIdsByDocument = await loadPlanningProgressExclusions(
+    year.profileId,
+    year.id,
+    documents
+  );
   return validatePlanMetadata({
     totalWeeks: year.totalWeeks,
     teachingDaysPerWeek: year.teachingDaysPerWeek,
@@ -5656,7 +5696,13 @@ async function finalizePlanVersionIfReady(learningYearId: string, planVersionId:
       .innerJoin(weeklyPlanItems, eq(weeklyPlanItems.weeklyPlanId, weeklyPlans.id))
       .where(and(
         eq(weeklyPlans.learningYearId, learningYearId),
-        inArray(weeklyPlans.status, ["in_progress", "completed"])
+        or(
+          inArray(weeklyPlans.status, ["in_progress", "completed"]),
+          sql<boolean>`exists (
+            select 1 from weekly_plan_download_events download
+            where download.weekly_plan_id = ${weeklyPlans.id}
+          )`
+        )
       ));
     const metadataDocumentIds = Array.from(new Set([
       ...revision.sourceDocumentIds,
@@ -5676,6 +5722,7 @@ async function finalizePlanVersionIfReady(learningYearId: string, planVersionId:
       .where(eq(learningYearSubjectPreferences.learningYearId, learningYearId));
     const excludedUnitIdsByDocument = await loadPlanningProgressExclusions(
       year.profileId,
+      year.id,
       metadataDocuments
     );
     const qualityDocuments = metadataDocuments.map((document) => {
@@ -6323,7 +6370,11 @@ export async function startLearningYearPlanning(parentUserId: string, learningYe
       `Treeschool is upgrading ${outdatedDocuments.length} existing ${outdatedDocuments.length === 1 ? "material" : "materials"} to the stronger metadata format. Planning can begin after indexing finishes.`
     );
   }
-  const planningProgressByDocument = await loadPlanningProgress(year.profileId, printableDocuments);
+  const planningProgressByDocument = await loadPlanningProgress(
+    year.profileId,
+    year.id,
+    printableDocuments
+  );
   const excludedUnitIdsByDocument = new Map(Array.from(planningProgressByDocument, ([documentId, state]) => [
     documentId,
     state.excludedSourceUnitIds
@@ -6348,9 +6399,15 @@ export async function startLearningYearPlanning(parentUserId: string, learningYe
     .select({ id: weeklyPlans.id, weekNumber: weeklyPlans.weekNumber, status: weeklyPlans.status })
     .from(weeklyPlans)
     .where(eq(weeklyPlans.learningYearId, year.id));
+  const downloadedWeeks = existingWeeks.length
+    ? await db.select({ weeklyPlanId: weeklyPlanDownloadEvents.weeklyPlanId })
+        .from(weeklyPlanDownloadEvents)
+        .where(inArray(weeklyPlanDownloadEvents.weeklyPlanId, existingWeeks.map((week) => week.id)))
+    : [];
+  const downloadedWeekIds = new Set(downloadedWeeks.map((event) => event.weeklyPlanId));
   const preservedWeekNumbers = new Set(
     existingWeeks
-      .filter((week) => ["in_progress", "completed"].includes(week.status))
+      .filter((week) => ["in_progress", "completed"].includes(week.status) || downloadedWeekIds.has(week.id))
       .map((week) => week.weekNumber)
   );
   const weekNumbersToGenerate = Array.from({ length: year.totalWeeks }, (_, index) => index + 1)
@@ -6630,7 +6687,13 @@ export async function runNextWeeklyPlanJob(workerId: string) {
       .where(
         and(
           eq(weeklyPlans.learningYearId, year.id),
-          inArray(weeklyPlans.status, ["in_progress", "completed"])
+          or(
+            inArray(weeklyPlans.status, ["in_progress", "completed"]),
+            sql<boolean>`exists (
+              select 1 from weekly_plan_download_events download
+              where download.weekly_plan_id = ${weeklyPlans.id}
+            )`
+          )
         )
       );
     const week = await generateOneWeekPlan({
@@ -6758,7 +6821,11 @@ export async function generateLearningYearPlan(parentUserId: string, learningYea
     throw new Error("No indexed source PDFs are ready yet. Add at least one PDF that can be used in weekly plans.");
   }
 
-  const legacyProgressByDocument = await loadPlanningProgress(year.profileId, printableDocuments);
+  const legacyProgressByDocument = await loadPlanningProgress(
+    year.profileId,
+    year.id,
+    printableDocuments
+  );
   const excludedUnitIdsByDocument = new Map(Array.from(legacyProgressByDocument, ([documentId, state]) => [
     documentId,
     state.excludedSourceUnitIds
@@ -7124,10 +7191,27 @@ export async function restorePreviousPlanVersion(parentUserId: string, learningY
   const targetSnapshot = target.snapshotJson as PlanSnapshot;
   if (!Array.isArray(targetSnapshot.weeks)) throw new Error("The previous plan version is incomplete.");
   const currentSnapshot = await capturePlanSnapshot(year.id);
+  const currentWeekRows = await db.select({
+    id: weeklyPlans.id,
+    weekNumber: weeklyPlans.weekNumber
+  }).from(weeklyPlans).where(eq(weeklyPlans.learningYearId, year.id));
+  const currentDownloadEvents = currentWeekRows.length
+    ? await db.select({ weeklyPlanId: weeklyPlanDownloadEvents.weeklyPlanId })
+        .from(weeklyPlanDownloadEvents)
+        .where(inArray(weeklyPlanDownloadEvents.weeklyPlanId, currentWeekRows.map((week) => week.id)))
+    : [];
+  const downloadedWeekIds = new Set(currentDownloadEvents.map((event) => event.weeklyPlanId));
+  const downloadedWeekNumbers = new Set(
+    currentWeekRows
+      .filter((week) => downloadedWeekIds.has(week.id))
+      .map((week) => week.weekNumber)
+  );
   const [currentRevision] = await db.select().from(planVersions)
     .where(and(eq(planVersions.learningYearId, year.id), eq(planVersions.status, "active")))
     .orderBy(desc(planVersions.activatedAt), desc(planVersions.createdAt)).limit(1);
-  const preservedWeeks = currentSnapshot.weeks.filter((week) => ["in_progress", "completed"].includes(week.status));
+  const preservedWeeks = currentSnapshot.weeks.filter((week) =>
+    ["in_progress", "completed"].includes(week.status) || downloadedWeekNumbers.has(week.weekNumber)
+  );
   const preservedNumbers = new Set(preservedWeeks.map((week) => week.weekNumber));
   const restoredWeeks = targetSnapshot.weeks.filter((week) =>
     !preservedNumbers.has(week.weekNumber) && !["in_progress", "completed"].includes(week.status)
@@ -7307,13 +7391,39 @@ export async function getPaperPlan(parentUserId: string, profileId: string) {
     : await db
         .select({
           versionId: nativeWorkbookVersions.id,
-          title: nativeWorkbooks.title
+          workbookId: nativeWorkbookVersions.workbookId,
+          editionId: nativeWorkbookVersions.editionId,
+          editionLabel: nativeWorkbookVersions.editionLabel,
+          revisionNumber: nativeWorkbookVersions.revisionNumber,
+          title: nativeWorkbooks.title,
+          activeVersionId: nativeWorkbooks.activeVersionId,
+          latestEditionId: nativeWorkbooks.latestEditionId
         })
         .from(nativeWorkbookVersions)
         .innerJoin(nativeWorkbooks, eq(nativeWorkbooks.id, nativeWorkbookVersions.workbookId))
         .where(inArray(nativeWorkbookVersions.id, nativeWorkbookVersionIds));
   const currentNativeWorkbookTitleByVersionId = new Map(
     currentNativeWorkbookTitles.map((workbook) => [workbook.versionId, workbook.title])
+  );
+  const latestVersionIds = Array.from(new Set(
+    currentNativeWorkbookTitles
+      .map((workbook) => workbook.activeVersionId)
+      .filter((versionId): versionId is string => Boolean(versionId))
+  ));
+  const latestNativeWorkbookVersions = latestVersionIds.length
+    ? await db.select({
+        versionId: nativeWorkbookVersions.id,
+        editionId: nativeWorkbookVersions.editionId,
+        editionLabel: nativeWorkbookVersions.editionLabel,
+        revisionNumber: nativeWorkbookVersions.revisionNumber,
+        pageCount: nativeWorkbookVersions.pageCount
+      }).from(nativeWorkbookVersions).where(inArray(nativeWorkbookVersions.id, latestVersionIds))
+    : [];
+  const latestVersionById = new Map(
+    latestNativeWorkbookVersions.map((version) => [version.versionId, version])
+  );
+  const attachedNativeWorkbookByVersionId = new Map(
+    currentNativeWorkbookTitles.map((workbook) => [workbook.versionId, workbook])
   );
   const materialSets = await db
     .select()
@@ -7445,7 +7555,24 @@ export async function getPaperPlan(parentUserId: string, profileId: string) {
         preferenceByKey.get(subjectKeyFor({
           subjectId: document.subjectId,
           subjectLabel: document.subjectLabel
-        }))?.daysPerWeek ?? null
+        }))?.daysPerWeek ?? null,
+      editionUpdate: (() => {
+        if (!document.nativeWorkbookVersionId) return null;
+        const attached = attachedNativeWorkbookByVersionId.get(document.nativeWorkbookVersionId);
+        const latest = attached?.activeVersionId
+          ? latestVersionById.get(attached.activeVersionId)
+          : null;
+        if (!attached || !latest || latest.editionId === attached.editionId) return null;
+        return {
+          workbookId: attached.workbookId,
+          currentVersionId: attached.versionId,
+          currentEditionLabel: attached.editionLabel,
+          latestVersionId: latest.versionId,
+          latestEditionLabel: latest.editionLabel,
+          latestRevisionNumber: latest.revisionNumber,
+          latestPageCount: latest.pageCount
+        };
+      })()
     })),
     subjectOptions: [
       ...systemSubjects.map((subject) => ({
@@ -9017,6 +9144,158 @@ async function addTeachingDaySummaryPages(input: {
   return chunks.length;
 }
 
+type TwoUpQrMarker = {
+  pageIndex: number;
+  weeklyPlanId: string;
+  dayNumber: number;
+};
+
+function twoUpFilename(filename: string) {
+  return filename.replace(/(\.[^.]+)$/u, "-2-up$1");
+}
+
+async function enlargeSummaryQrCodes(
+  document: PDFDocument,
+  markers: TwoUpQrMarker[]
+) {
+  if (markers.length === 0) return;
+  const logoBytes = await loadTreeschoolLogoBytes();
+  const logoImage = logoBytes ? await document.embedPng(logoBytes) : null;
+  const captionFont = await document.embedFont(StandardFonts.HelveticaBold);
+  const qrByDay = new Map<number, Awaited<ReturnType<PDFDocument["embedPng"]>>>();
+
+  for (const marker of markers) {
+    const page = document.getPage(marker.pageIndex);
+    if (!page) throw new Error(`Could not enlarge the QR code on PDF page ${marker.pageIndex + 1}.`);
+    let qrImage = qrByDay.get(marker.dayNumber);
+    if (!qrImage) {
+      const qrBytes = await QRCode.toBuffer(dailySummaryQrTarget(marker), {
+        type: "png",
+        errorCorrectionLevel: "H",
+        margin: 4,
+        width: 768,
+        color: { dark: "#172012", light: "#FFFFFF" }
+      });
+      qrImage = await document.embedPng(qrBytes);
+      qrByDay.set(marker.dayNumber, qrImage);
+    }
+
+    const { width, height } = page.getSize();
+    const headerHeight = 154;
+    const qrSize = Math.min(112, width * 0.2, headerHeight - 28);
+    const qrX = width - 34 - qrSize;
+    const qrY = height - 12 - qrSize;
+
+    // Clear the smaller standard-layout QR and caption before drawing the
+    // larger source QR. After 2-up scaling it remains approximately the same
+    // physical size as the QR in a standard one-page-per-side packet.
+    page.drawRectangle({
+      x: width - 168,
+      y: height - headerHeight,
+      width: 168,
+      height: headerHeight,
+      color: rgb(0.49, 0.63, 0.35)
+    });
+    page.drawImage(qrImage, { x: qrX, y: qrY, width: qrSize, height: qrSize });
+    if (logoImage) {
+      const logoBackdropSize = 22;
+      const logoBackdropX = qrX + (qrSize - logoBackdropSize) / 2;
+      const logoBackdropY = qrY + (qrSize - logoBackdropSize) / 2;
+      page.drawRectangle({
+        x: logoBackdropX,
+        y: logoBackdropY,
+        width: logoBackdropSize,
+        height: logoBackdropSize,
+        color: rgb(1, 1, 1)
+      });
+      const logoSize = 17;
+      page.drawImage(logoImage, {
+        x: qrX + (qrSize - logoSize) / 2,
+        y: qrY + (qrSize - logoSize) / 2,
+        width: logoSize,
+        height: logoSize
+      });
+    }
+    const caption = `Scan to update Day ${marker.dayNumber}`;
+    page.drawText(caption, {
+      x: width - 34 - captionFont.widthOfTextAtSize(caption, 7.5),
+      y: height - 143,
+      size: 7.5,
+      font: captionFont,
+      color: rgb(0.93, 0.98, 0.9)
+    });
+  }
+}
+
+export async function imposeTwoUpPdf(
+  bytes: Uint8Array,
+  qrMarkers: TwoUpQrMarker[] = []
+) {
+  const source = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const sourcePages = source.getPages();
+  if (sourcePages.length === 0) throw new Error("The PDF contains no pages to arrange.");
+  await enlargeSummaryQrCodes(source, qrMarkers);
+
+  const firstSize = sourcePages[0]!.getSize();
+  const sheetWidth = Math.max(firstSize.width, firstSize.height);
+  const sheetHeight = Math.min(firstSize.width, firstSize.height);
+  const margin = 10;
+  const gutter = 10;
+  const cellWidth = (sheetWidth - margin * 2 - gutter) / 2;
+  const cellHeight = sheetHeight - margin * 2;
+  const output = await PDFDocument.create();
+
+  for (let sourceIndex = 0; sourceIndex < sourcePages.length; sourceIndex += 2) {
+    const sheet = output.addPage([sheetWidth, sheetHeight]);
+    sheet.drawRectangle({
+      x: 0,
+      y: 0,
+      width: sheetWidth,
+      height: sheetHeight,
+      color: rgb(1, 1, 1)
+    });
+    sheet.drawLine({
+      start: { x: sheetWidth / 2, y: margin },
+      end: { x: sheetWidth / 2, y: sheetHeight - margin },
+      thickness: 0.5,
+      color: rgb(0.86, 0.83, 0.77)
+    });
+
+    for (let slot = 0; slot < 2; slot += 1) {
+      const sourcePage = sourcePages[sourceIndex + slot];
+      if (!sourcePage) continue;
+      const embedded = await output.embedPage(sourcePage);
+      const scale = Math.min(cellWidth / embedded.width, cellHeight / embedded.height);
+      const renderedWidth = embedded.width * scale;
+      const renderedHeight = embedded.height * scale;
+      const cellX = margin + slot * (cellWidth + gutter);
+      sheet.drawPage(embedded, {
+        x: cellX + (cellWidth - renderedWidth) / 2,
+        y: margin + (cellHeight - renderedHeight) / 2,
+        width: renderedWidth,
+        height: renderedHeight
+      });
+    }
+  }
+
+  if (output.getPageCount() !== Math.ceil(sourcePages.length / 2)) {
+    throw new Error("The compact PDF did not contain the expected number of pages.");
+  }
+  return output.save();
+}
+
+async function formatTwoUpDownload(
+  packet: { bytes: Uint8Array; filename: string },
+  enabled: boolean | undefined,
+  qrMarkers: TwoUpQrMarker[] = []
+) {
+  if (!enabled) return packet;
+  return {
+    bytes: await imposeTwoUpPdf(packet.bytes, qrMarkers),
+    filename: twoUpFilename(packet.filename)
+  };
+}
+
 type WeeklyPacketQualityReport = {
   version: number;
   checkedAt: string;
@@ -9128,7 +9407,7 @@ async function inspectWeeklyPacketQuality(input: {
 async function buildLegacyWeeklyPacket(
   parentUserId: string,
   weeklyPlanId: string,
-  options: { qualityControl?: boolean; forceRebuild?: boolean } = {}
+  options: { qualityControl?: boolean; forceRebuild?: boolean; twoUp?: boolean } = {}
 ): Promise<{ bytes: Uint8Array; filename: string }> {
   const [week] = await db
     .select()
@@ -9152,7 +9431,7 @@ async function buildLegacyWeeklyPacket(
     !options.forceRebuild
   ) {
     const bytes = await downloadPrivateFile(cachedAsset.objectPath);
-    return { bytes, filename };
+    return formatTwoUpDownload({ bytes, filename }, options.twoUp);
   }
 
   const items = await db
@@ -9314,10 +9593,10 @@ async function buildLegacyWeeklyPacket(
       qualityCheckedAt: new Date(qualityReport.checkedAt)
     }
   });
-  return {
+  return formatTwoUpDownload({
     bytes,
     filename
-  };
+  }, options.twoUp);
 }
 
 type WeeklyPacketContext = {
@@ -9621,7 +9900,7 @@ async function addWeeklyPacketCover(input: {
 export async function buildWeeklyPacket(
   parentUserId: string,
   weeklyPlanId: string,
-  options: { qualityControl?: boolean; forceRebuild?: boolean } = {}
+  options: { qualityControl?: boolean; forceRebuild?: boolean; twoUp?: boolean } = {}
 ): Promise<{ bytes: Uint8Array; filename: string }> {
   const [week] = await db.select().from(weeklyPlans)
     .where(eq(weeklyPlans.id, weeklyPlanId)).limit(1);
@@ -9632,6 +9911,18 @@ export async function buildWeeklyPacket(
   }
 
   const { context, dayPackets } = await ensureWeeklyDayPackets(parentUserId, weeklyPlanId, options);
+  const summaryQrMarkers: TwoUpQrMarker[] = [];
+  let weeklyPageIndex = 1;
+  for (const dayPacket of dayPackets) {
+    for (let summaryIndex = 0; summaryIndex < dayPacket.summaryPageCount; summaryIndex += 1) {
+      summaryQrMarkers.push({
+        pageIndex: weeklyPageIndex + summaryIndex,
+        weeklyPlanId: context.week.id,
+        dayNumber: dayPacket.dayNumber
+      });
+    }
+    weeklyPageIndex += dayPacket.pageCount;
+  }
   const sourceFingerprint = await sha256Hex(new TextEncoder().encode(JSON.stringify({
     templateVersion: WEEKLY_PACKET_TEMPLATE_VERSION,
     yearTitle: context.year.title,
@@ -9651,7 +9942,11 @@ export async function buildWeeklyPacket(
   ) {
     try {
       const bytes = await downloadPrivateFile(cachedAsset.objectPath);
-      return { bytes, filename: context.filename };
+      return formatTwoUpDownload(
+        { bytes, filename: context.filename },
+        options.twoUp,
+        summaryQrMarkers
+      );
     } catch (error) {
       console.warn("Could not reuse the cached weekly PDF; assembling it again.", error);
     }
@@ -9716,17 +10011,96 @@ export async function buildWeeklyPacket(
       qualityCheckedAt: new Date(qualityReport.checkedAt)
     }
   });
-  return { bytes, filename: context.filename };
+  return formatTwoUpDownload(
+    { bytes, filename: context.filename },
+    options.twoUp,
+    summaryQrMarkers
+  );
 }
 
 export async function buildWeeklyPacketDayArchive(
   parentUserId: string,
-  weeklyPlanId: string
+  weeklyPlanId: string,
+  options: { twoUp?: boolean } = {}
 ): Promise<{ bytes: Uint8Array; filename: string }> {
   const { context, dayPackets } = await ensureWeeklyDayPackets(parentUserId, weeklyPlanId);
-  const zipEntries = Object.fromEntries(dayPackets.map((packet) => [packet.filename, packet.bytes]));
+  const downloadPackets = await Promise.all(dayPackets.map(async (packet) => {
+    if (!options.twoUp) return packet;
+    const qrMarkers = Array.from({ length: packet.summaryPageCount }, (_, pageIndex) => ({
+      pageIndex,
+      weeklyPlanId: context.week.id,
+      dayNumber: packet.dayNumber
+    }));
+    return {
+      ...packet,
+      bytes: await imposeTwoUpPdf(packet.bytes, qrMarkers),
+      filename: twoUpFilename(packet.filename)
+    };
+  }));
+  const zipEntries = Object.fromEntries(downloadPackets.map((packet) => [packet.filename, packet.bytes]));
   return {
     bytes: zipSync(zipEntries, { level: 0 }),
-    filename: `${context.filename.replace(/\.pdf$/i, "")}-days.zip`
+    filename: `${context.filename.replace(/\.pdf$/i, "")}-days${options.twoUp ? "-2-up" : ""}.zip`
   };
+}
+
+export async function beginWeeklyPlanDownload(input: {
+  parentUserId: string;
+  weeklyPlanId: string;
+  format: "week" | "days";
+  layout: "standard" | "two-up";
+}) {
+  const [week] = await db.select({ learningYearId: weeklyPlans.learningYearId })
+    .from(weeklyPlans)
+    .where(eq(weeklyPlans.id, input.weeklyPlanId))
+    .limit(1);
+  if (!week) throw new Error("Week not found.");
+  await requireOwnedYear(input.parentUserId, week.learningYearId);
+  return db.transaction(async (tx) => {
+    const [lockedWeek] = await tx.select({ id: weeklyPlans.id })
+      .from(weeklyPlans)
+      .where(eq(weeklyPlans.id, input.weeklyPlanId))
+      .for("update")
+      .limit(1);
+    if (!lockedWeek) throw new Error("Week not found.");
+    const [event] = await tx.insert(weeklyPlanDownloadEvents).values({
+      weeklyPlanId: input.weeklyPlanId,
+      downloadedByUserId: input.parentUserId,
+      format: input.format,
+      layout: input.layout
+    }).returning({ id: weeklyPlanDownloadEvents.id });
+    return event.id;
+  });
+}
+
+export async function completeWeeklyPlanDownload(input: {
+  parentUserId: string;
+  weeklyPlanId: string;
+  downloadEventId: string;
+}) {
+  const [asset] = await db.select({
+    qualityReport: weeklyPlanPdfAssets.qualityReport
+  }).from(weeklyPlanPdfAssets)
+    .where(eq(weeklyPlanPdfAssets.weeklyPlanId, input.weeklyPlanId))
+    .limit(1);
+  const sourceFingerprint = typeof asset?.qualityReport?.sourceFingerprint === "string"
+    ? asset.qualityReport.sourceFingerprint
+    : null;
+  await db.update(weeklyPlanDownloadEvents).set({
+    sourceFingerprint
+  }).where(and(
+    eq(weeklyPlanDownloadEvents.id, input.downloadEventId),
+    eq(weeklyPlanDownloadEvents.weeklyPlanId, input.weeklyPlanId),
+    eq(weeklyPlanDownloadEvents.downloadedByUserId, input.parentUserId)
+  ));
+}
+
+export async function discardWeeklyPlanDownload(input: {
+  parentUserId: string;
+  downloadEventId: string;
+}) {
+  await db.delete(weeklyPlanDownloadEvents).where(and(
+    eq(weeklyPlanDownloadEvents.id, input.downloadEventId),
+    eq(weeklyPlanDownloadEvents.downloadedByUserId, input.parentUserId)
+  ));
 }

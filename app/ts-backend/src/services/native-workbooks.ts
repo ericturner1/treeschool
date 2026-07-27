@@ -15,17 +15,21 @@ import {
   nativeWorkbookBundleItems,
   nativeWorkbookBundles,
   nativeWorkbookDownloadLinks,
+  nativeWorkbookEditions,
   nativeWorkbookJobs,
   nativeWorkbookPurchases,
   nativeWorkbookVersions,
   nativeWorkbooks,
   profiles,
+  studentWorkbookEditionUnitCarryovers,
   studentWorkbookUnitProgress,
   subscriptions,
   users,
+  weeklyPlanDownloadEvents,
   weeklyPlanDayPdfAssets,
   weeklyPlanItems,
-  weeklyPlanPdfAssets
+  weeklyPlanPdfAssets,
+  weeklyPlans
 } from "ts-db";
 import { db, env } from "../db";
 import { withTreeschoolCheckoutBranding } from "./stripe-checkout";
@@ -43,7 +47,8 @@ import {
   applyNativeWorkbookCoverageToLearningYearCache,
   extractPdfPageTexts,
   generateNativeWorkbookCatalogDescription,
-  getPdfPageCount
+  getPdfPageCount,
+  startLearningYearPlanning
 } from "./paper-plans";
 import type { CurriculumCompletenessResult } from "./curriculum-completeness";
 import {
@@ -79,6 +84,72 @@ const PUBLIC_NATIVE_WORKBOOK_ERROR =
   "We couldn't finish indexing this workbook. Retry indexing, or contact support if the problem continues.";
 
 type WorkbookType = "core" | "elective";
+
+type EditionLearningUnit = {
+  id: string;
+  title: string;
+};
+
+function editionLearningUnitsFromAnalysis(analysis: unknown): EditionLearningUnit[] {
+  if (!analysis || typeof analysis !== "object") return [];
+  const candidates = (analysis as { learningUnits?: unknown }).learningUnits;
+  if (!Array.isArray(candidates)) return [];
+  return candidates.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const value = candidate as { id?: unknown; title?: unknown };
+    const id = String(value.id ?? "").trim();
+    const title = String(value.title ?? "").trim();
+    return id && title ? [{ id, title }] : [];
+  });
+}
+
+function normalizedEditionUnitTitle(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("en-US")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+export function mapEditionLearningUnits(input: {
+  sourceUnits: EditionLearningUnit[];
+  targetUnits: EditionLearningUnit[];
+  protectedSourceUnitIds: string[];
+}) {
+  const sourceById = new Map(input.sourceUnits.map((unit) => [unit.id, unit]));
+  const targetById = new Map(input.targetUnits.map((unit) => [unit.id, unit]));
+  const targetsByTitle = new Map<string, EditionLearningUnit[]>();
+  for (const unit of input.targetUnits) {
+    const key = normalizedEditionUnitTitle(unit.title);
+    targetsByTitle.set(key, [...(targetsByTitle.get(key) ?? []), unit]);
+  }
+  const mappings = new Map<string, {
+    targetSourceUnitId: string;
+    matchMethod: "exact_id" | "exact_title";
+  }>();
+  const unmatched: string[] = [];
+  const claimedTargets = new Set<string>();
+  for (const sourceUnitId of Array.from(new Set(input.protectedSourceUnitIds))) {
+    const source = sourceById.get(sourceUnitId);
+    const exactIdTarget = targetById.get(sourceUnitId);
+    const titleTargets = source
+      ? targetsByTitle.get(normalizedEditionUnitTitle(source.title)) ?? []
+      : [];
+    const target = exactIdTarget ?? (titleTargets.length === 1 ? titleTargets[0] : null);
+    if (!source || !target || claimedTargets.has(target.id)) {
+      unmatched.push(source?.title || sourceUnitId);
+      continue;
+    }
+    claimedTargets.add(target.id);
+    mappings.set(sourceUnitId, {
+      targetSourceUnitId: target.id,
+      matchMethod: exactIdTarget ? "exact_id" : "exact_title"
+    });
+  }
+  return { mappings, unmatched };
+}
 type AccessState = "owned" | "included" | "purchase_required";
 type CatalogKind = "workbook" | "bundle";
 type ProductPreviewImage = {
@@ -94,6 +165,26 @@ type WorkbookReplacementState = {
   requiresCompatibilityCheck?: boolean;
   expectedPageCount?: number;
 };
+
+type WorkbookEditionReleaseState = {
+  previousVersionId: string;
+  previousEditionId: string;
+};
+
+function readWorkbookEditionReleaseState(
+  analysisJson: Record<string, unknown> | null | undefined
+): WorkbookEditionReleaseState | null {
+  const release = analysisJson?.editionRelease;
+  if (!release || typeof release !== "object") return null;
+  const value = release as Partial<WorkbookEditionReleaseState>;
+  return typeof value.previousVersionId === "string" &&
+    typeof value.previousEditionId === "string"
+    ? {
+        previousVersionId: value.previousVersionId,
+        previousEditionId: value.previousEditionId
+      }
+    : null;
+}
 
 class WorkbookReplacementCompatibilityError extends Error {
   constructor(message: string) {
@@ -592,7 +683,12 @@ function assertNativeWorkbookCanBeReplaced(usage: Awaited<ReturnType<typeof getN
 
 async function getParentContext(userId: string) {
   const [parent] = await db
-    .select({ accountId: profiles.accountId, email: users.email, isAdmin: profiles.isAdmin })
+    .select({
+      accountId: profiles.accountId,
+      accountRole: profiles.accountRole,
+      email: users.email,
+      isAdmin: profiles.isAdmin
+    })
     .from(profiles)
     .innerJoin(users, eq(users.id, profiles.userId))
     .where(and(eq(profiles.userId, userId), eq(profiles.role, "PARENT")))
@@ -803,6 +899,7 @@ async function loadBundleCatalogRows(input: { includeInactive?: boolean; userId?
       memberWorkbookIds: bundleMembers.map((member) => member.id),
       members: bundleMembers.map((member) => ({
         id: member.id,
+        activeVersionId: member.activeVersionId,
         slug: member.slug,
         title: member.title,
         subjectLabel: member.subjectLabel,
@@ -1157,7 +1254,13 @@ export async function listAdminNativeWorkbooks(userId: string) {
       createdAt: nativeWorkbooks.createdAt,
       versionId: nativeWorkbookVersions.id,
       versionNumber: nativeWorkbookVersions.versionNumber,
+      editionId: nativeWorkbookVersions.editionId,
+      revisionNumber: nativeWorkbookVersions.revisionNumber,
       editionLabel: nativeWorkbookVersions.editionLabel,
+      releaseStatus: nativeWorkbookVersions.releaseStatus,
+      versionCreatedAt: nativeWorkbookVersions.createdAt,
+      versionPublishedAt: nativeWorkbookVersions.publishedAt,
+      changeNotes: nativeWorkbookVersions.changeNotes,
       originalFilename: nativeWorkbookVersions.originalFilename,
       pageCount: nativeWorkbookVersions.pageCount,
       analysisStatus: nativeWorkbookVersions.analysisStatus,
@@ -1178,11 +1281,43 @@ export async function listAdminNativeWorkbooks(userId: string) {
     return true;
   });
   const titleByWorkbookId = new Map(latestRows.map((row) => [row.id, row.title]));
+  const releasesByWorkbookId = new Map<string, Array<{
+    versionId: string;
+    editionId: string;
+    versionNumber: number;
+    editionLabel: string;
+    revisionNumber: number;
+    releaseStatus: string;
+    analysisStatus: string;
+    pageCount: number;
+    createdAt: Date;
+    publishedAt: Date | null;
+    changeNotes: string | null;
+  }>>();
+  for (const row of rows) {
+    if (!row.versionId || !row.editionId || row.versionNumber == null || row.revisionNumber == null) continue;
+    const releases = releasesByWorkbookId.get(row.id) ?? [];
+    releases.push({
+      versionId: row.versionId,
+      editionId: row.editionId,
+      versionNumber: row.versionNumber,
+      editionLabel: row.editionLabel ?? "1st edition",
+      revisionNumber: row.revisionNumber,
+      releaseStatus: row.releaseStatus ?? "draft",
+      analysisStatus: row.analysisStatus ?? "unknown",
+      pageCount: row.pageCount ?? 0,
+      createdAt: row.versionCreatedAt!,
+      publishedAt: row.versionPublishedAt,
+      changeNotes: row.changeNotes
+    });
+    releasesByWorkbookId.set(row.id, releases);
+  }
   return Promise.all(latestRows.map(async (row) => {
     const usage = await getNativeWorkbookUsage(row.id);
     const replacement = readWorkbookReplacementState(row.analysisJson);
     const coverageProfile = parseCurriculumCoverageProfile(row.curriculumCoverageProfile);
     const canReplacePdf = row.versionId != null
+      && row.versionId === row.activeVersionId
       && (!replacement || ["failed", "rejected"].includes(row.analysisStatus ?? ""))
       && !["awaiting_upload", "queued", "analyzing"].includes(row.analysisStatus ?? "")
       && row.status !== "indexing"
@@ -1207,6 +1342,11 @@ export async function listAdminNativeWorkbooks(userId: string) {
       purchaseCount: usage.purchaseCount,
       planAttachmentCount: usage.attachmentCount,
       canReplacePdf,
+      isActiveVersion: row.versionId === row.activeVersionId,
+      canPublishVersion: row.versionId != null &&
+        row.versionId !== row.activeVersionId &&
+        row.analysisStatus === "ready",
+      releases: releasesByWorkbookId.get(row.id) ?? [],
       prerequisiteWorkbookTitle: row.prerequisiteWorkbookId
         ? titleByWorkbookId.get(row.prerequisiteWorkbookId) ?? "Unavailable workbook"
         : null,
@@ -1794,6 +1934,7 @@ export async function prepareNativeWorkbookUpload(input: {
   });
 
   const workbookId = randomUUID();
+  const editionId = randomUUID();
   const versionId = randomUUID();
   const slugBase = buildWorkbookSlugBase({ title, gradeMin, gradeMax, languageCode, type });
   const [[workbookSlugCollision], [bundleSlugCollision]] = await Promise.all([
@@ -1829,11 +1970,22 @@ export async function prepareNativeWorkbookUpload(input: {
       active: false,
       createdByUserId: input.userId
     });
+    await tx.insert(nativeWorkbookEditions).values({
+      id: editionId,
+      workbookId,
+      editionNumber: 1,
+      editionLabel,
+      status: "draft",
+      createdByUserId: input.userId
+    });
     await tx.insert(nativeWorkbookVersions).values({
       id: versionId,
       workbookId,
       versionNumber: 1,
+      editionId,
+      revisionNumber: 1,
       editionLabel,
+      releaseStatus: "draft",
       originalFilename: normalizeText(input.pdfFilename, 240),
       objectPath,
       mimeType: "application/pdf",
@@ -1975,6 +2127,8 @@ export async function prepareNativeWorkbookReplacement(input: {
     db.select({
       id: nativeWorkbookVersions.id,
       versionNumber: nativeWorkbookVersions.versionNumber,
+      editionId: nativeWorkbookVersions.editionId,
+      revisionNumber: nativeWorkbookVersions.revisionNumber,
       editionLabel: nativeWorkbookVersions.editionLabel,
       pageCount: nativeWorkbookVersions.pageCount,
       analysisStatus: nativeWorkbookVersions.analysisStatus,
@@ -2020,7 +2174,11 @@ export async function prepareNativeWorkbookReplacement(input: {
     id: versionId,
     workbookId: workbook.id,
     versionNumber: latestVersion.versionNumber + 1,
+    editionId: activeVersion.editionId,
+    revisionNumber: activeVersion.revisionNumber + 1,
     editionLabel: activeVersion.editionLabel,
+    releaseStatus: "draft",
+    supersedesVersionId: activeVersion.id,
     originalFilename: normalizeText(input.pdfFilename, 240),
     objectPath,
     mimeType: "application/pdf",
@@ -2102,6 +2260,188 @@ export async function completeNativeWorkbookReplacement(input: {
       });
   });
   return { queued: true, workbookId: row.workbookId, versionId: row.versionId };
+}
+
+export async function prepareNativeWorkbookEdition(input: {
+  userId: string;
+  workbookId: string;
+  editionLabel: string;
+  changeNotes?: string | null;
+  pdfFilename: string;
+  pdfMimeType?: string;
+}) {
+  await requireAdmin(input.userId);
+  const editionLabel = normalizeText(input.editionLabel, 80);
+  const changeNotes = normalizeText(input.changeNotes ?? "", 2_000) || null;
+  if (!editionLabel) throw new Error("Edition is required.");
+  const pdfMimeType = input.pdfMimeType || "application/pdf";
+  if (pdfMimeType !== "application/pdf" && !input.pdfFilename.toLowerCase().endsWith(".pdf")) {
+    throw new Error("The new edition must be a PDF.");
+  }
+  const [workbook] = await db.select({
+    id: nativeWorkbooks.id,
+    activeVersionId: nativeWorkbooks.activeVersionId
+  }).from(nativeWorkbooks).where(eq(nativeWorkbooks.id, input.workbookId)).limit(1);
+  if (!workbook?.activeVersionId) {
+    throw new Error("Publish the current edition before adding a new edition.");
+  }
+  const [[activeVersion], [latestVersion], [latestEdition], [pendingEdition]] = await Promise.all([
+    db.select({
+      id: nativeWorkbookVersions.id,
+      editionId: nativeWorkbookVersions.editionId,
+      analysisJson: nativeWorkbookVersions.analysisJson
+    }).from(nativeWorkbookVersions)
+      .where(eq(nativeWorkbookVersions.id, workbook.activeVersionId))
+      .limit(1),
+    db.select({ versionNumber: nativeWorkbookVersions.versionNumber })
+      .from(nativeWorkbookVersions)
+      .where(eq(nativeWorkbookVersions.workbookId, workbook.id))
+      .orderBy(desc(nativeWorkbookVersions.versionNumber))
+      .limit(1),
+    db.select({ editionNumber: nativeWorkbookEditions.editionNumber })
+      .from(nativeWorkbookEditions)
+      .where(eq(nativeWorkbookEditions.workbookId, workbook.id))
+      .orderBy(desc(nativeWorkbookEditions.editionNumber))
+      .limit(1),
+    db.select({ id: nativeWorkbookEditions.id })
+      .from(nativeWorkbookEditions)
+      .where(and(
+        eq(nativeWorkbookEditions.workbookId, workbook.id),
+        eq(nativeWorkbookEditions.status, "draft")
+      ))
+      .limit(1)
+  ]);
+  if (!activeVersion) throw new Error("The published workbook edition could not be found.");
+  if (pendingEdition) throw new Error("Finish or discard the current draft edition before adding another.");
+
+  const editionId = randomUUID();
+  const versionId = randomUUID();
+  const objectPath =
+    `native-workbooks/${workbook.id}/editions/${editionId}/revisions/${versionId}/${safeFilename(input.pdfFilename, "workbook.pdf")}`;
+  const descriptionMode = activeVersion.analysisJson?.descriptionMode === "auto" ? "auto" : "custom";
+  await db.transaction(async (tx) => {
+    await tx.insert(nativeWorkbookEditions).values({
+      id: editionId,
+      workbookId: workbook.id,
+      editionNumber: (latestEdition?.editionNumber ?? 0) + 1,
+      editionLabel,
+      status: "draft",
+      changeNotes,
+      createdByUserId: input.userId
+    });
+    await tx.insert(nativeWorkbookVersions).values({
+      id: versionId,
+      workbookId: workbook.id,
+      versionNumber: (latestVersion?.versionNumber ?? 0) + 1,
+      editionId,
+      revisionNumber: 1,
+      editionLabel,
+      releaseStatus: "draft",
+      supersedesVersionId: activeVersion.id,
+      changeNotes,
+      originalFilename: normalizeText(input.pdfFilename, 240),
+      objectPath,
+      mimeType: "application/pdf",
+      sizeBytes: 1,
+      pageCount: 0,
+      analysisStatus: "awaiting_upload",
+      analysisJson: {
+        descriptionMode,
+        editionRelease: {
+          previousVersionId: activeVersion.id,
+          previousEditionId: activeVersion.editionId
+        } satisfies WorkbookEditionReleaseState
+      },
+      createdByUserId: input.userId
+    });
+  });
+  try {
+    const pdfUploadUrl = await getSignedPrivateUploadUrl({
+      objectPath,
+      contentType: "application/pdf",
+      expiresInMinutes: 30
+    });
+    return { workbookId: workbook.id, editionId, versionId, pdfUploadUrl };
+  } catch (error) {
+    await db.delete(nativeWorkbookVersions).where(eq(nativeWorkbookVersions.id, versionId)).catch(() => undefined);
+    await db.delete(nativeWorkbookEditions).where(eq(nativeWorkbookEditions.id, editionId)).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function completeNativeWorkbookEdition(input: {
+  userId: string;
+  workbookId: string;
+  versionId: string;
+}) {
+  await requireAdmin(input.userId);
+  const [row] = await db.select({
+    workbookId: nativeWorkbookVersions.workbookId,
+    versionId: nativeWorkbookVersions.id,
+    objectPath: nativeWorkbookVersions.objectPath,
+    analysisStatus: nativeWorkbookVersions.analysisStatus,
+    analysisJson: nativeWorkbookVersions.analysisJson
+  }).from(nativeWorkbookVersions).where(and(
+    eq(nativeWorkbookVersions.id, input.versionId),
+    eq(nativeWorkbookVersions.workbookId, input.workbookId)
+  )).limit(1);
+  if (!row || row.analysisStatus !== "awaiting_upload" || !readWorkbookEditionReleaseState(row.analysisJson)) {
+    throw new Error("The new-edition upload is no longer available.");
+  }
+  const pdfMetadata = await getPrivateFileMetadata(row.objectPath);
+  if (!pdfMetadata.contentType.includes("pdf")) throw new Error("The uploaded edition is not a PDF.");
+  if (pdfMetadata.size <= 0) throw new Error("The uploaded edition is empty.");
+  await db.transaction(async (tx) => {
+    await tx.update(nativeWorkbookVersions).set({
+      sizeBytes: pdfMetadata.size,
+      mimeType: pdfMetadata.contentType,
+      analysisStatus: "queued",
+      lastError: null
+    }).where(eq(nativeWorkbookVersions.id, row.versionId));
+    await tx.insert(nativeWorkbookJobs).values({ workbookVersionId: row.versionId, status: "queued" })
+      .onConflictDoUpdate({
+        target: nativeWorkbookJobs.workbookVersionId,
+        set: {
+          status: "queued",
+          attemptCount: 0,
+          availableAt: new Date(),
+          claimedAt: null,
+          heartbeatAt: null,
+          workerId: null,
+          lastError: null,
+          updatedAt: new Date()
+        }
+      });
+  });
+  return { queued: true, workbookId: row.workbookId, versionId: row.versionId };
+}
+
+export async function discardNativeWorkbookEdition(input: {
+  userId: string;
+  workbookId: string;
+  versionId: string;
+}) {
+  await requireAdmin(input.userId);
+  const [row] = await db.select({
+    versionId: nativeWorkbookVersions.id,
+    editionId: nativeWorkbookVersions.editionId,
+    objectPath: nativeWorkbookVersions.objectPath,
+    analysisStatus: nativeWorkbookVersions.analysisStatus,
+    releaseStatus: nativeWorkbookVersions.releaseStatus
+  }).from(nativeWorkbookVersions).where(and(
+    eq(nativeWorkbookVersions.id, input.versionId),
+    eq(nativeWorkbookVersions.workbookId, input.workbookId)
+  )).limit(1);
+  if (!row || row.releaseStatus !== "draft" || !["awaiting_upload", "failed"].includes(row.analysisStatus)) {
+    return { discarded: false };
+  }
+  await db.transaction(async (tx) => {
+    await tx.delete(nativeWorkbookJobs).where(eq(nativeWorkbookJobs.workbookVersionId, row.versionId));
+    await tx.delete(nativeWorkbookVersions).where(eq(nativeWorkbookVersions.id, row.versionId));
+    await tx.delete(nativeWorkbookEditions).where(eq(nativeWorkbookEditions.id, row.editionId));
+  });
+  await deletePrivateFile(row.objectPath).catch(() => undefined);
+  return { discarded: true };
 }
 
 export async function discardNativeWorkbookReplacement(input: {
@@ -2204,6 +2544,8 @@ export async function publishNativeWorkbook(input: { userId: string; workbookId:
       stripeProductId: nativeWorkbooks.stripeProductId,
       stripePriceId: nativeWorkbooks.stripePriceId,
       versionId: nativeWorkbookVersions.id,
+      editionId: nativeWorkbookVersions.editionId,
+      analysisJson: nativeWorkbookVersions.analysisJson,
       analysisStatus: nativeWorkbookVersions.analysisStatus
     })
     .from(nativeWorkbooks)
@@ -2233,10 +2575,41 @@ export async function publishNativeWorkbook(input: { userId: string; workbookId:
   }
 
   await db.transaction(async (tx) => {
-    await tx.update(nativeWorkbookVersions).set({ publishedAt: new Date() })
+    const publishedAt = new Date();
+    const [previous] = await tx.select({
+      versionId: nativeWorkbooks.activeVersionId,
+      editionId: nativeWorkbooks.latestEditionId
+    }).from(nativeWorkbooks).where(eq(nativeWorkbooks.id, row.id)).limit(1);
+    if (previous?.versionId && previous.versionId !== row.versionId) {
+      await tx.update(nativeWorkbookVersions).set({ releaseStatus: "superseded" })
+        .where(eq(nativeWorkbookVersions.id, previous.versionId));
+    }
+    if (previous?.editionId && previous.editionId !== row.editionId) {
+      await tx.update(nativeWorkbookEditions).set({
+        status: "superseded",
+        updatedAt: publishedAt
+      }).where(eq(nativeWorkbookEditions.id, previous.editionId));
+    }
+    await tx.update(nativeWorkbookVersions).set({
+      publishedAt,
+      releaseStatus: "published"
+    })
       .where(eq(nativeWorkbookVersions.id, row.versionId));
+    await tx.update(nativeWorkbookEditions).set({
+      currentRevisionId: row.versionId,
+      status: "published",
+      publishedAt,
+      updatedAt: publishedAt
+    }).where(eq(nativeWorkbookEditions.id, row.editionId));
     await tx.update(nativeWorkbooks).set({
       activeVersionId: row.versionId,
+      latestEditionId: row.editionId,
+      ...(typeof row.analysisJson.catalogDescription === "string"
+        ? { description: row.analysisJson.catalogDescription }
+        : {}),
+      ...(typeof row.analysisJson.generatedThumbnailObjectPath === "string"
+        ? { thumbnailObjectPath: row.analysisJson.generatedThumbnailObjectPath }
+        : {}),
       stripeProductId,
       stripePriceId,
       status: "published",
@@ -2369,6 +2742,7 @@ export async function updateNativeWorkbookDetails(input: {
     : null;
   const [latestVersion] = await db.select({
         id: nativeWorkbookVersions.id,
+        editionId: nativeWorkbookVersions.editionId,
         editionLabel: nativeWorkbookVersions.editionLabel,
         analysisJson: nativeWorkbookVersions.analysisJson
       }).from(nativeWorkbookVersions)
@@ -2430,6 +2804,10 @@ export async function updateNativeWorkbookDetails(input: {
             ? { analysisJson: { ...latestVersion.analysisJson, descriptionMode: "custom" } }
             : {})
         }).where(eq(nativeWorkbookVersions.id, latestVersion.id));
+        await tx.update(nativeWorkbookEditions).set({
+          editionLabel,
+          updatedAt: new Date()
+        }).where(eq(nativeWorkbookEditions.id, latestVersion.editionId));
       }
       if (workbookVersionIds.length > 0) {
         await tx.update(contentDocuments).set({
@@ -2573,6 +2951,7 @@ async function promoteCompatibleWorkbookReplacement(input: {
     workbookId: string;
     objectPath: string;
     originalFilename: string;
+    mimeType: string;
     analysisJson: Record<string, unknown>;
     title: string;
   };
@@ -2585,6 +2964,8 @@ async function promoteCompatibleWorkbookReplacement(input: {
   const [publishedVersion] = await db.select({
     id: nativeWorkbookVersions.id,
     workbookId: nativeWorkbookVersions.workbookId,
+    editionId: nativeWorkbookVersions.editionId,
+    revisionNumber: nativeWorkbookVersions.revisionNumber,
     objectPath: nativeWorkbookVersions.objectPath,
     pageCount: nativeWorkbookVersions.pageCount,
     analysisStatus: nativeWorkbookVersions.analysisStatus,
@@ -2651,26 +3032,8 @@ async function promoteCompatibleWorkbookReplacement(input: {
   };
   delete finalAnalysisJson.replacement;
 
-  const affectedWeeklyPlanRows = await db.select({
-    weeklyPlanId: weeklyPlanItems.weeklyPlanId
-  }).from(weeklyPlanItems)
-    .innerJoin(contentDocuments, eq(contentDocuments.id, weeklyPlanItems.documentId))
-    .where(eq(contentDocuments.nativeWorkbookVersionId, publishedVersion.id));
-  const affectedWeeklyPlanIds = Array.from(new Set(
-    affectedWeeklyPlanRows.map((row) => row.weeklyPlanId)
-  ));
-  const [weeklyAssets, dailyAssets] = affectedWeeklyPlanIds.length
-    ? await Promise.all([
-        db.select({ objectPath: weeklyPlanPdfAssets.objectPath })
-          .from(weeklyPlanPdfAssets)
-          .where(inArray(weeklyPlanPdfAssets.weeklyPlanId, affectedWeeklyPlanIds)),
-        db.select({ objectPath: weeklyPlanDayPdfAssets.objectPath })
-          .from(weeklyPlanDayPdfAssets)
-          .where(inArray(weeklyPlanDayPdfAssets.weeklyPlanId, affectedWeeklyPlanIds))
-      ])
-    : [[], []];
-
   await db.transaction(async (tx) => {
+    const promotedAt = new Date();
     await tx.update(nativeWorkbookVersions).set({
       pageCount: input.pageCount,
       sizeBytes: input.bytes.byteLength,
@@ -2680,58 +3043,182 @@ async function promoteCompatibleWorkbookReplacement(input: {
       curriculumCoverageProfile: publishedVersion.curriculumCoverageProfile,
       curriculumCoverageFrameworkVersion: publishedVersion.curriculumCoverageFrameworkVersion,
       curriculumCoverageProfiledAt: publishedVersion.curriculumCoverageProfiledAt,
+      releaseStatus: "published",
+      supersedesVersionId: publishedVersion.id,
+      compatibilityReport: {
+        compatible: true,
+        checkedAt: new Date().toISOString(),
+        lessonCount: compatibility.currentLessonCount,
+        reasons: compatibility.reasons
+      },
       lastError: null,
-      indexedAt: new Date(),
-      ...(input.replacement.restoreActive ? { publishedAt: new Date() } : {})
+      indexedAt: promotedAt,
+      ...(input.replacement.restoreActive ? { publishedAt: promotedAt } : {})
     }).where(eq(nativeWorkbookVersions.id, input.version.id));
-    await tx.update(contentDocuments).set({
-      nativeWorkbookVersionId: input.version.id,
-      clientUploadId: `native:${input.version.id}`,
-      originalFilename: input.version.originalFilename,
-      objectPath: input.version.objectPath,
-      mimeType: "application/pdf",
-      sizeBytes: input.bytes.byteLength,
-      pageCount: input.pageCount,
-      analysisStatus: "ready",
-      analysisJson: {
-        ...finalAnalysisJson,
-        nativeWorkbookId: input.version.workbookId,
-        nativeWorkbookVersionId: input.version.id
-      }
-    }).where(eq(contentDocuments.nativeWorkbookVersionId, publishedVersion.id));
-    await tx.update(nativeWorkbookPurchases).set({
-      workbookVersionId: input.version.id
-    }).where(eq(nativeWorkbookPurchases.workbookVersionId, publishedVersion.id));
-    await tx.update(studentWorkbookUnitProgress).set({
-      nativeWorkbookVersionId: input.version.id,
-      updatedAt: new Date()
-    }).where(eq(studentWorkbookUnitProgress.nativeWorkbookVersionId, publishedVersion.id));
-    if (affectedWeeklyPlanIds.length) {
-      await tx.delete(weeklyPlanPdfAssets)
-        .where(inArray(weeklyPlanPdfAssets.weeklyPlanId, affectedWeeklyPlanIds));
-      await tx.delete(weeklyPlanDayPdfAssets)
-        .where(inArray(weeklyPlanDayPdfAssets.weeklyPlanId, affectedWeeklyPlanIds));
-    }
+    await tx.update(nativeWorkbookVersions).set({ releaseStatus: "superseded" })
+      .where(eq(nativeWorkbookVersions.id, publishedVersion.id));
+    await tx.update(nativeWorkbookEditions).set({
+      currentRevisionId: input.version.id,
+      status: "published",
+      updatedAt: promotedAt
+    }).where(eq(nativeWorkbookEditions.id, publishedVersion.editionId));
     await tx.update(nativeWorkbookJobs).set({
       status: "completed",
-      heartbeatAt: new Date(),
+      heartbeatAt: promotedAt,
       lastError: null,
-      updatedAt: new Date()
+      updatedAt: promotedAt
     }).where(eq(nativeWorkbookJobs.id, input.job.id));
     await tx.update(nativeWorkbooks).set({
       activeVersionId: input.version.id,
+      latestEditionId: publishedVersion.editionId,
       thumbnailObjectPath,
       status: input.replacement.restoreStatus,
       active: input.replacement.restoreActive,
-      updatedAt: new Date()
+      updatedAt: promotedAt
     }).where(eq(nativeWorkbooks.id, input.version.workbookId));
-  });
 
-  await Promise.all([...weeklyAssets, ...dailyAssets].map((asset) =>
-    deletePrivateFile(asset.objectPath).catch((error) => {
-      console.warn(`Could not delete invalidated weekly PDF asset ${asset.objectPath}:`, error);
-    })
-  ));
+    const attachments = await tx.select().from(contentDocuments).where(and(
+      eq(contentDocuments.nativeWorkbookVersionId, publishedVersion.id),
+      isNull(contentDocuments.removedAt)
+    ));
+    for (const attachment of attachments) {
+      const [promotedDocument] = await tx.insert(contentDocuments).values({
+        learningYearId: attachment.learningYearId,
+        materialSetId: attachment.materialSetId,
+        label: attachment.label,
+        subjectId: attachment.subjectId,
+        subjectLabel: attachment.subjectLabel,
+        documentRole: attachment.documentRole,
+        originalFilename: input.version.originalFilename,
+        objectPath: input.version.objectPath,
+        mimeType: input.version.mimeType,
+        sourceKind: attachment.sourceKind,
+        nativeWorkbookVersionId: input.version.id,
+        clientUploadId: `native:${input.version.id}:revision:${randomUUID().slice(0, 8)}`,
+        sizeBytes: input.bytes.byteLength,
+        pageCount: input.pageCount,
+        sortOrder: attachment.sortOrder,
+        parentNotes: attachment.parentNotes,
+        analysisStatus: "ready",
+        analysisJson: {
+          ...finalAnalysisJson,
+          nativeWorkbookId: input.version.workbookId,
+          nativeWorkbookVersionId: input.version.id,
+          compatibleRevisionUpgrade: true,
+          upgradedFromNativeWorkbookVersionId: publishedVersion.id
+        }
+      }).returning({ id: contentDocuments.id });
+
+      const affectedWeeks = await tx.select({
+        id: weeklyPlans.id,
+        status: weeklyPlans.status,
+        sourceUnitId: weeklyPlanItems.sourceUnitId
+      }).from(weeklyPlanItems)
+        .innerJoin(weeklyPlans, eq(weeklyPlans.id, weeklyPlanItems.weeklyPlanId))
+        .where(eq(weeklyPlanItems.documentId, attachment.id))
+        .for("update");
+      const affectedWeekIds = Array.from(new Set(affectedWeeks.map((week) => week.id)));
+      const downloadedEvents = affectedWeekIds.length
+        ? await tx.select({ weeklyPlanId: weeklyPlanDownloadEvents.weeklyPlanId })
+            .from(weeklyPlanDownloadEvents)
+            .where(inArray(weeklyPlanDownloadEvents.weeklyPlanId, affectedWeekIds))
+        : [];
+      const downloadedWeekIds = new Set(downloadedEvents.map((event) => event.weeklyPlanId));
+      const [attachmentYear] = await tx.select({
+        profileId: learningYears.profileId
+      }).from(learningYears)
+        .where(eq(learningYears.id, attachment.learningYearId))
+        .limit(1);
+      if (attachmentYear) {
+        const preservedUnitById = new Map<string, string>();
+        for (const week of affectedWeeks) {
+          if (
+            week.sourceUnitId &&
+            (
+              ["in_progress", "completed"].includes(week.status) ||
+              downloadedWeekIds.has(week.id)
+            ) &&
+            !preservedUnitById.has(week.sourceUnitId)
+          ) {
+            preservedUnitById.set(week.sourceUnitId, week.id);
+          }
+        }
+        const carryovers = Array.from(preservedUnitById, ([sourceUnitId, weeklyPlanId]) => ({
+          profileId: attachmentYear.profileId,
+          fromNativeWorkbookVersionId: publishedVersion.id,
+          fromSourceUnitId: sourceUnitId,
+          toNativeWorkbookVersionId: input.version.id,
+          toSourceUnitId: sourceUnitId,
+          sourceLearningYearId: attachment.learningYearId,
+          sourceWeeklyPlanId: weeklyPlanId,
+          reason: "preserved_week",
+          matchMethod: "exact_id"
+        }));
+        if (carryovers.length) {
+          await tx.insert(studentWorkbookEditionUnitCarryovers).values(carryovers)
+            .onConflictDoNothing({
+              target: [
+                studentWorkbookEditionUnitCarryovers.profileId,
+                studentWorkbookEditionUnitCarryovers.sourceLearningYearId,
+                studentWorkbookEditionUnitCarryovers.toNativeWorkbookVersionId,
+                studentWorkbookEditionUnitCarryovers.toSourceUnitId
+              ]
+            });
+        }
+        const progressRows = await tx.select().from(studentWorkbookUnitProgress).where(and(
+          eq(studentWorkbookUnitProgress.profileId, attachmentYear.profileId),
+          eq(studentWorkbookUnitProgress.nativeWorkbookVersionId, publishedVersion.id)
+        ));
+        if (progressRows.length) {
+          await tx.insert(studentWorkbookUnitProgress).values(progressRows.map((progress) => ({
+            profileId: progress.profileId,
+            nativeWorkbookVersionId: input.version.id,
+            sourceUnitId: progress.sourceUnitId,
+            status: progress.status,
+            sourceLearningYearId: progress.sourceLearningYearId,
+            sourceWeeklyPlanId: progress.sourceWeeklyPlanId,
+            selectedByUserId: progress.selectedByUserId,
+            recordedAt: progress.recordedAt,
+            updatedAt: promotedAt
+          }))).onConflictDoUpdate({
+            target: [
+              studentWorkbookUnitProgress.profileId,
+              studentWorkbookUnitProgress.nativeWorkbookVersionId,
+              studentWorkbookUnitProgress.sourceUnitId
+            ],
+            set: {
+              status: sql`excluded.status`,
+              sourceLearningYearId: sql`excluded.source_learning_year_id`,
+              sourceWeeklyPlanId: sql`excluded.source_weekly_plan_id`,
+              selectedByUserId: sql`excluded.selected_by_user_id`,
+              recordedAt: sql`excluded.recorded_at`,
+              updatedAt: promotedAt
+            }
+          });
+        }
+      }
+      const replaceableWeekIds = affectedWeeks
+        .filter((week) =>
+          ["planned", "skipped"].includes(week.status) &&
+          !downloadedWeekIds.has(week.id)
+        )
+        .map((week) => week.id);
+      if (replaceableWeekIds.length) {
+        await tx.update(weeklyPlanItems).set({ documentId: promotedDocument.id }).where(and(
+          eq(weeklyPlanItems.documentId, attachment.id),
+          inArray(weeklyPlanItems.weeklyPlanId, replaceableWeekIds)
+        ));
+        await tx.delete(weeklyPlanPdfAssets)
+          .where(inArray(weeklyPlanPdfAssets.weeklyPlanId, replaceableWeekIds));
+        await tx.delete(weeklyPlanDayPdfAssets)
+          .where(inArray(weeklyPlanDayPdfAssets.weeklyPlanId, replaceableWeekIds));
+      }
+      await tx.update(contentDocuments).set({
+        removedAt: promotedAt,
+        retainedUntil: null
+      }).where(eq(contentDocuments.id, attachment.id));
+    }
+  });
 
   return {
     jobId: input.job.id,
@@ -2749,8 +3236,10 @@ export async function runNextNativeWorkbookJob(workerId: string) {
     .select({
       id: nativeWorkbookVersions.id,
       workbookId: nativeWorkbookVersions.workbookId,
+      editionId: nativeWorkbookVersions.editionId,
       objectPath: nativeWorkbookVersions.objectPath,
       originalFilename: nativeWorkbookVersions.originalFilename,
+      mimeType: nativeWorkbookVersions.mimeType,
       analysisJson: nativeWorkbookVersions.analysisJson,
       title: nativeWorkbooks.title,
       subjectLabel: nativeWorkbooks.subjectLabel,
@@ -2771,6 +3260,7 @@ export async function runNextNativeWorkbookJob(workerId: string) {
     return { jobId: job.id, versionId: job.workbookVersionId, outcome: "failed", error: "Workbook version not found." };
   }
   const errorReference = nativeWorkbookErrorReference(version.id);
+  const editionRelease = readWorkbookEditionReleaseState(version.analysisJson);
   try {
     await db.update(nativeWorkbookVersions).set({ analysisStatus: "analyzing", lastError: null })
       .where(eq(nativeWorkbookVersions.id, version.id));
@@ -2831,7 +3321,10 @@ export async function runNextNativeWorkbookJob(workerId: string) {
       );
       return null;
     });
-    await createGeneratedCoverImage({ bytes, objectPath: version.thumbnailObjectPath });
+    const generatedThumbnailObjectPath = editionRelease
+      ? `native-workbooks/${version.workbookId}/versions/${version.id}/cover.png`
+      : version.thumbnailObjectPath;
+    await createGeneratedCoverImage({ bytes, objectPath: generatedThumbnailObjectPath });
     const descriptionMode = version.analysisJson?.descriptionMode === "auto" ? "auto" : "custom";
     const generatedDescription = descriptionMode === "auto"
       ? await generateNativeWorkbookCatalogDescription({
@@ -2883,6 +3376,8 @@ export async function runNextNativeWorkbookJob(workerId: string) {
       contentFingerprint: fingerprint,
       nativeWorkbook: true,
       productPreviewImages,
+      catalogDescription: finalDescription,
+      generatedThumbnailObjectPath,
       completedAt: new Date().toISOString()
     };
     delete finalAnalysisJson.replacement;
@@ -2918,12 +3413,12 @@ export async function runNextNativeWorkbookJob(workerId: string) {
       await tx.update(nativeWorkbookJobs).set({ status: "completed", heartbeatAt: new Date(), lastError: null, updatedAt: new Date() })
         .where(eq(nativeWorkbookJobs.id, job.id));
       await tx.update(nativeWorkbooks).set({
-        description: finalDescription,
+        ...(!editionRelease ? { description: finalDescription } : {}),
         ...(currentReplacement ? {
           activeVersionId: version.id,
           status: restoredStatus,
           active: currentReplacement.restoreActive
-        } : { status: "ready" }),
+        } : editionRelease ? {} : { status: "ready" }),
         updatedAt: new Date()
       })
         .where(eq(nativeWorkbooks.id, version.workbookId));
@@ -2983,7 +3478,7 @@ export async function runNextNativeWorkbookJob(workerId: string) {
           status: replacement.restoreStatus,
           active: replacement.restoreActive,
           activeVersionId: replacement.previousVersionId
-        } : {
+        } : editionRelease ? {} : {
           status: retry ? "indexing" : "indexing_failed"
         }),
         updatedAt: new Date()
@@ -3049,6 +3544,218 @@ async function applyNativeWorkbookPrerequisites(input: {
   return { applied };
 }
 
+export async function upgradeNativeWorkbookEditionForLearningYear(input: {
+  userId: string;
+  learningYearId: string;
+  documentId: string;
+}) {
+  const parent = await getParentContext(input.userId);
+  if (parent.accountRole === "TEACHER") {
+    throw new Error("An account owner or administrator must update workbook editions.");
+  }
+  const [attached] = await db.select({
+    document: contentDocuments,
+    profileAccountId: profiles.accountId,
+    profileId: profiles.id,
+    workbookId: nativeWorkbookVersions.workbookId,
+    currentEditionId: nativeWorkbookVersions.editionId,
+    activeVersionId: nativeWorkbooks.activeVersionId,
+    latestEditionId: nativeWorkbooks.latestEditionId,
+    workbookTitle: nativeWorkbooks.title
+  }).from(contentDocuments)
+    .innerJoin(learningYears, eq(learningYears.id, contentDocuments.learningYearId))
+    .innerJoin(profiles, eq(profiles.id, learningYears.profileId))
+    .innerJoin(nativeWorkbookVersions, eq(nativeWorkbookVersions.id, contentDocuments.nativeWorkbookVersionId))
+    .innerJoin(nativeWorkbooks, eq(nativeWorkbooks.id, nativeWorkbookVersions.workbookId))
+    .where(and(
+      eq(contentDocuments.id, input.documentId),
+      eq(contentDocuments.learningYearId, input.learningYearId),
+      isNull(contentDocuments.removedAt)
+    ))
+    .limit(1);
+  if (!attached || attached.profileAccountId !== parent.accountId) throw new Error("Workbook not found in this lesson plan.");
+  if (!attached.activeVersionId || !attached.latestEditionId || attached.latestEditionId === attached.currentEditionId) {
+    throw new Error("This lesson plan already uses the latest edition.");
+  }
+  const currentVersionId = attached.document.nativeWorkbookVersionId;
+  if (!currentVersionId) throw new Error("The current workbook release could not be identified.");
+  const [latest] = await db.select().from(nativeWorkbookVersions)
+    .where(and(
+      eq(nativeWorkbookVersions.id, attached.activeVersionId),
+      eq(nativeWorkbookVersions.workbookId, attached.workbookId),
+      eq(nativeWorkbookVersions.analysisStatus, "ready"),
+      eq(nativeWorkbookVersions.releaseStatus, "published")
+    ))
+    .limit(1);
+  if (!latest) throw new Error("The latest edition is not ready yet.");
+
+  const oldWeekItems = await db.select({
+    weeklyPlanId: weeklyPlans.id,
+    weeklyPlanStatus: weeklyPlans.status,
+    sourceUnitId: weeklyPlanItems.sourceUnitId
+  }).from(weeklyPlanItems)
+    .innerJoin(weeklyPlans, eq(weeklyPlans.id, weeklyPlanItems.weeklyPlanId))
+    .where(eq(weeklyPlanItems.documentId, attached.document.id));
+  const oldWeekIds = Array.from(new Set(oldWeekItems.map((item) => item.weeklyPlanId)));
+  const downloadEvents = oldWeekIds.length
+    ? await db.select({ weeklyPlanId: weeklyPlanDownloadEvents.weeklyPlanId })
+        .from(weeklyPlanDownloadEvents)
+        .where(inArray(weeklyPlanDownloadEvents.weeklyPlanId, oldWeekIds))
+    : [];
+  const downloadedWeekIds = new Set(downloadEvents.map((event) => event.weeklyPlanId));
+  const preservedWeekUnits = oldWeekItems.filter((item) =>
+    ["in_progress", "completed"].includes(item.weeklyPlanStatus) ||
+    downloadedWeekIds.has(item.weeklyPlanId)
+  );
+  const durableProgress = await db.select().from(studentWorkbookUnitProgress).where(and(
+    eq(studentWorkbookUnitProgress.profileId, attached.profileId),
+    eq(studentWorkbookUnitProgress.nativeWorkbookVersionId, currentVersionId)
+  ));
+  if (preservedWeekUnits.some((item) => !item.sourceUnitId)) {
+    throw new Error(
+      "This edition changed too much to update safely after teaching began. Keep the current edition for this school year, then choose the new edition next year."
+    );
+  }
+  const unitMapping = mapEditionLearningUnits({
+    sourceUnits: editionLearningUnitsFromAnalysis(attached.document.analysisJson),
+    targetUnits: editionLearningUnitsFromAnalysis(latest.analysisJson),
+    protectedSourceUnitIds: [
+      ...preservedWeekUnits.flatMap((item) => item.sourceUnitId ? [item.sourceUnitId] : []),
+      ...durableProgress.map((progress) => progress.sourceUnitId)
+    ]
+  });
+  if (unitMapping.unmatched.length > 0) {
+    throw new Error(
+      "This edition changed too much to update safely after teaching began. Keep the current edition for this school year, then choose the new edition next year."
+    );
+  }
+
+  const [newDocument] = await db.transaction(async (tx) => {
+    const now = new Date();
+    await tx.update(contentDocuments).set({
+      removedAt: now,
+      retainedUntil: null
+    }).where(eq(contentDocuments.id, attached.document.id));
+    await tx.update(learningYearMaterialSets).set({
+      label: attached.workbookTitle,
+      updatedAt: now
+    }).where(eq(learningYearMaterialSets.id, attached.document.materialSetId));
+    const [created] = await tx.insert(contentDocuments).values({
+      learningYearId: attached.document.learningYearId,
+      materialSetId: attached.document.materialSetId,
+      label: attached.workbookTitle,
+      subjectId: attached.document.subjectId,
+      subjectLabel: attached.document.subjectLabel,
+      documentRole: attached.document.documentRole,
+      originalFilename: latest.originalFilename,
+      objectPath: latest.objectPath,
+      mimeType: latest.mimeType,
+      sourceKind: "native_workbook",
+      nativeWorkbookVersionId: latest.id,
+      clientUploadId: `native:${latest.id}:upgrade:${randomUUID().slice(0, 8)}`,
+      sizeBytes: latest.sizeBytes,
+      pageCount: latest.pageCount,
+      sortOrder: attached.document.sortOrder,
+      parentNotes: attached.document.parentNotes,
+      analysisStatus: "ready",
+      analysisJson: {
+        ...latest.analysisJson,
+        nativeWorkbookId: attached.workbookId,
+        nativeWorkbookVersionId: latest.id,
+        upgradedFromNativeWorkbookVersionId: attached.document.nativeWorkbookVersionId
+      }
+    }).returning({ id: contentDocuments.id });
+    const preservedUnitById = new Map<string, string>();
+    for (const item of preservedWeekUnits) {
+      if (item.sourceUnitId && !preservedUnitById.has(item.sourceUnitId)) {
+        preservedUnitById.set(item.sourceUnitId, item.weeklyPlanId);
+      }
+    }
+    const carryovers = Array.from(preservedUnitById, ([sourceUnitId, weeklyPlanId]) => {
+      const mapping = unitMapping.mappings.get(sourceUnitId);
+      if (!mapping) return null;
+      return {
+        profileId: attached.profileId,
+        fromNativeWorkbookVersionId: currentVersionId,
+        fromSourceUnitId: sourceUnitId,
+        toNativeWorkbookVersionId: latest.id,
+        toSourceUnitId: mapping.targetSourceUnitId,
+        sourceLearningYearId: input.learningYearId,
+        sourceWeeklyPlanId: weeklyPlanId,
+        reason: "preserved_week",
+        matchMethod: mapping.matchMethod
+      };
+    }).filter((row): row is NonNullable<typeof row> => Boolean(row));
+    if (carryovers.length) {
+      await tx.insert(studentWorkbookEditionUnitCarryovers).values(carryovers)
+        .onConflictDoNothing({
+          target: [
+            studentWorkbookEditionUnitCarryovers.profileId,
+            studentWorkbookEditionUnitCarryovers.sourceLearningYearId,
+            studentWorkbookEditionUnitCarryovers.toNativeWorkbookVersionId,
+            studentWorkbookEditionUnitCarryovers.toSourceUnitId
+          ]
+        });
+    }
+    const migratedProgress = durableProgress.flatMap((progress) => {
+      const mapping = unitMapping.mappings.get(progress.sourceUnitId);
+      return mapping ? [{
+        profileId: progress.profileId,
+        nativeWorkbookVersionId: latest.id,
+        sourceUnitId: mapping.targetSourceUnitId,
+        status: progress.status,
+        sourceLearningYearId: progress.sourceLearningYearId,
+        sourceWeeklyPlanId: progress.sourceWeeklyPlanId,
+        selectedByUserId: progress.selectedByUserId,
+        recordedAt: progress.recordedAt,
+        updatedAt: now
+      }] : [];
+    });
+    if (migratedProgress.length) {
+      await tx.insert(studentWorkbookUnitProgress).values(migratedProgress)
+        .onConflictDoUpdate({
+          target: [
+            studentWorkbookUnitProgress.profileId,
+            studentWorkbookUnitProgress.nativeWorkbookVersionId,
+            studentWorkbookUnitProgress.sourceUnitId
+          ],
+          set: {
+            status: sql`excluded.status`,
+            sourceLearningYearId: sql`excluded.source_learning_year_id`,
+            sourceWeeklyPlanId: sql`excluded.source_weekly_plan_id`,
+            selectedByUserId: sql`excluded.selected_by_user_id`,
+            recordedAt: sql`excluded.recorded_at`,
+            updatedAt: now
+          }
+        });
+    }
+    await tx.update(learningYears).set({
+      materialsUpdatedAt: now,
+      curriculumCompletenessInputFingerprint: null,
+      curriculumCompletenessReviewedAt: null,
+      updatedAt: now
+    }).where(eq(learningYears.id, input.learningYearId));
+    return [created];
+  });
+  await applyNativeWorkbookPrerequisites({ learningYearId: input.learningYearId });
+  let planningStarted = false;
+  let planningMessage: string | null = null;
+  try {
+    await startLearningYearPlanning(input.userId, input.learningYearId);
+    planningStarted = true;
+  } catch (error) {
+    planningMessage = error instanceof Error ? error.message : "The workbook was updated, but replanning has not started.";
+  }
+  return {
+    upgraded: true,
+    documentId: newDocument.id,
+    versionId: latest.id,
+    editionLabel: latest.editionLabel,
+    planningStarted,
+    planningMessage
+  };
+}
+
 export async function attachNativeWorkbookToLearningYear(input: {
   userId: string;
   workbookId: string;
@@ -3063,8 +3770,11 @@ export async function attachNativeWorkbookToLearningYear(input: {
     .where(eq(learningYears.id, input.learningYearId))
     .limit(1);
   if (!year || year.profileAccountId !== parent.accountId) throw new Error("Learning year not found.");
-  await requireWorkbookAccess({ userId: input.userId, workbookId: input.workbookId });
-  const [workbook] = await db
+  const accessState = await requireWorkbookAccess({
+    userId: input.userId,
+    workbookId: input.workbookId
+  });
+  const [catalogWorkbook] = await db
     .select({
       id: nativeWorkbooks.id,
       title: nativeWorkbooks.title,
@@ -3072,6 +3782,31 @@ export async function attachNativeWorkbookToLearningYear(input: {
       subjectLabel: nativeWorkbooks.subjectLabel,
       prerequisiteWorkbookId: nativeWorkbooks.prerequisiteWorkbookId,
       activeVersionId: nativeWorkbooks.activeVersionId,
+      active: nativeWorkbooks.active,
+      status: nativeWorkbooks.status
+    })
+    .from(nativeWorkbooks)
+    .where(eq(nativeWorkbooks.id, input.workbookId))
+    .limit(1);
+  if (!catalogWorkbook?.activeVersionId) throw new Error("This workbook is not currently available.");
+  const [ownedPurchase] = accessState === "owned"
+    ? await db.select({
+        workbookVersionId: nativeWorkbookPurchases.workbookVersionId
+      }).from(nativeWorkbookPurchases).where(and(
+        eq(nativeWorkbookPurchases.accountId, parent.accountId),
+        eq(nativeWorkbookPurchases.workbookId, input.workbookId),
+        eq(nativeWorkbookPurchases.status, "paid")
+      )).orderBy(desc(nativeWorkbookPurchases.purchasedAt)).limit(1)
+    : [];
+  if (
+    accessState !== "owned" &&
+    (!catalogWorkbook.active || catalogWorkbook.status !== "published")
+  ) {
+    throw new Error("This workbook is not currently available.");
+  }
+  const selectedVersionId =
+    ownedPurchase?.workbookVersionId ?? catalogWorkbook.activeVersionId;
+  const [selectedVersion] = await db.select({
       versionId: nativeWorkbookVersions.id,
       originalFilename: nativeWorkbookVersions.originalFilename,
       objectPath: nativeWorkbookVersions.objectPath,
@@ -3080,18 +3815,25 @@ export async function attachNativeWorkbookToLearningYear(input: {
       pageCount: nativeWorkbookVersions.pageCount,
       analysisJson: nativeWorkbookVersions.analysisJson,
       curriculumCoverageProfile: nativeWorkbookVersions.curriculumCoverageProfile
-    })
-    .from(nativeWorkbooks)
-    .innerJoin(nativeWorkbookVersions, eq(nativeWorkbookVersions.id, nativeWorkbooks.activeVersionId))
-    .where(and(eq(nativeWorkbooks.id, input.workbookId), eq(nativeWorkbooks.active, true), eq(nativeWorkbooks.status, "published")))
+    }).from(nativeWorkbookVersions)
+    .where(and(
+      eq(nativeWorkbookVersions.id, selectedVersionId),
+      eq(nativeWorkbookVersions.workbookId, input.workbookId),
+      eq(nativeWorkbookVersions.analysisStatus, "ready")
+    ))
     .limit(1);
-  if (!workbook?.activeVersionId) throw new Error("This workbook is not currently available.");
+  if (!selectedVersion) throw new Error("The selected workbook edition is not ready.");
+  const workbook = { ...catalogWorkbook, ...selectedVersion };
   const [existing] = await db
     .select({ id: contentDocuments.id })
     .from(contentDocuments)
+    .innerJoin(
+      nativeWorkbookVersions,
+      eq(nativeWorkbookVersions.id, contentDocuments.nativeWorkbookVersionId)
+    )
     .where(and(
       eq(contentDocuments.learningYearId, input.learningYearId),
-      eq(contentDocuments.nativeWorkbookVersionId, workbook.activeVersionId),
+      eq(nativeWorkbookVersions.workbookId, input.workbookId),
       isNull(contentDocuments.removedAt)
     )).limit(1);
   if (existing) {
@@ -3135,13 +3877,17 @@ export async function attachNativeWorkbookToLearningYear(input: {
       objectPath: workbook.objectPath,
       mimeType: workbook.mimeType,
       sourceKind: "native_workbook",
-      nativeWorkbookVersionId: workbook.activeVersionId,
-      clientUploadId: `native:${workbook.activeVersionId}`,
+      nativeWorkbookVersionId: workbook.versionId,
+      clientUploadId: `native:${workbook.versionId}`,
       sizeBytes: workbook.sizeBytes,
       pageCount: workbook.pageCount,
       sortOrder: Number(sortOrder[0]?.value ?? 0),
       analysisStatus: "ready",
-      analysisJson: { ...workbook.analysisJson, nativeWorkbookId: workbook.id, nativeWorkbookVersionId: workbook.activeVersionId }
+      analysisJson: {
+        ...workbook.analysisJson,
+        nativeWorkbookId: workbook.id,
+        nativeWorkbookVersionId: workbook.versionId
+      }
     }).returning({ id: contentDocuments.id });
     await tx.insert(learningYearSubjectPreferences).values({
       learningYearId: input.learningYearId,
@@ -3341,6 +4087,7 @@ async function resolveCheckoutCatalogItems(ids: string[], userId?: string | null
     type: WorkbookType;
     pageCount: number;
     memberWorkbookIds: string[];
+    memberVersionIds: string[];
   }>();
   const workbookAccess = await accessByWorkbookIds(userId, workbooks.map((workbook) => workbook.id));
   for (const workbook of workbooks) {
@@ -3349,7 +4096,8 @@ async function resolveCheckoutCatalogItems(ids: string[], userId?: string | null
       catalogKind: "workbook",
       accessState: workbookAccess.get(workbook.id) ?? "purchase_required",
       pageCount: Number(workbook.pageCount ?? 0),
-      memberWorkbookIds: [workbook.id]
+      memberWorkbookIds: [workbook.id],
+      memberVersionIds: workbook.activeVersionId ? [workbook.activeVersionId] : []
     });
   }
   for (const bundle of bundles) {
@@ -3366,10 +4114,27 @@ async function resolveCheckoutCatalogItems(ids: string[], userId?: string | null
       accessState: bundle.accessState,
       type: bundle.type,
       pageCount: Number(bundle.pageCount ?? 0),
-      memberWorkbookIds: bundle.memberWorkbookIds
+      memberWorkbookIds: bundle.memberWorkbookIds,
+      memberVersionIds: bundle.members
+        .map((member) => member.activeVersionId)
+        .filter((versionId): versionId is string => Boolean(versionId))
     });
   }
   return ids.map((id) => byId.get(id)).filter((item): item is NonNullable<typeof item> => Boolean(item));
+}
+
+async function snapshotBundleActiveVersionIds(bundleId: string) {
+  const members = await db.select({
+    workbookId: nativeWorkbookBundleItems.workbookId,
+    versionId: nativeWorkbooks.activeVersionId
+  }).from(nativeWorkbookBundleItems)
+    .innerJoin(nativeWorkbooks, eq(nativeWorkbooks.id, nativeWorkbookBundleItems.workbookId))
+    .where(eq(nativeWorkbookBundleItems.bundleId, bundleId))
+    .orderBy(asc(nativeWorkbookBundleItems.sortOrder));
+  if (!members.length || members.some((member) => !member.versionId)) {
+    throw new Error("This workbook bundle contains an unavailable edition.");
+  }
+  return members.map((member) => member.versionId!);
 }
 
 export async function resolveNativeWorkbookCheckoutSelections(input: {
@@ -3426,10 +4191,16 @@ export async function createNativeWorkbookCheckout(input: {
   const funnelKey = normalizeText(input.funnelKey, 80);
   const isFirstGradeFunnel = funnelKey === "first_grade_curriculum";
   const checkoutKind = workbook.catalogKind === "bundle" ? "native_workbook_bundle" : "native_workbook";
+  const bundleVersionIds = workbook.catalogKind === "bundle"
+    ? await snapshotBundleActiveVersionIds(workbook.id)
+    : [];
   const checkoutMetadata = {
     checkoutKind,
     ...(workbook.catalogKind === "bundle"
-      ? { nativeWorkbookBundleId: workbook.id }
+      ? {
+          nativeWorkbookBundleId: workbook.id,
+          nativeWorkbookBundleVersionIds: bundleVersionIds.join("|")
+        }
       : { nativeWorkbookId: workbook.id, nativeWorkbookVersionId: workbook.activeVersionId! }),
     deliveryEmail: email,
     ...(parent ? { accountId: parent.accountId, userId: input.userId! } : {}),
@@ -3493,17 +4264,24 @@ export async function createNativeWorkbookCartCheckout(input: {
   const selectedBundleIds = workbooks.filter((item) => item.catalogKind === "bundle").map((item) => item.id);
   const bundleMembers = selectedBundleIds.length ? await db.select({
     bundleId: nativeWorkbookBundleItems.bundleId,
-    workbookId: nativeWorkbookBundleItems.workbookId
-  }).from(nativeWorkbookBundleItems).where(inArray(nativeWorkbookBundleItems.bundleId, selectedBundleIds)) : [];
-  const bundleMembersById = new Map<string, string[]>();
+    workbookId: nativeWorkbookBundleItems.workbookId,
+    activeVersionId: nativeWorkbooks.activeVersionId
+  }).from(nativeWorkbookBundleItems)
+    .innerJoin(nativeWorkbooks, eq(nativeWorkbooks.id, nativeWorkbookBundleItems.workbookId))
+    .where(inArray(nativeWorkbookBundleItems.bundleId, selectedBundleIds))
+    .orderBy(asc(nativeWorkbookBundleItems.bundleId), asc(nativeWorkbookBundleItems.sortOrder)) : [];
+  const bundleMembersById = new Map<string, Array<{ workbookId: string; versionId: string }>>();
   for (const member of bundleMembers) {
+    if (!member.activeVersionId) throw new Error("A selected workbook bundle contains an unavailable edition.");
     const current = bundleMembersById.get(member.bundleId) ?? [];
-    current.push(member.workbookId);
+    current.push({ workbookId: member.workbookId, versionId: member.activeVersionId });
     bundleMembersById.set(member.bundleId, current);
   }
   const seenMemberIds = new Set<string>();
   for (const item of workbooks) {
-    const memberIds = item.catalogKind === "bundle" ? bundleMembersById.get(item.id) ?? [] : [item.id];
+    const memberIds = item.catalogKind === "bundle"
+      ? (bundleMembersById.get(item.id) ?? []).map((member) => member.workbookId)
+      : [item.id];
     if (memberIds.some((id) => seenMemberIds.has(id))) {
       throw new Error("Your cart contains overlapping bundles or a workbook that is already inside a selected bundle.");
     }
@@ -3520,6 +4298,9 @@ export async function createNativeWorkbookCartCheckout(input: {
   const itemMetadata = Object.fromEntries(workbooks.flatMap((workbook, index) => [
     [`kind${index}`, workbook.catalogKind],
     [`item${index}`, workbook.id],
+    ...(workbook.catalogKind === "bundle"
+      ? [[`versions${index}`, (bundleMembersById.get(workbook.id) ?? []).map((member) => member.versionId).join("|")]]
+      : [[`version${index}`, workbook.activeVersionId!]]),
     [`amount${index}`, String(workbook.priceInCents)]
   ]));
   const stripe = getStripe();
@@ -3718,6 +4499,7 @@ async function expandPurchasedCatalogSelections(input: {
     catalogKind: CatalogKind;
     id: string;
     versionId?: string;
+    versionIds?: string[];
     priceInCents: number;
     purchased?: boolean;
   }> = input.checkoutKind === "native_workbook"
@@ -3731,6 +4513,7 @@ async function expandPurchasedCatalogSelections(input: {
       ? [{
           catalogKind: "bundle",
           id: input.metadata.nativeWorkbookBundleId ?? "",
+          versionIds: input.metadata.nativeWorkbookBundleVersionIds?.split("|").filter(Boolean),
           priceInCents: input.session.amount_subtotal ?? input.session.amount_total ?? 0
         }]
       : Array.from({
@@ -3751,6 +4534,7 @@ async function expandPurchasedCatalogSelections(input: {
             ["plan_pack", "core_subscription"].includes(input.checkoutKind) ? `nativeItem${index}` : `item${index}`
           ] ?? input.metadata[`workbook${index}`] ?? "",
           versionId: input.metadata[`version${index}`] || undefined,
+          versionIds: input.metadata[`versions${index}`]?.split("|").filter(Boolean),
           priceInCents: Number(input.metadata[
             ["plan_pack", "core_subscription"].includes(input.checkoutKind) ? `nativeAmount${index}` : `amount${index}`
           ] ?? NaN),
@@ -3784,14 +4568,28 @@ async function expandPurchasedCatalogSelections(input: {
 
     const members = await db.select({
       workbookId: nativeWorkbooks.id,
-      versionId: nativeWorkbookVersions.id,
+      activeVersionId: nativeWorkbooks.activeVersionId,
       retailPriceInCents: nativeWorkbooks.priceInCents
     }).from(nativeWorkbookBundleItems)
       .innerJoin(nativeWorkbooks, eq(nativeWorkbooks.id, nativeWorkbookBundleItems.workbookId))
-      .innerJoin(nativeWorkbookVersions, eq(nativeWorkbookVersions.id, nativeWorkbooks.activeVersionId))
       .where(eq(nativeWorkbookBundleItems.bundleId, selection.id))
       .orderBy(asc(nativeWorkbookBundleItems.sortOrder));
     if (!members.length) throw new Error("A purchased workbook bundle no longer exists.");
+    const pinnedVersions = selection.versionIds?.length
+      ? await db.select({
+          id: nativeWorkbookVersions.id,
+          workbookId: nativeWorkbookVersions.workbookId
+        }).from(nativeWorkbookVersions)
+          .where(inArray(nativeWorkbookVersions.id, selection.versionIds))
+      : [];
+    const pinnedVersionByWorkbookId = new Map(pinnedVersions.map((version) => [version.workbookId, version.id]));
+    if (selection.versionIds?.length && (
+      selection.versionIds.length !== members.length ||
+      pinnedVersions.length !== members.length ||
+      members.some((member) => !pinnedVersionByWorkbookId.has(member.workbookId))
+    )) {
+      throw new Error("A purchased workbook bundle edition snapshot is incomplete.");
+    }
     const retailTotal = members.reduce((total, member) => total + member.retailPriceInCents, 0);
     let allocated = 0;
     members.forEach((member, index) => {
@@ -3801,7 +4599,9 @@ async function expandPurchasedCatalogSelections(input: {
           ? Math.floor((selection.priceInCents * member.retailPriceInCents) / retailTotal)
           : Math.floor(selection.priceInCents / members.length);
       allocated += priceInCents;
-      expanded.push({ workbookId: member.workbookId, versionId: member.versionId, priceInCents });
+      const versionId = pinnedVersionByWorkbookId.get(member.workbookId) ?? member.activeVersionId;
+      if (!versionId) throw new Error("A purchased workbook edition no longer exists.");
+      expanded.push({ workbookId: member.workbookId, versionId, priceInCents });
     });
   }
 

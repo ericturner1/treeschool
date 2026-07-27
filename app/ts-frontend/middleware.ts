@@ -43,6 +43,79 @@ function tokenExpiresSoon(token: string) {
   }
 }
 
+async function requestRefreshedSession({
+  supabaseUrl,
+  anonKey,
+  refreshToken
+}: {
+  supabaseUrl: string;
+  anonKey: string;
+  refreshToken: string;
+}) {
+  const performRefresh = () => fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST",
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+    cache: "no-store"
+  }).catch(() => null);
+
+  let response = await performRefresh();
+
+  // A dropped response can happen after Supabase has already rotated the token.
+  // Retrying immediately is safe inside Supabase's refresh-token reuse interval.
+  if (!response || response.status >= 500) {
+    response = await performRefresh();
+  }
+
+  if (!response?.ok) {
+    let errorCode = "unknown";
+
+    try {
+      const payload = await response?.json() as { error_code?: string; code?: string };
+      errorCode = payload?.error_code ?? payload?.code ?? errorCode;
+    } catch {
+      // The response status and safe error code below are sufficient diagnostics.
+    }
+
+    console.warn(JSON.stringify({
+      event: "auth_session_refresh_failed",
+      status: response?.status ?? 0,
+      errorCode
+    }));
+    return null;
+  }
+
+  const payload = await response.json() as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  };
+
+  if (!payload.access_token || !payload.refresh_token) {
+    console.warn(JSON.stringify({
+      event: "auth_session_refresh_failed",
+      status: response.status,
+      errorCode: "missing_session_tokens"
+    }));
+    return null;
+  }
+
+  console.info(JSON.stringify({
+    event: "auth_session_refreshed",
+    expiresIn: payload.expires_in ?? null
+  }));
+
+  return {
+    access_token: payload.access_token,
+    refresh_token: payload.refresh_token,
+    expires_in: payload.expires_in
+  };
+}
+
 export async function middleware(request: NextRequest) {
   const legacyStudentPlanMatch = request.nextUrl.pathname.match(
     /^\/parent\/student\/([^/]+)\/curriculum(\/.*)?$/
@@ -115,6 +188,29 @@ export async function middleware(request: NextRequest) {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const usesLocalDevSession = effectiveAccessToken?.startsWith(LOCAL_DEV_TOKEN_PREFIX) === true ||
     effectiveRefreshToken?.startsWith("local-dev-refresh:") === true;
+  if (
+    request.nextUrl.pathname.startsWith("/p/") &&
+    lastActivitySeconds &&
+    !sessionWentIdle &&
+    !effectiveAccessToken &&
+    !effectiveRefreshToken
+  ) {
+    console.warn(JSON.stringify({
+      event: "auth_session_cookies_missing",
+      hasActivityCookie: true
+    }));
+  }
+  if (
+    effectiveRefreshToken &&
+    (!effectiveAccessToken || tokenExpiresSoon(effectiveAccessToken)) &&
+    (!supabaseUrl || !anonKey)
+  ) {
+    console.error(JSON.stringify({
+      event: "auth_session_refresh_unavailable",
+      missingSupabaseUrl: !supabaseUrl,
+      missingAnonKey: !anonKey
+    }));
+  }
   const shouldRefreshSession = Boolean(
     !usesLocalDevSession &&
     effectiveRefreshToken &&
@@ -129,23 +225,13 @@ export async function middleware(request: NextRequest) {
   } | null = null;
 
   if (shouldRefreshSession && effectiveRefreshToken && supabaseUrl && anonKey) {
-    const refreshResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
-      method: "POST",
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${anonKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ refresh_token: effectiveRefreshToken }),
-      cache: "no-store"
-    }).catch(() => null);
+    refreshedSession = await requestRefreshedSession({
+      supabaseUrl,
+      anonKey,
+      refreshToken: effectiveRefreshToken
+    });
 
-    if (refreshResponse?.ok) {
-      refreshedSession = (await refreshResponse.json()) as {
-        access_token: string;
-        refresh_token: string;
-        expires_in?: number;
-      };
+    if (refreshedSession) {
       let cookieHeader = requestHeaders.get("cookie") ?? "";
       cookieHeader = setRequestCookie(cookieHeader, ACCESS_TOKEN_COOKIE_NAME, refreshedSession.access_token);
       cookieHeader = setRequestCookie(cookieHeader, REFRESH_TOKEN_COOKIE_NAME, refreshedSession.refresh_token);
@@ -156,7 +242,13 @@ export async function middleware(request: NextRequest) {
     // not erase a newer successful session. Explicit sign-out still clears it.
   }
 
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  // A successful refresh rotates the refresh token. On safe requests, finish
+  // renewal with a browser round-trip so the rotated cookies are committed
+  // before the protected page renders. This avoids losing Set-Cookie headers
+  // while a downstream Server Component response is being composed.
+  const response = refreshedSession && (request.method === "GET" || request.method === "HEAD")
+    ? NextResponse.redirect(request.nextUrl.clone(), 307)
+    : NextResponse.next({ request: { headers: requestHeaders } });
 
   if (sessionWentIdle) {
     response.cookies.delete(ACCESS_TOKEN_COOKIE_NAME);

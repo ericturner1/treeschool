@@ -119,6 +119,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     if (link === "Pricing" || link === home.nav.buyNow) return "/pricing";
     if (link === "Bookstore") return "/bookstore";
     if (link === "Blog") return "/blog";
+    if (link === "FAQ") return "/faq";
     if (link === "Starting first grade") return "/first-grade-homeschool";
     if (link === "Switching homeschool programs") return "/switch-to-paper-based-homeschool";
     if (link === "No-subscription homeschooling") return "/homeschool-without-a-subscription";

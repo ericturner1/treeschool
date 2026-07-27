@@ -45,6 +45,7 @@ export function WeeklyPdfButton({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<DownloadFormat>("week");
+  const [twoUp, setTwoUp] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +68,7 @@ export function WeeklyPdfButton({
     event.stopPropagation();
     if (pending) return;
     setFormat("week");
+    setTwoUp(false);
     setError(null);
     setOpen(true);
   }
@@ -77,14 +79,20 @@ export function WeeklyPdfButton({
     setError(null);
     try {
       const separator = href.includes("?") ? "&" : "?";
-      const response = await fetch(`${href}${separator}format=${format}`, { cache: "no-store" });
+      const params = new URLSearchParams({
+        format,
+        ...(twoUp ? { layout: "two-up" } : {})
+      });
+      const response = await fetch(`${href}${separator}${params.toString()}`, { cache: "no-store" });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(payload?.error ?? "Could not prepare this download.");
       }
       const blob = await response.blob();
       const disposition = response.headers.get("Content-Disposition") ?? "";
-      const fallback = format === "days" ? `week-${weekNumber}-separate-days.zip` : `week-${weekNumber}.pdf`;
+      const fallback = format === "days"
+        ? `week-${weekNumber}-separate-days${twoUp ? "-2-up" : ""}.zip`
+        : `week-${weekNumber}${twoUp ? "-2-up" : ""}.pdf`;
       const filename = downloadFilename(disposition, fallback);
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -149,7 +157,11 @@ export function WeeklyPdfButton({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-lg font-semibold text-ink">One weekly PDF</span>
-              <span className="mt-0.5 block text-sm text-ink/58">{pageCount} pages in one printable file</span>
+              <span className="mt-0.5 block text-sm text-ink/58">
+                {twoUp
+                  ? `${Math.ceil(pageCount / 2)} landscape pages in one printable file`
+                  : `${pageCount} pages in one printable file`}
+              </span>
             </span>
           </button>
 
@@ -170,12 +182,37 @@ export function WeeklyPdfButton({
               <span className="block text-lg font-semibold text-ink">Separate PDF for each day</span>
               <span className="mt-0.5 block text-sm text-ink/58">
                 {dayCount > 0
-                  ? `${dayCount} daily PDFs · ${Math.max(0, pageCount - 1)} pages total · one ZIP file`
+                  ? twoUp
+                    ? `${dayCount} compact daily PDFs · two lesson-plan pages per side · one ZIP file`
+                    : `${dayCount} daily PDFs · ${Math.max(0, pageCount - 1)} pages total · one ZIP file`
                   : "Day-by-day scheduling is unavailable for this older plan"}
               </span>
             </span>
           </button>
         </div>
+
+        <label
+          className={`mt-4 flex cursor-pointer items-start gap-3 rounded-[18px] border px-4 py-3.5 transition ${
+            twoUp
+              ? "border-[#9ab77f] bg-[#f2f7ea]"
+              : "border-[#e1ceb0] bg-white hover:border-[#c8ac84]"
+          } ${pending ? "cursor-wait opacity-60" : ""}`}
+        >
+          <input
+            type="checkbox"
+            checked={twoUp}
+            onChange={(event) => setTwoUp(event.target.checked)}
+            disabled={pending}
+            className="mt-1 h-5 w-5 flex-none accent-[#6f9550]"
+          />
+          <span className="min-w-0">
+            <span className="block font-semibold text-ink">Compact printing: 2 pages per side</span>
+            <span className="mt-1 block text-sm leading-5 text-ink/60">
+              Places two lesson-plan pages side by side on each landscape page. Print double-sided
+              and choose “flip on short edge” to use nearly four times fewer sheets.
+            </span>
+          </span>
+        </label>
 
         {error ? (
           <p className="mt-4 rounded-[14px] border border-[#d9afa2] bg-[#fff1ec] px-4 py-3 text-sm font-semibold text-[#8b3e2f]">

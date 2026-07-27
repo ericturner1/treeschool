@@ -418,6 +418,9 @@ function nativeSelectionMetadata(selections: Awaited<ReturnType<typeof resolveNa
     ...Object.fromEntries(selections.flatMap((item, index) => [
       [`nativeKind${index}`, item.catalogKind],
       [`nativeItem${index}`, item.id],
+      ...(item.catalogKind === "bundle"
+        ? [[`versions${index}`, item.memberVersionIds.join("|")]]
+        : [[`version${index}`, item.activeVersionId!]]),
       [`nativeAmount${index}`, String(purchasedIds.has(item.id) ? item.priceInCents : 0)],
       [`nativePurchased${index}`, String(purchasedIds.has(item.id))]
     ]))

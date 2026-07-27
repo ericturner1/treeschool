@@ -3,15 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "../../../lib/auth/server";
 import {
+  completeNativeWorkbookEdition,
   completeNativeWorkbookReplacement,
   completeNativeWorkbookBundle,
   completeNativeWorkbookUpload,
   deleteNativeWorkbook,
+  discardNativeWorkbookEdition,
   discardNativeWorkbookBundleThumbnail,
   discardNativeWorkbookReplacement,
   discardNativeWorkbookBundle,
   discardNativeWorkbookUpload,
   prepareNativeWorkbookReplacement,
+  prepareNativeWorkbookEdition,
   prepareNativeWorkbookBundle,
   prepareNativeWorkbookBundleThumbnail,
   prepareNativeWorkbookUpload,
@@ -216,6 +219,55 @@ export async function discardWorkbookReplacementAction(input: { workbookId: stri
   } catch {
     return { ok: false as const };
   }
+}
+
+export async function prepareWorkbookEditionAction(input: {
+  workbookId: string;
+  editionLabel: string;
+  changeNotes: string;
+  pdfFilename: string;
+  pdfMimeType: string;
+}) {
+  try {
+    const userId = await requireUserId();
+    return { ok: true as const, upload: await prepareNativeWorkbookEdition({ ...input, userId }) };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "Could not prepare the new edition."
+    };
+  }
+}
+
+export async function completeWorkbookEditionAction(input: { workbookId: string; versionId: string }) {
+  try {
+    const userId = await requireUserId();
+    await completeNativeWorkbookEdition({ ...input, userId });
+    revalidatePath("/admin/workbooks");
+    return { ok: true as const };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "Could not queue the new edition for indexing."
+    };
+  }
+}
+
+export async function discardWorkbookEditionAction(input: { workbookId: string; versionId: string }) {
+  try {
+    const userId = await requireUserId();
+    await discardNativeWorkbookEdition({ ...input, userId });
+    revalidatePath("/admin/workbooks");
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const };
+  }
+}
+
+export async function discardWorkbookEditionFormAction(workbookId: string, versionId: string) {
+  const userId = await requireUserId();
+  await discardNativeWorkbookEdition({ userId, workbookId, versionId });
+  revalidatePath("/admin/workbooks");
 }
 
 export async function deleteWorkbookAction(workbookId: string) {

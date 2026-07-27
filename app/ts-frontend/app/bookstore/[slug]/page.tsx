@@ -306,7 +306,7 @@ export default async function WorkbookProductPage({ params, searchParams }: Prop
       </div>
 
       <footer className="border-t border-[#e4d4bb] bg-[#fffaf2]">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-8 text-sm text-ink/58 sm:px-6 lg:px-8"><p>Printable homeschool resources for grades K–4 and paper-first families.</p><nav className="flex flex-wrap gap-5"><Link href="/bookstore" className="hover:text-[#567b40]">Workbooks</Link><Link href="/pricing" className="hover:text-[#567b40]">Treeschool membership</Link><Link href="/blog" className="hover:text-[#567b40]">Homeschool resources</Link></nav></div>
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-8 text-sm text-ink/58 sm:px-6 lg:px-8"><p>Printable homeschool resources for grades K–4 and paper-first families.</p><nav className="flex flex-wrap gap-5"><Link href="/bookstore" className="hover:text-[#567b40]">Workbooks</Link><Link href="/pricing" className="hover:text-[#567b40]">Treeschool membership</Link><Link href="/blog" className="hover:text-[#567b40]">Homeschool resources</Link><Link href="/faq" className="hover:text-[#567b40]">FAQ</Link></nav></div>
       </footer>
     </main>
   );

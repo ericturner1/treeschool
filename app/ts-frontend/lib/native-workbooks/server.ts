@@ -135,7 +135,10 @@ export type AdminNativeWorkbook = {
   activeVersionId: string | null;
   versionId: string | null;
   versionNumber: number | null;
+  editionId: string | null;
+  revisionNumber: number | null;
   editionLabel: string | null;
+  releaseStatus: string | null;
   originalFilename: string | null;
   pageCount: number | null;
   analysisStatus: string | null;
@@ -158,6 +161,21 @@ export type AdminNativeWorkbook = {
   purchaseCount: number;
   planAttachmentCount: number;
   canReplacePdf: boolean;
+  isActiveVersion: boolean;
+  canPublishVersion: boolean;
+  releases: Array<{
+    versionId: string;
+    editionId: string;
+    versionNumber: number;
+    editionLabel: string;
+    revisionNumber: number;
+    releaseStatus: string;
+    analysisStatus: string;
+    pageCount: number;
+    createdAt: string;
+    publishedAt: string | null;
+    changeNotes: string | null;
+  }>;
 };
 
 export type AdminNativeWorkbookBundle = NativeWorkbookCatalogItem & {
@@ -382,6 +400,30 @@ export function discardNativeWorkbookReplacement(input: Record<string, unknown>)
   );
 }
 
+export function prepareNativeWorkbookEdition(input: Record<string, unknown>) {
+  return postJson<{ workbookId: string; editionId: string; versionId: string; pdfUploadUrl: string }>(
+    "/internal/native-workbooks/admin/editions/prepare",
+    input,
+    "Could not prepare the new workbook edition."
+  );
+}
+
+export function completeNativeWorkbookEdition(input: Record<string, unknown>) {
+  return postJson<{ queued: boolean; workbookId: string; versionId: string }>(
+    "/internal/native-workbooks/admin/editions/complete",
+    input,
+    "Could not complete the new-edition upload."
+  );
+}
+
+export function discardNativeWorkbookEdition(input: Record<string, unknown>) {
+  return postJson<{ discarded: boolean }>(
+    "/internal/native-workbooks/admin/editions/discard",
+    input,
+    "Could not discard the new-edition upload."
+  );
+}
+
 export function deleteNativeWorkbook(input: Record<string, unknown>) {
   return postJson<{ deleted: boolean }>("/internal/native-workbooks/admin/delete", input, "Could not delete the workbook.");
 }
@@ -411,6 +453,25 @@ export function attachNativeWorkbook(input: { userId: string; workbookId: string
     "/internal/native-workbooks/attach",
     input,
     "Could not add the workbook to this learning year."
+  );
+}
+
+export function upgradeNativeWorkbookEdition(input: {
+  userId: string;
+  learningYearId: string;
+  documentId: string;
+}) {
+  return postJson<{
+    upgraded: boolean;
+    documentId: string;
+    versionId: string;
+    editionLabel: string;
+    planningStarted: boolean;
+    planningMessage: string | null;
+  }>(
+    "/internal/native-workbooks/edition-upgrade",
+    input,
+    "Could not update the workbook edition."
   );
 }
 

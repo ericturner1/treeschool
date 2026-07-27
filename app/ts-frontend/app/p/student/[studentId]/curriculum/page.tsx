@@ -44,7 +44,8 @@ import {
   setPaperPlanWeekCompressionAction,
   updatePlanDetailsAction,
   updatePaperPlanDocumentAction,
-  purchaseNativeWorkbookForPlanAction
+  purchaseNativeWorkbookForPlanAction,
+  upgradeNativeWorkbookEditionAction
 } from "./actions";
 
 type PageProps = {
@@ -506,6 +507,35 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
                     <span className="shrink-0 text-2xl text-earth transition-transform group-open:rotate-45">+</span>
                   </summary>
                   <div className="mt-4 min-w-0 max-w-full">
+                  {plan.documents.some((document) => document.editionUpdate) ? (
+                    <div className="mb-4 grid gap-3">
+                      {plan.documents.filter((document) => document.editionUpdate).map((document) => {
+                        const update = document.editionUpdate!;
+                        return (
+                          <section key={document.id} className="rounded-[18px] border border-[#b8cf9f] bg-[#f1f7e9] px-4 py-4 sm:flex sm:items-center sm:justify-between sm:gap-5">
+                            <div>
+                              <p className="text-sm font-bold text-[#456536]">A new edition of “{document.label}” is available</p>
+                              <p className="mt-1 text-xs leading-5 text-[#567347]">
+                                {update.currentEditionLabel} stays in place unless you choose to update to {update.latestEditionLabel}. Started or downloaded weeks will remain exactly as they are; only untouched future weeks will be rebuilt.
+                              </p>
+                            </div>
+                            <form action={upgradeNativeWorkbookEditionAction} className="mt-3 flex-none sm:mt-0">
+                              <input type="hidden" name="profileId" value={student.id} />
+                              <input type="hidden" name="learningYearId" value={plan.year!.id} />
+                              <input type="hidden" name="documentId" value={document.id} />
+                              <button
+                                type="submit"
+                                disabled={planningActive}
+                                className="cta-button cta-button--light cta-button--small disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                Update future weeks
+                              </button>
+                            </form>
+                          </section>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                   <AuthenticatedPlanGenerator
                     profileId={student.id}
                     existingLearningYearId={plan.year.id}

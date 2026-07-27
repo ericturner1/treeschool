@@ -7,7 +7,7 @@ import {
   listNativeWorkbookCatalog,
   type NativeWorkbookCatalogItem
 } from "../../lib/native-workbooks/server";
-import { WorkbookCover } from "./workbook-cover";
+import { CurriculumBundleCover, WorkbookCover } from "./workbook-cover";
 import { CurriculumCheckoutChoice } from "./curriculum-checkout-choice";
 
 const SITE_URL = "https://www.treehomeschool.com";
@@ -270,7 +270,10 @@ export default async function FirstGradeHomeschoolCurriculumPage() {
     name: bundle.title,
     description: bundle.description,
     url: bundleUrl,
-    image: members.map(getMarketingCoverUrl).filter(Boolean),
+    image: [
+      bundle.thumbnailUrl,
+      ...members.map(getMarketingCoverUrl)
+    ].filter(Boolean),
     sku: bundle.id,
     brand: { "@type": "Brand", name: "Treeschool" },
     category: "First grade homeschool curriculum",
@@ -394,26 +397,22 @@ export default async function FirstGradeHomeschoolCurriculumPage() {
             </p>
           </div>
 
-          <div className="relative mx-auto w-full max-w-[610px] lg:mx-0">
+          <div className="relative mx-auto w-full max-w-[530px] lg:mx-0">
             <div className="absolute -bottom-4 -right-4 h-full w-full rounded-[32px] bg-[#bdd0aa]" />
-            <div className="relative rounded-[32px] border border-[#9eb889] bg-[#fffaf2] p-5 shadow-[0_18px_42px_rgba(72,99,56,0.16)] sm:p-7">
-              <div className="grid grid-cols-4 items-end gap-2 sm:gap-3">
-                {members.slice(0, 8).map((workbook, index) => (
-                  <div
-                    key={workbook.id}
-                    className={index % 2 === 0 ? "-translate-y-2" : "translate-y-2"}
-                  >
-                    <WorkbookCover
-                      title={workbook.title}
-                      src={getMarketingCoverPath(workbook)}
-                      priority={index < 4}
-                    />
-                  </div>
-                ))}
+            <div className="relative rounded-[32px] border border-[#9eb889] bg-[#fffaf2] p-4 shadow-[0_18px_42px_rgba(72,99,56,0.16)] sm:p-6">
+              <CurriculumBundleCover
+                title={bundle.title}
+                src={bundle.thumbnailUrl}
+                priority
+              />
+              <div className="mt-5 text-center">
+                <p className="text-xl font-semibold tracking-[-0.035em] text-ink">
+                  {bundle.title}
+                </p>
+                <p className="label-font mt-2 text-xs font-black uppercase tracking-[0.1em] text-[#486338] sm:text-sm">
+                  {bundle.memberCount} printable workbooks · Complete core curriculum
+                </p>
               </div>
-              <p className="label-font mt-6 text-center text-sm font-black uppercase tracking-[0.11em] text-[#486338]">
-                Reading · Language arts · Math · Science · Social studies
-              </p>
             </div>
           </div>
         </div>
@@ -682,6 +681,7 @@ export default async function FirstGradeHomeschoolCurriculumPage() {
               <Link href="/pricing" className="block hover:text-white">Pricing</Link>
               <Link href="/bookstore" className="block hover:text-white">Bookstore</Link>
               <Link href="/blog" className="block hover:text-white">Blog</Link>
+              <Link href="/faq" className="block hover:text-white">FAQ</Link>
               <Link href="/support" className="block hover:text-white">Support</Link>
             </div>
           </div>

@@ -558,6 +558,7 @@ export const nativeWorkbooks = pgTable(
     ),
     status: text("status").notNull().default("draft"),
     activeVersionId: uuid("active_version_id"),
+    latestEditionId: uuid("latest_edition_id"),
     stripeProductId: text("stripe_product_id"),
     stripePriceId: text("stripe_price_id"),
     active: boolean("active").notNull().default(false),
@@ -579,6 +580,39 @@ export const nativeWorkbooks = pgTable(
       table.curriculumAreaKey,
       table.gradeMin,
       table.gradeMax
+    )
+  })
+);
+
+export const nativeWorkbookEditions = pgTable(
+  "native_workbook_editions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workbookId: uuid("workbook_id")
+      .notNull()
+      .references(() => nativeWorkbooks.id, { onDelete: "cascade" }),
+    editionNumber: integer("edition_number").notNull(),
+    editionLabel: text("edition_label").notNull(),
+    status: text("status").notNull().default("draft"),
+    currentRevisionId: uuid("current_revision_id"),
+    changeNotes: text("change_notes"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    retiredAt: timestamp("retired_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    workbookEditionUnique: unique("native_workbook_editions_workbook_edition_unique").on(
+      table.workbookId,
+      table.editionNumber
+    ),
+    statusIndex: index("native_workbook_editions_status_idx").on(
+      table.workbookId,
+      table.status,
+      table.editionNumber
     )
   })
 );
@@ -651,7 +685,21 @@ export const nativeWorkbookVersions = pgTable(
       .notNull()
       .references(() => nativeWorkbooks.id, { onDelete: "cascade" }),
     versionNumber: integer("version_number").notNull(),
+    editionId: uuid("edition_id")
+      .notNull()
+      .references(() => nativeWorkbookEditions.id, { onDelete: "restrict" }),
+    revisionNumber: integer("revision_number").notNull(),
     editionLabel: text("edition_label").notNull().default("1st edition"),
+    releaseStatus: text("release_status").notNull().default("draft"),
+    supersedesVersionId: uuid("supersedes_version_id").references(
+      (): AnyPgColumn => nativeWorkbookVersions.id,
+      { onDelete: "set null" }
+    ),
+    changeNotes: text("change_notes"),
+    compatibilityReport: jsonb("compatibility_report")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     originalFilename: text("original_filename").notNull(),
     objectPath: text("object_path").notNull(),
     mimeType: text("mime_type").notNull().default("application/pdf"),
@@ -681,6 +729,10 @@ export const nativeWorkbookVersions = pgTable(
     workbookVersionUnique: unique("native_workbook_versions_workbook_version_unique").on(
       table.workbookId,
       table.versionNumber
+    ),
+    editionRevisionUnique: unique("native_workbook_versions_edition_revision_unique").on(
+      table.editionId,
+      table.revisionNumber
     ),
     statusIndex: index("native_workbook_versions_status_idx").on(table.analysisStatus)
   })
@@ -1392,6 +1444,33 @@ export const weeklyPlanDayPdfAssets = pgTable(
   })
 );
 
+export const weeklyPlanDownloadEvents = pgTable(
+  "weekly_plan_download_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    weeklyPlanId: uuid("weekly_plan_id")
+      .notNull()
+      .references(() => weeklyPlans.id, { onDelete: "cascade" }),
+    downloadedByUserId: uuid("downloaded_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    format: text("format").notNull(),
+    layout: text("layout").notNull().default("standard"),
+    sourceFingerprint: text("source_fingerprint"),
+    downloadedAt: timestamp("downloaded_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    weeklyPlanIndex: index("weekly_plan_download_events_week_idx").on(
+      table.weeklyPlanId,
+      table.downloadedAt
+    ),
+    userIndex: index("weekly_plan_download_events_user_idx").on(
+      table.downloadedByUserId,
+      table.downloadedAt
+    )
+  })
+);
+
 export const weeklyPlanItems = pgTable("weekly_plan_items", {
   id: uuid("id").defaultRandom().primaryKey(),
   weeklyPlanId: uuid("weekly_plan_id")
@@ -1497,6 +1576,51 @@ export const studentWorkbookUnitProgress = pgTable(
     ),
     versionIndex: index("student_workbook_unit_progress_version_idx").on(
       table.nativeWorkbookVersionId
+    )
+  })
+);
+
+export const studentWorkbookEditionUnitCarryovers = pgTable(
+  "student_workbook_edition_unit_carryovers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    fromNativeWorkbookVersionId: uuid("from_native_workbook_version_id")
+      .notNull()
+      .references(() => nativeWorkbookVersions.id, { onDelete: "restrict" }),
+    fromSourceUnitId: text("from_source_unit_id").notNull(),
+    toNativeWorkbookVersionId: uuid("to_native_workbook_version_id")
+      .notNull()
+      .references(() => nativeWorkbookVersions.id, { onDelete: "restrict" }),
+    toSourceUnitId: text("to_source_unit_id").notNull(),
+    sourceLearningYearId: uuid("source_learning_year_id").references(
+      () => learningYears.id,
+      { onDelete: "set null" }
+    ),
+    sourceWeeklyPlanId: uuid("source_weekly_plan_id").references(
+      () => weeklyPlans.id,
+      { onDelete: "set null" }
+    ),
+    reason: text("reason").notNull(),
+    matchMethod: text("match_method").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    targetUnitUnique: unique("student_workbook_edition_carryovers_profile_year_target_unit_unique").on(
+      table.profileId,
+      table.sourceLearningYearId,
+      table.toNativeWorkbookVersionId,
+      table.toSourceUnitId
+    ),
+    targetVersionIndex: index("student_workbook_edition_carryovers_target_version_idx").on(
+      table.profileId,
+      table.toNativeWorkbookVersionId
+    ),
+    sourceVersionIndex: index("student_workbook_edition_carryovers_source_version_idx").on(
+      table.profileId,
+      table.fromNativeWorkbookVersionId
     )
   })
 );
@@ -1935,6 +2059,39 @@ export const blogPostSlugHistory = pgTable("blog_post_slug_history", {
   slug: text("slug").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+export const salesFaqs = pgTable(
+  "sales_faqs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    slug: text("slug").notNull(),
+    question: text("question").notNull(),
+    answer: text("answer").notNull(),
+    shortAnswer: text("short_answer"),
+    category: text("category").notNull().default("general"),
+    sourceLinks: jsonb("source_links")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    displayOrder: integer("display_order").notNull().default(0),
+    isPublished: boolean("is_published").notNull().default(false),
+    bandEligible: boolean("band_eligible").notNull().default(false),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    publishedOrderIndex: index("sales_faqs_published_order_idx").on(
+      table.isPublished,
+      table.displayOrder
+    )
+  })
+);
 
 export const blogGenerationRuns = pgTable(
   "blog_generation_runs",

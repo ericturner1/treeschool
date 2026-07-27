@@ -412,6 +412,7 @@ export async function MarketingFunnelPage({ config }: { config: MarketingFunnelC
               <Link href="/pricing" className="block hover:text-white">Pricing</Link>
               <Link href="/bookstore" className="block hover:text-white">Bookstore</Link>
               <Link href="/blog" className="block hover:text-white">Blog</Link>
+              <Link href="/faq" className="block hover:text-white">FAQ</Link>
               <Link href="/support" className="block hover:text-white">Support</Link>
             </div>
           </div>

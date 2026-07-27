@@ -117,7 +117,7 @@ export function WorkbookPdfReplacement({ workbookId, title }: { workbookId: stri
               Treeschool will compare the replacement’s physical page count, lesson order, lesson titles, lesson page ranges, and extracted lesson text with the published workbook.
             </p>
             <p className="mt-2 text-sm leading-6 text-ink/65">
-              Only a compatible correction will be promoted. Existing purchases, linked lesson plans, grades, attendance, and progress will move to the corrected file automatically. If anything structural changed, the current PDF stays live and Treeschool returns an error.
+              Only a compatible correction will become the current revision. Existing purchases, attached lesson plans, generated PDFs, grades, attendance, and progress stay pinned to the exact revision they already use. New purchases and future attachments receive the corrected revision. If anything structural changed, the current revision stays live and Treeschool returns an error—use “Add new edition” instead.
             </p>
             <label className="mt-5 grid gap-2 text-sm font-semibold text-ink">
               Replacement workbook PDF

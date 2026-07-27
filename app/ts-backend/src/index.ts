@@ -81,6 +81,9 @@ import {
   getPaperPlan,
   getWeeklyPlanManifest,
   getWeeklyPlanQrDestination,
+  beginWeeklyPlanDownload,
+  completeWeeklyPlanDownload,
+  discardWeeklyPlanDownload,
   startLearningYearPlanning,
   retryFailedLearningYearPlanning,
   retryFailedPlanPackJobs,
@@ -137,6 +140,7 @@ import {
   attachNativeCatalogItemToLearningYear,
   buildNativeWorkbookLessonPreview,
   completeNativeWorkbookBundle,
+  completeNativeWorkbookEdition,
   completeNativeWorkbookReplacement,
   completeNativeWorkbookUpload,
   createNativeWorkbookCartCheckout,
@@ -144,6 +148,7 @@ import {
   deleteNativeWorkbook,
   discardNativeWorkbookBundle,
   discardNativeWorkbookBundleThumbnail,
+  discardNativeWorkbookEdition,
   discardNativeWorkbookReplacement,
   discardNativeWorkbookUpload,
   getNativeWorkbookDownloadByToken,
@@ -157,6 +162,7 @@ import {
   listNativeWorkbookCatalog,
   listPurchasedNativeWorkbooks,
   prepareNativeWorkbookReplacement,
+  prepareNativeWorkbookEdition,
   prepareNativeWorkbookBundle,
   prepareNativeWorkbookBundleThumbnail,
   prepareNativeWorkbookUpload,
@@ -167,7 +173,8 @@ import {
   setNativeWorkbookBundlePublished,
   setNativeWorkbookBundleRecommended,
   updateNativeWorkbookBundle,
-  updateNativeWorkbookDetails
+  updateNativeWorkbookDetails,
+  upgradeNativeWorkbookEditionForLearningYear
 } from "./services/native-workbooks";
 import {
   completeBlogImageUpload,
@@ -185,6 +192,13 @@ import {
   saveBlogPostRevision,
   unpublishBlogPost
 } from "./services/blog";
+import {
+  deleteSalesFaq,
+  listAdminSalesFaqs,
+  listPublishedSalesFaqs,
+  reorderSalesFaqs,
+  saveSalesFaq
+} from "./services/sales-faqs";
 
 const server = Bun.serve({
   port: env.PORT,
@@ -234,6 +248,48 @@ const server = Bun.serve({
           "node_keywords"
         ]
       });
+    }
+
+    if (url.pathname === "/internal/faqs" && request.method === "GET") {
+      try {
+        return Response.json({ faqs: await listPublishedSalesFaqs() });
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not load FAQs." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/faqs/admin" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
+        return Response.json(await listAdminSalesFaqs(userId));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not load FAQ administration." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/faqs/admin/save" && request.method === "POST") {
+      try {
+        return Response.json(await saveSalesFaq(await request.json() as Parameters<typeof saveSalesFaq>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not save the FAQ." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/faqs/admin/reorder" && request.method === "POST") {
+      try {
+        return Response.json(await reorderSalesFaqs(await request.json() as Parameters<typeof reorderSalesFaqs>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not reorder the FAQs." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/faqs/admin/delete" && request.method === "POST") {
+      try {
+        return Response.json(await deleteSalesFaq(await request.json() as Parameters<typeof deleteSalesFaq>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not delete the FAQ." }, { status: 400 });
+      }
     }
 
     if (url.pathname === "/internal/blog/posts" && request.method === "GET") {
@@ -619,6 +675,38 @@ const server = Bun.serve({
       }
     }
 
+    if (url.pathname === "/internal/native-workbooks/admin/editions/prepare" && request.method === "POST") {
+      try {
+        const body = await request.json() as Parameters<typeof prepareNativeWorkbookEdition>[0];
+        return Response.json(await prepareNativeWorkbookEdition(body));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not prepare the new edition.";
+        return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/native-workbooks/admin/editions/complete" && request.method === "POST") {
+      try {
+        const body = await request.json() as Parameters<typeof completeNativeWorkbookEdition>[0];
+        const result = await completeNativeWorkbookEdition(body);
+        await triggerProcessorJob().catch((error) => console.error("Could not start native workbook processor:", error));
+        return Response.json(result);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not complete the new-edition upload.";
+        return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/native-workbooks/admin/editions/discard" && request.method === "POST") {
+      try {
+        const body = await request.json() as Parameters<typeof discardNativeWorkbookEdition>[0];
+        return Response.json(await discardNativeWorkbookEdition(body));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not discard the new-edition upload.";
+        return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
+      }
+    }
+
     if (url.pathname === "/internal/native-workbooks/admin/delete" && request.method === "POST") {
       try {
         const body = await request.json() as Parameters<typeof deleteNativeWorkbook>[0];
@@ -626,6 +714,17 @@ const server = Bun.serve({
       } catch (error) {
         const message = error instanceof Error ? error.message : "Could not delete the workbook.";
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/native-workbooks/edition-upgrade" && request.method === "POST") {
+      try {
+        const body = await request.json() as Parameters<typeof upgradeNativeWorkbookEditionForLearningYear>[0];
+        return Response.json(await upgradeNativeWorkbookEditionForLearningYear(body));
+      } catch (error) {
+        return Response.json({
+          error: error instanceof Error ? error.message : "Could not update the workbook edition."
+        }, { status: 400 });
       }
     }
 
@@ -1198,16 +1297,29 @@ const server = Bun.serve({
       const parentUserId = url.searchParams.get("parentUserId");
       const weeklyPlanId = url.searchParams.get("weeklyPlanId");
       const format = url.searchParams.get("format") === "days" ? "days" : "week";
+      const twoUp = url.searchParams.get("layout") === "two-up";
       if (!parentUserId || !weeklyPlanId) {
         return Response.json(
           { error: "parentUserId and weeklyPlanId are required." },
           { status: 400 }
         );
       }
+      let downloadEventId: string | null = null;
       try {
+        downloadEventId = await beginWeeklyPlanDownload({
+          parentUserId,
+          weeklyPlanId,
+          format,
+          layout: twoUp ? "two-up" : "standard"
+        });
         const packet = format === "days"
-          ? await buildWeeklyPacketDayArchive(parentUserId, weeklyPlanId)
-          : await buildWeeklyPacket(parentUserId, weeklyPlanId);
+          ? await buildWeeklyPacketDayArchive(parentUserId, weeklyPlanId, { twoUp })
+          : await buildWeeklyPacket(parentUserId, weeklyPlanId, { twoUp });
+        await completeWeeklyPlanDownload({
+          parentUserId,
+          weeklyPlanId,
+          downloadEventId
+        });
         return new Response(packet.bytes, {
           headers: {
             "Content-Type": format === "days" ? "application/zip" : "application/pdf",
@@ -1216,6 +1328,11 @@ const server = Bun.serve({
           }
         });
       } catch (error) {
+        if (downloadEventId) {
+          await discardWeeklyPlanDownload({ parentUserId, downloadEventId }).catch((cleanupError) => {
+            console.warn("Could not discard an incomplete weekly-plan download event.", cleanupError);
+          });
+        }
         const reference = `PDF-${weeklyPlanId.replaceAll("-", "").slice(0, 8).toUpperCase()}`;
         console.error(`[${reference}] Could not build weekly PDF packet:`, error);
         return Response.json(

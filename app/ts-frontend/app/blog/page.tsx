@@ -105,6 +105,7 @@ export default async function BlogIndexPage({ searchParams }: Props) {
             <Link href="/blog">Blog</Link>
             <Link href="/pricing">Pricing</Link>
             <Link href="/bookstore">Bookstore</Link>
+            <Link href="/faq">FAQ</Link>
             <Link href="/support">Support</Link>
           </div>
         </div>

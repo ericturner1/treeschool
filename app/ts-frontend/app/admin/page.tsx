@@ -18,6 +18,12 @@ const ADMIN_SECTIONS = [
     status: "Available"
   },
   {
+    href: "/admin/faqs" as const,
+    title: "Sales FAQs",
+    description: "Answer buyer objections, control public order, and prepare reusable landing-page objection bands.",
+    status: "Sales library"
+  },
+  {
     href: "/admin/workbooks" as const,
     title: "Workbooks",
     description: "Upload, pre-index, publish, and manage Treeschool-native workbooks.",

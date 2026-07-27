@@ -15,7 +15,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ["/switch-to-paper-based-homeschool", 0.9, "monthly"],
     ["/homeschool-without-a-subscription", 0.85, "monthly"],
     ["/bookstore", 0.8, "weekly"],
-    ["/blog", 0.8, "daily"]
+    ["/blog", 0.8, "daily"],
+    ["/faq", 0.8, "weekly"]
   ].map(([path, priority, changeFrequency]) => ({
     url: `${SITE_URL}${path}`,
     lastModified: new Date(),

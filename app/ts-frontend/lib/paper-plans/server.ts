@@ -27,6 +27,15 @@ export type PaperPlanDocument = {
   mimeType: string;
   sourceKind: "pdf" | "text" | "image" | "native_workbook";
   nativeWorkbookVersionId?: string | null;
+  editionUpdate: {
+    workbookId: string;
+    currentVersionId: string;
+    currentEditionLabel: string;
+    latestVersionId: string;
+    latestEditionLabel: string;
+    latestRevisionNumber: number;
+    latestPageCount: number;
+  } | null;
   sizeBytes: number;
   pageCount: number;
   parentNotes: string | null;
@@ -416,11 +425,13 @@ export async function downloadPaperPlanPacket(input: {
   parentUserId: string;
   weeklyPlanId: string;
   format?: "week" | "days";
+  layout?: "standard" | "two-up";
 }) {
   const params = new URLSearchParams({
     parentUserId: input.parentUserId,
     weeklyPlanId: input.weeklyPlanId,
-    ...(input.format ? { format: input.format } : {})
+    ...(input.format ? { format: input.format } : {}),
+    ...(input.layout === "two-up" ? { layout: input.layout } : {})
   });
   return requireOk(
     await backendFetch(`${getBackendUrl()}/internal/paper-plan/packet?${params.toString()}`, {
