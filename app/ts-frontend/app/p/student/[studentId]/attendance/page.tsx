@@ -8,7 +8,11 @@ import { getStudentAttendance } from "../../../../../lib/attendance/server";
 import { getParentBillingOverview } from "../../../../../lib/billing/server";
 import { getParentStudentPageData, studentRoutePath } from "../student-page-data";
 import { StudentShell } from "../student-shell";
-import { addManualAttendanceAction, deleteAttendanceAction } from "./actions";
+import {
+  addManualAttendanceAction,
+  deleteAttendanceAction,
+  updateManualAttendanceTypeAction
+} from "./actions";
 
 type Props = {
   params: { studentId?: string };
@@ -92,7 +96,7 @@ export default async function AttendancePage({ params, searchParams }: Props) {
                   <label className="text-sm font-semibold text-ink">What did you do?<input required name="title" placeholder="Example: Natural history museum visit" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label>
                   <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold text-ink">Subject <span className="font-normal text-ink/45">(optional)</span><input name="subjectLabel" placeholder="Science" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label><label className="text-sm font-semibold text-ink">Minutes <span className="font-normal text-ink/45">(optional)</span><input name="minutes" type="number" min="1" max="1440" placeholder="90" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label></div>
                   <label className="text-sm font-semibold text-ink">Notes <span className="font-normal text-ink/45">(optional)</span><textarea name="notes" rows={3} className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label>
-                  <button type="submit" className="cta-button justify-self-start">Record learning day</button>
+                  <button type="submit" className="cta-button cta-button--light justify-self-start">Record learning day</button>
                 </form>
               </div>
 
@@ -101,7 +105,40 @@ export default async function AttendancePage({ params, searchParams }: Props) {
                 <div className="mt-5 space-y-3">
                   {attendance.entries.length === 0 ? <p className="rounded-[18px] bg-[#fffaf2] px-5 py-7 text-sm text-ink/60">No learning days recorded yet. Log a plan activity or add other learning here.</p> : attendance.entries.map((entry) => (
                     <article key={entry.id} className="rounded-[18px] border border-[#e2d2b8] bg-[#fffaf2] px-5 py-4">
-                      <div className="flex items-start justify-between gap-4"><div><p className="font-semibold text-ink">{entry.title}</p><p className="mt-1 text-sm text-ink/58">{displayDate(entry.date)} · {activityLabel(entry.activityType, entry.entryKind)}{entry.subjectLabels.length > 0 ? ` · ${entry.subjectLabels.join(", ")}` : entry.subjectLabel ? ` · ${entry.subjectLabel}` : ""}{entry.minutes ? ` · ${entry.minutes} min` : ""}</p>{entry.notes ? <p className="mt-2 text-sm leading-6 text-ink/65">{entry.notes}</p> : null}</div>{canDeleteAttendance ? <form action={deleteAttendanceAction}><input type="hidden" name="profileId" value={student.id} /><input type="hidden" name="entryId" value={entry.id} /><button className="text-xs font-semibold text-[#8b3e2f] underline underline-offset-4">Remove</button></form> : null}</div>
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="font-semibold text-ink">{entry.title}</p>
+                          <p className="mt-1 text-sm text-ink/58">{displayDate(entry.date)} · {activityLabel(entry.activityType, entry.entryKind)}{entry.subjectLabels.length > 0 ? ` · ${entry.subjectLabels.join(", ")}` : entry.subjectLabel ? ` · ${entry.subjectLabel}` : ""}{entry.minutes ? ` · ${entry.minutes} min` : ""}</p>
+                          {entry.notes ? <p className="mt-2 text-sm leading-6 text-ink/65">{entry.notes}</p> : null}
+                        </div>
+                        <div className="flex flex-wrap items-start gap-3">
+                          {entry.entryKind === "manual" ? (
+                            <details className="group">
+                              <summary className="cursor-pointer list-none text-xs font-semibold text-[#4d6a39] underline underline-offset-4 marker:hidden">
+                                Change type
+                              </summary>
+                              <form action={updateManualAttendanceTypeAction} className="mt-3 flex flex-wrap items-end gap-2 rounded-[14px] border border-[#d8c8ae] bg-white p-3">
+                                <input type="hidden" name="profileId" value={student.id} />
+                                <input type="hidden" name="entryId" value={entry.id} />
+                                <label className="text-xs font-semibold text-ink">
+                                  Learning type
+                                  <select name="activityType" defaultValue={entry.activityType} className="mt-1 block rounded-[11px] border border-[#dcc8aa] bg-white py-2 pl-3 pr-9 text-sm text-ink">
+                                    <option value="field_trip">Field trip</option>
+                                    <option value="co_op">Co-op</option>
+                                    <option value="project">Project</option>
+                                    <option value="library">Library</option>
+                                    <option value="sport">Physical education</option>
+                                    <option value="subject">Subject study</option>
+                                    <option value="other">Other learning</option>
+                                  </select>
+                                </label>
+                                <button type="submit" className="cta-button cta-button--light cta-button--small">Save type</button>
+                              </form>
+                            </details>
+                          ) : null}
+                          {canDeleteAttendance ? <form action={deleteAttendanceAction}><input type="hidden" name="profileId" value={student.id} /><input type="hidden" name="entryId" value={entry.id} /><button className="text-xs font-semibold text-[#8b3e2f] underline underline-offset-4">Remove</button></form> : null}
+                        </div>
+                      </div>
                     </article>
                   ))}
                 </div>

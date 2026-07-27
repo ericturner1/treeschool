@@ -26,7 +26,8 @@ import {
   getStudentAttendance,
   recordPlanDayAttendance,
   recordPlanItemAttendance,
-  setPlanDaySubjectCompletion
+  setPlanDaySubjectCompletion,
+  updateManualAttendanceEntry
 } from "./services/attendance";
 import {
   completePublicCoreSubscriptionCheckout,
@@ -2766,6 +2767,34 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : "Failed to remove attendance." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/profiles/student/attendance" && request.method === "PATCH") {
+      const body = (await request.json()) as {
+        parentUserId?: string;
+        profileId?: string;
+        entryId?: string;
+        activityType?: string;
+      };
+      if (!body.parentUserId || !body.profileId || !body.entryId || !body.activityType) {
+        return Response.json(
+          { error: "parentUserId, profileId, entryId, and activityType are required." },
+          { status: 400 }
+        );
+      }
+      try {
+        return Response.json(await updateManualAttendanceEntry({
+          parentUserId: body.parentUserId,
+          profileId: body.profileId,
+          entryId: body.entryId,
+          activityType: body.activityType
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Failed to update attendance." },
+          { status: 400 }
+        );
       }
     }
 

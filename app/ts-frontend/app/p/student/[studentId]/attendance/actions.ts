@@ -8,7 +8,8 @@ import {
   createPlanDayAttendance,
   createPlanItemAttendance,
   removeAttendance,
-  setPlanDaySubjectCompletion
+  setPlanDaySubjectCompletion,
+  updateManualAttendance
 } from "../../../../../lib/attendance/server";
 
 function value(formData: FormData, name: string) { return String(formData.get(name) ?? "").trim(); }
@@ -111,4 +112,21 @@ export async function deleteAttendanceAction(formData: FormData) {
   }
   revalidatePath(path);
   redirect(`${path}?message=${encodeURIComponent("Attendance entry removed.")}`);
+}
+
+export async function updateManualAttendanceTypeAction(formData: FormData) {
+  const profileId = value(formData, "profileId");
+  const path = pagePath(profileId);
+  try {
+    await updateManualAttendance({
+      parentUserId: await userId(),
+      profileId,
+      entryId: value(formData, "entryId"),
+      activityType: value(formData, "activityType")
+    });
+  } catch (error) {
+    redirect(`${path}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not update attendance.")}`);
+  }
+  revalidatePath(path);
+  redirect(`${path}?message=${encodeURIComponent("Learning activity type updated.")}`);
 }

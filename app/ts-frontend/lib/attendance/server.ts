@@ -91,6 +91,10 @@ export function removeAttendance(input: Record<string, unknown>) {
   return attendanceRequest("DELETE", input);
 }
 
+export function updateManualAttendance(input: Record<string, unknown>) {
+  return attendanceRequest("PATCH", input);
+}
+
 export async function getStudentSchoolCalendar(input: {
   parentUserId: string;
   profileId: string;
