@@ -45,6 +45,7 @@ import {
   type MembershipTier
 } from "./membership-plans";
 import { withTreeschoolCheckoutBranding } from "./stripe-checkout";
+import { reportMetaCheckoutPurchase } from "./meta-conversions";
 
 const PLAN_PACK_PRODUCT_NAME = "Treeschool Printable School-Year Planner";
 const PLAN_PACK_PRODUCT_DESCRIPTION =
@@ -2030,6 +2031,15 @@ export async function handleStripeWebhook(input: {
         eq(postCheckoutOffers.offerKey, FIRST_GRADE_JAPANESE_OFFER_KEY)
       ));
     }
+    await reportMetaCheckoutPurchase(
+      event.data.object,
+      event.created
+    ).catch((error) => {
+      console.error(
+        "Meta purchase reporting failed after checkout completion:",
+        error instanceof Error ? error.message : "Unknown Meta API error."
+      );
+    });
   }
 
   if (event.type === "payment_intent.succeeded") {
@@ -2038,6 +2048,15 @@ export async function handleStripeWebhook(input: {
 
   if (event.type === "checkout.session.async_payment_succeeded") {
     await fulfillAdditionalStudentCheckout(event.data.object);
+    await reportMetaCheckoutPurchase(
+      event.data.object,
+      event.created
+    ).catch((error) => {
+      console.error(
+        "Meta purchase reporting failed after asynchronous payment:",
+        error instanceof Error ? error.message : "Unknown Meta API error."
+      );
+    });
   }
 
   if (event.type === "checkout.session.expired") {

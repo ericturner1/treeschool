@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal, useFormStatus } from "react-dom";
+import { trackAnalyticsEvent } from "../../lib/analytics/events";
 import { startWorkbookCartCheckoutAction } from "./actions";
 
 const CART_STORAGE_KEY = "treeschool:bookstore-cart:v1";
@@ -79,6 +80,20 @@ export function BookstoreCatalog({
   const total = formatPrice(totalInCents, currencyCode);
 
   function addToCart(workbookId: string) {
+    const workbook = catalogById.get(workbookId);
+    if (workbook) {
+      trackAnalyticsEvent("add_to_cart", {
+        currency: workbook.currencyCode,
+        value: workbook.priceInCents / 100,
+        items: [{
+          item_id: workbook.id,
+          item_name: workbook.title,
+          item_category: workbook.catalogKind,
+          price: workbook.priceInCents / 100,
+          quantity: 1
+        }]
+      });
+    }
     setCartIds((current) => current.includes(workbookId) || current.length >= MAX_CART_ITEMS
       ? current
       : [...current, workbookId]);
@@ -163,7 +178,15 @@ export function BookstoreCatalog({
                 </div>
                 <div className="mt-auto pt-8">
                   <div className="mb-5 flex items-center justify-between text-xl"><span className="font-semibold">Total</span><strong>{total}</strong></div>
-                  <form action={startWorkbookCartCheckoutAction}>
+                  <form
+                    action={startWorkbookCartCheckoutAction}
+                    data-revenue-path="bookstore-cart"
+                    data-analytics-item-id="bookstore-cart"
+                    data-analytics-item-name="Treeschool bookstore cart"
+                    data-analytics-item-category="workbook"
+                    data-analytics-currency={currencyCode}
+                    data-analytics-value={(totalInCents / 100).toFixed(2)}
+                  >
                     {cartItems.map((workbook) => <input key={workbook.id} type="hidden" name="workbookId" value={workbook.id} />)}
                     {userEmail ? <input type="hidden" name="email" value={userEmail} /> : <label className="mb-4 grid gap-2 text-sm font-semibold">Delivery email<input required name="email" type="email" autoComplete="email" className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3" /></label>}
                     <CheckoutButton total={total} />

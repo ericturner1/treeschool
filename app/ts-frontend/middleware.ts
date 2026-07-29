@@ -9,6 +9,8 @@ import {
   AUTH_SESSION_COOKIE_MAX_AGE_SECONDS,
   hasAuthSessionGoneIdle
 } from "./lib/auth/session-policy";
+import { refreshSupabaseSession } from "./lib/auth/refresh-session";
+import { authRenewalPathFor } from "./lib/auth/renewal-path";
 
 const ACCESS_TOKEN_COOKIE_NAME = "treeschool_access_token";
 const REFRESH_TOKEN_COOKIE_NAME = "treeschool_refresh_token";
@@ -41,79 +43,6 @@ function tokenExpiresSoon(token: string) {
   } catch {
     return true;
   }
-}
-
-async function requestRefreshedSession({
-  supabaseUrl,
-  anonKey,
-  refreshToken
-}: {
-  supabaseUrl: string;
-  anonKey: string;
-  refreshToken: string;
-}) {
-  const performRefresh = () => fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
-    method: "POST",
-    headers: {
-      apikey: anonKey,
-      Authorization: `Bearer ${anonKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-    cache: "no-store"
-  }).catch(() => null);
-
-  let response = await performRefresh();
-
-  // A dropped response can happen after Supabase has already rotated the token.
-  // Retrying immediately is safe inside Supabase's refresh-token reuse interval.
-  if (!response || response.status >= 500) {
-    response = await performRefresh();
-  }
-
-  if (!response?.ok) {
-    let errorCode = "unknown";
-
-    try {
-      const payload = await response?.json() as { error_code?: string; code?: string };
-      errorCode = payload?.error_code ?? payload?.code ?? errorCode;
-    } catch {
-      // The response status and safe error code below are sufficient diagnostics.
-    }
-
-    console.warn(JSON.stringify({
-      event: "auth_session_refresh_failed",
-      status: response?.status ?? 0,
-      errorCode
-    }));
-    return null;
-  }
-
-  const payload = await response.json() as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-  };
-
-  if (!payload.access_token || !payload.refresh_token) {
-    console.warn(JSON.stringify({
-      event: "auth_session_refresh_failed",
-      status: response.status,
-      errorCode: "missing_session_tokens"
-    }));
-    return null;
-  }
-
-  console.info(JSON.stringify({
-    event: "auth_session_refreshed",
-    expiresIn: payload.expires_in ?? null
-  }));
-
-  return {
-    access_token: payload.access_token,
-    refresh_token: payload.refresh_token,
-    expires_in: payload.expires_in
-  };
 }
 
 export async function middleware(request: NextRequest) {
@@ -218,6 +147,31 @@ export async function middleware(request: NextRequest) {
     supabaseUrl &&
     anonKey
   );
+  const isSafeRequest =
+    request.method === "GET" || request.method === "HEAD";
+  const isSpeculativeRequest =
+    request.headers.get("next-router-prefetch") === "1" ||
+    request.headers.get("purpose") === "prefetch" ||
+    request.headers.get("rsc") === "1";
+  const shouldUseRenewalRoute = Boolean(
+    shouldRefreshSession &&
+    isSafeRequest &&
+    !isSpeculativeRequest &&
+    !request.nextUrl.pathname.startsWith("/auth/")
+  );
+
+  // Rotate Supabase credentials in a normal Route Handler response. Vercel
+  // reliably commits those Set-Cookie headers before the browser returns to
+  // the requested page, avoiding an Edge middleware rotation race.
+  if (shouldUseRenewalRoute) {
+    const renewalUrl = request.nextUrl.clone();
+    const renewalPath = authRenewalPathFor(request.nextUrl);
+    const parsedRenewalPath = new URL(renewalPath, request.nextUrl);
+    renewalUrl.pathname = parsedRenewalPath.pathname;
+    renewalUrl.search = parsedRenewalPath.search;
+    return NextResponse.redirect(renewalUrl, 307);
+  }
+
   let refreshedSession: {
     access_token: string;
     refresh_token: string;
@@ -225,30 +179,41 @@ export async function middleware(request: NextRequest) {
   } | null = null;
 
   if (shouldRefreshSession && effectiveRefreshToken && supabaseUrl && anonKey) {
-    refreshedSession = await requestRefreshedSession({
+    const refreshResult = await refreshSupabaseSession({
       supabaseUrl,
       anonKey,
       refreshToken: effectiveRefreshToken
     });
 
-    if (refreshedSession) {
+    if (refreshResult.ok) {
+      refreshedSession = refreshResult.session;
       let cookieHeader = requestHeaders.get("cookie") ?? "";
       cookieHeader = setRequestCookie(cookieHeader, ACCESS_TOKEN_COOKIE_NAME, refreshedSession.access_token);
       cookieHeader = setRequestCookie(cookieHeader, REFRESH_TOKEN_COOKIE_NAME, refreshedSession.refresh_token);
       requestHeaders.set("cookie", cookieHeader);
+      console.info(JSON.stringify({
+        event: "auth_session_refreshed_inline",
+        method: request.method,
+        path: request.nextUrl.pathname,
+        expiresIn: refreshedSession.expires_in ?? null
+      }));
+    } else {
+      console.warn(JSON.stringify({
+        event: "auth_session_refresh_failed",
+        method: request.method,
+        path: request.nextUrl.pathname,
+        status: refreshResult.status,
+        errorCode: refreshResult.errorCode
+      }));
     }
     // A failed refresh deliberately leaves the HttpOnly refresh cookie alone.
     // Concurrent requests can race during token rotation; a stale request must
     // not erase a newer successful session. Explicit sign-out still clears it.
   }
 
-  // A successful refresh rotates the refresh token. On safe requests, finish
-  // renewal with a browser round-trip so the rotated cookies are committed
-  // before the protected page renders. This avoids losing Set-Cookie headers
-  // while a downstream Server Component response is being composed.
-  const response = refreshedSession && (request.method === "GET" || request.method === "HEAD")
-    ? NextResponse.redirect(request.nextUrl.clone(), 307)
-    : NextResponse.next({ request: { headers: requestHeaders } });
+  // Unsafe requests cannot be redirected without losing their submitted data,
+  // so an inline refresh updates both the downstream request and its response.
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
 
   if (sessionWentIdle) {
     response.cookies.delete(ACCESS_TOKEN_COOKIE_NAME);
@@ -271,7 +236,7 @@ export async function middleware(request: NextRequest) {
       sameSite: "lax",
       secure: request.nextUrl.protocol === "https:",
       path: "/",
-      maxAge: refreshedSession.expires_in ?? 3600
+      maxAge: AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
     });
     response.cookies.set(REFRESH_TOKEN_COOKIE_NAME, refreshedSession.refresh_token, {
       httpOnly: true,

@@ -18,6 +18,9 @@ fi
 if gcloud secrets describe SMTP_PASSWORD --project "${PROJECT_ID}" >/dev/null 2>&1; then
   API_SECRETS="${API_SECRETS},SMTP_PASSWORD=SMTP_PASSWORD:latest"
 fi
+if gcloud secrets describe META_CONVERSIONS_API_ACCESS_TOKEN --project "${PROJECT_ID}" >/dev/null 2>&1; then
+  API_SECRETS="${API_SECRETS},META_CONVERSIONS_API_ACCESS_TOKEN=META_CONVERSIONS_API_ACCESS_TOKEN:latest"
+fi
 
 gcloud builds submit \
   --project "${PROJECT_ID}" \
@@ -53,7 +56,7 @@ gcloud run deploy "${API_SERVICE}" \
   --max-instances 3 \
   --concurrency 40 \
   --timeout 300 \
-  --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_PROCESSOR_JOB_NAME=${PROCESSOR_JOB},GCS_BUCKET_NAME=${BUCKET},PUBLIC_APP_URL=https://www.treehomeschool.com,SMTP_HOST=mail.privateemail.com,SMTP_PORT=465,SMTP_SECURE=true,SMTP_USER=support@treehomeschool.com,SMTP_FROM=Treeschool Support <support@treehomeschool.com>" \
+  --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_PROCESSOR_JOB_NAME=${PROCESSOR_JOB},GCS_BUCKET_NAME=${BUCKET},PUBLIC_APP_URL=https://www.treehomeschool.com,META_PIXEL_ID=930584153407646,META_GRAPH_API_VERSION=v25.0,SMTP_HOST=mail.privateemail.com,SMTP_PORT=465,SMTP_SECURE=true,SMTP_USER=support@treehomeschool.com,SMTP_FROM=Treeschool Support <support@treehomeschool.com>" \
   --set-secrets "${API_SECRETS}" \
   --quiet
 

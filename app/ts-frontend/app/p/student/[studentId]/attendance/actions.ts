@@ -114,7 +114,7 @@ export async function deleteAttendanceAction(formData: FormData) {
   redirect(`${path}?message=${encodeURIComponent("Attendance entry removed.")}`);
 }
 
-export async function updateManualAttendanceTypeAction(formData: FormData) {
+export async function updateManualAttendanceAction(formData: FormData) {
   const profileId = value(formData, "profileId");
   const path = pagePath(profileId);
   try {
@@ -122,11 +122,16 @@ export async function updateManualAttendanceTypeAction(formData: FormData) {
       parentUserId: await userId(),
       profileId,
       entryId: value(formData, "entryId"),
-      activityType: value(formData, "activityType")
+      attendanceDate: value(formData, "attendanceDate"),
+      activityType: value(formData, "activityType"),
+      subjectLabel: value(formData, "subjectLabel") || null,
+      title: value(formData, "title"),
+      notes: value(formData, "notes") || null,
+      minutes: Number(value(formData, "minutes")) || null
     });
   } catch (error) {
     redirect(`${path}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not update attendance.")}`);
   }
   revalidatePath(path);
-  redirect(`${path}?message=${encodeURIComponent("Learning activity type updated.")}`);
+  redirect(`${path}?message=${encodeURIComponent("Learning activity updated.")}`);
 }

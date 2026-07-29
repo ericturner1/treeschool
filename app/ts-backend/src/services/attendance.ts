@@ -25,17 +25,12 @@ import {
   applyAutomaticLessonCompletionPoint,
   reverseAutomaticLessonCompletionPoint
 } from "./student-points";
+import {
+  normalizeManualAttendanceFields,
+  type ManualAttendanceFields
+} from "./manual-attendance";
 
 const DAY_MS = 86_400_000;
-const MANUAL_ACTIVITY_TYPES = new Set([
-  "field_trip",
-  "co_op",
-  "project",
-  "library",
-  "sport",
-  "subject",
-  "other"
-]);
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -53,13 +48,6 @@ function subjectKey(label: string) {
 
 function planSubjectKey(subjectId: string | null, label: string) {
   return subjectId ? `system:${subjectId}` : `custom:${subjectKey(label)}`;
-}
-
-function manualActivityType(value: string) {
-  if (!MANUAL_ACTIVITY_TYPES.has(value)) {
-    throw new Error("Choose a valid learning activity type.");
-  }
-  return value;
 }
 
 async function verifyStudent(parentUserId: string, profileId: string) {
@@ -526,33 +514,23 @@ export async function createManualAttendanceEntry(input: {
   parentUserId: string;
   profileId: string;
   learningYearId?: string | null;
-  attendanceDate: string;
-  activityType: string;
-  subjectLabel?: string | null;
-  title: string;
-  notes?: string | null;
-  minutes?: number | null;
-}) {
+} & ManualAttendanceFields) {
   const student = await verifyStudent(input.parentUserId, input.profileId);
   const actor = await getAccountMemberContext(input.parentUserId);
-  const title = input.title.trim();
-  if (!title) throw new Error("Add a short description of the learning activity.");
-  const date = isoDate(safeDate(input.attendanceDate, new Date()));
-  const label = input.subjectLabel?.trim() || null;
-  const activityType = manualActivityType(input.activityType || "other");
-  const normalizedMinutes = input.minutes && input.minutes > 0 ? Math.min(input.minutes, 1440) : null;
+  const fields = normalizeManualAttendanceFields(input);
+  const label = fields.subjectLabel;
   const entry = await db.transaction(async (tx) => {
     const [savedEntry] = await tx.insert(attendanceEntries).values({
       profileId: input.profileId,
       learningYearId: input.learningYearId || null,
-      attendanceDate: date,
+      attendanceDate: fields.attendanceDate,
       entryKind: "manual",
-      activityType,
+      activityType: fields.activityType,
       subjectKey: label ? subjectKey(label) : null,
       subjectLabel: label,
-      title,
-      notes: input.notes?.trim() || null,
-      minutes: normalizedMinutes,
+      title: fields.title,
+      notes: fields.notes,
+      minutes: fields.minutes,
       createdByUserId: input.parentUserId
     }).returning();
     if (!savedEntry) throw new Error("The learning activity could not be recorded.");
@@ -570,10 +548,10 @@ export async function createManualAttendanceEntry(input: {
       subjectLabel: label,
       metadata: {
         attendanceEntryId: savedEntry.id,
-        attendanceDate: date,
-        activityType,
-        activityTitle: title,
-        minutes: normalizedMinutes
+        attendanceDate: fields.attendanceDate,
+        activityType: fields.activityType,
+        activityTitle: fields.title,
+        minutes: fields.minutes
       }
     }).onConflictDoNothing();
     return savedEntry;
@@ -586,10 +564,10 @@ export async function updateManualAttendanceEntry(input: {
   parentUserId: string;
   profileId: string;
   entryId: string;
-  activityType: string;
-}) {
+} & ManualAttendanceFields) {
   await verifyStudent(input.parentUserId, input.profileId);
-  const activityType = manualActivityType(input.activityType);
+  const fields = normalizeManualAttendanceFields(input);
+  const label = fields.subjectLabel;
   const updatedEntry = await db.transaction(async (tx) => {
     const [existing] = await tx.select({
       id: attendanceEntries.id,
@@ -602,11 +580,19 @@ export async function updateManualAttendanceEntry(input: {
       .limit(1);
     if (!existing) throw new Error("Attendance entry not found.");
     if (existing.entryKind !== "manual") {
-      throw new Error("Only other learning records can have their type changed.");
+      throw new Error("Only other learning records can be edited.");
     }
 
     const [saved] = await tx.update(attendanceEntries)
-      .set({ activityType })
+      .set({
+        attendanceDate: fields.attendanceDate,
+        activityType: fields.activityType,
+        subjectKey: label ? subjectKey(label) : null,
+        subjectLabel: label,
+        title: fields.title,
+        notes: fields.notes,
+        minutes: fields.minutes
+      })
       .where(eq(attendanceEntries.id, existing.id))
       .returning();
     if (!saved) throw new Error("The learning activity could not be updated.");
@@ -623,15 +609,21 @@ export async function updateManualAttendanceEntry(input: {
       if (event.metadata?.attendanceEntryId !== existing.id) continue;
       await tx.update(teacherActivityEvents)
         .set({
+          subjectKey: saved.subjectKey,
+          subjectLabel: saved.subjectLabel,
           metadata: {
             ...event.metadata,
-            activityType
+            attendanceDate: fields.attendanceDate,
+            activityType: fields.activityType,
+            activityTitle: fields.title,
+            minutes: fields.minutes
           }
         })
         .where(eq(teacherActivityEvents.id, event.id));
     }
     return saved;
   });
+  await refreshStudentStreakCache(input.profileId);
   return updatedEntry;
 }
 

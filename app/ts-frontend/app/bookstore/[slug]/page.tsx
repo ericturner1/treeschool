@@ -6,6 +6,7 @@ import { getCurrentUser } from "../../../lib/auth/server";
 import { curriculumAreaLabel } from "../../../lib/native-workbooks/curriculum-areas";
 import { formatNativeWorkbookGradeRange } from "../../../lib/native-workbooks/grades";
 import { getNativeWorkbookProduct, listNativeWorkbookCatalog } from "../../../lib/native-workbooks/server";
+import { ViewItemAnalytics } from "../../../components/commerce-analytics";
 import { startWorkbookCheckoutAction } from "../actions";
 import { WorkbookImageGallery } from "./workbook-image-gallery";
 
@@ -196,6 +197,16 @@ export default async function WorkbookProductPage({ params, searchParams }: Prop
 
   return (
     <main className="min-h-screen bg-[#f8f1e4] text-ink">
+      <ViewItemAnalytics
+        currency={workbook.currencyCode}
+        value={workbook.priceInCents / 100}
+        item={{
+          itemId: workbook.id,
+          itemName: workbook.title,
+          itemCategory: workbook.catalogKind,
+          price: workbook.priceInCents / 100
+        }}
+      />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema).replace(/</g, "\\u003c") }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema).replace(/</g, "\\u003c") }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema).replace(/</g, "\\u003c") }} />
@@ -246,7 +257,7 @@ export default async function WorkbookProductPage({ params, searchParams }: Prop
             </ul>
 
             <div className="mt-8 rounded-[22px] border border-[#d8c7ad] bg-white p-5 sm:p-6">
-              {owned ? <><p className="text-lg font-semibold text-[#4d6a39]">You own {isBundle ? "every workbook in this bundle" : "this workbook"}.</p><Link href="/p/purchased-workbooks" className="cta-button cta-button--light mt-4">Open Purchased Workbooks</Link></> : included ? <><p className="text-lg font-semibold text-[#4d6a39]">Included for lesson planning with your active Treeschool membership.</p><p className="mt-2 text-sm leading-6 text-ink/58">Add {isBundle ? "the collection" : "it"} directly from the lesson-plan generator. The standalone PDF{isBundle ? "s are sold separately and remain" : " is sold separately and remains"} yours permanently.</p><form action={startWorkbookCheckoutAction} className="mt-5"><input type="hidden" name="slug" value={workbook.slug} /><input type="hidden" name="email" value={user?.email ?? ""} /><button className="cta-button cta-button--outline">Buy {isBundle ? "bundle" : "standalone PDF"} · {price}</button></form></> : <form action={startWorkbookCheckoutAction}><input type="hidden" name="slug" value={workbook.slug} />{searchParams?.addToLearningYearId ? <input type="hidden" name="addToLearningYearId" value={searchParams.addToLearningYearId} /> : null}{!user ? <label className="grid gap-2 text-sm font-semibold">Where should we send your workbook?<input required name="email" type="email" autoComplete="email" placeholder="you@example.com" className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3" /></label> : <input type="hidden" name="email" value={user.email ?? ""} />}<button className="cta-button cta-button--dark mt-4 w-full justify-center">Buy and download · {price}</button><p className="mt-3 text-center text-xs leading-5 text-ink/48">Secure checkout by Stripe. A time-limited download link is emailed after payment.</p></form>}
+              {owned ? <><p className="text-lg font-semibold text-[#4d6a39]">You own {isBundle ? "every workbook in this bundle" : "this workbook"}.</p><Link href="/p/purchased-workbooks" className="cta-button cta-button--light mt-4">Open Purchased Workbooks</Link></> : included ? <><p className="text-lg font-semibold text-[#4d6a39]">Included for lesson planning with your active Treeschool membership.</p><p className="mt-2 text-sm leading-6 text-ink/58">Add {isBundle ? "the collection" : "it"} directly from the lesson-plan generator. The standalone PDF{isBundle ? "s are sold separately and remain" : " is sold separately and remains"} yours permanently.</p><form action={startWorkbookCheckoutAction} className="mt-5" data-revenue-path="bookstore-product" data-analytics-item-id={workbook.id} data-analytics-item-name={workbook.title} data-analytics-item-category={workbook.catalogKind} data-analytics-currency={workbook.currencyCode} data-analytics-value={(workbook.priceInCents / 100).toFixed(2)}><input type="hidden" name="slug" value={workbook.slug} /><input type="hidden" name="email" value={user?.email ?? ""} /><button className="cta-button cta-button--outline">Buy {isBundle ? "bundle" : "standalone PDF"} · {price}</button></form></> : <form action={startWorkbookCheckoutAction} data-revenue-path="bookstore-product" data-analytics-item-id={workbook.id} data-analytics-item-name={workbook.title} data-analytics-item-category={workbook.catalogKind} data-analytics-currency={workbook.currencyCode} data-analytics-value={(workbook.priceInCents / 100).toFixed(2)}><input type="hidden" name="slug" value={workbook.slug} />{searchParams?.addToLearningYearId ? <input type="hidden" name="addToLearningYearId" value={searchParams.addToLearningYearId} /> : null}{!user ? <label className="grid gap-2 text-sm font-semibold">Where should we send your workbook?<input required name="email" type="email" autoComplete="email" placeholder="you@example.com" className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3" /></label> : <input type="hidden" name="email" value={user.email ?? ""} />}<button className="cta-button cta-button--dark mt-4 w-full justify-center">Buy and download · {price}</button><p className="mt-3 text-center text-xs leading-5 text-ink/48">Secure checkout by Stripe. A time-limited download link is emailed after payment.</p></form>}
             </div>
           </div>
         </section>

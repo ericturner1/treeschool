@@ -390,14 +390,15 @@ export async function verifyPassword(email: string, password: string) {
 
 export function setSessionCookies(session: SupabaseSession) {
   const cookieStore = cookies();
-  const maxAge = session.expires_in ?? 60 * 60 * 24 * 7;
 
   cookieStore.set(ACCESS_TOKEN_COOKIE_NAME, session.access_token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge
+    // The JWT remains unusable after its own expiry, but retaining it lets
+    // middleware recognize and renew the session instead of losing context.
+    maxAge: AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
   });
 
   cookieStore.set(REFRESH_TOKEN_COOKIE_NAME, session.refresh_token, {

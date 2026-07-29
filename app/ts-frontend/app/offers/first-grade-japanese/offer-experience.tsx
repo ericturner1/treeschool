@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FirstGradePostCheckoutOffer } from "../../../lib/billing/server";
+import { trackAnalyticsEvent } from "../../../lib/analytics/events";
 
 type Mode = "full" | "starter";
 
@@ -69,8 +70,27 @@ export function FirstGradeJapaneseOfferExperience({
     galleryImages[0] ??
     null;
 
+  useEffect(() => {
+    if (previewMode || !selectedOffer) return;
+    trackAnalyticsEvent("view_promotion", {
+      creative_name: mode === "full" ? "Japanese bundle upsell" : "Japanese starter downsell",
+      promotion_id: selectedOffer.key,
+      promotion_name: selectedOffer.title,
+      currency: selectedOffer.currencyCode,
+      value: selectedOffer.priceInCents / 100,
+      items: [{
+        item_id: selectedOffer.key,
+        item_name: selectedOffer.title,
+        item_category: mode === "full" ? "upsell" : "downsell",
+        price: selectedOffer.priceInCents / 100,
+        quantity: 1
+      }]
+    });
+  }, [mode, previewMode, selectedOffer]);
+
   async function decide(action: "accept_full" | "decline_full" | "accept_starter" | "decline_starter") {
     setError("");
+    if (!selectedOffer) return;
     if (previewMode) {
       if (action === "decline_full" && data.offer.starter) {
         if (previewDownsellPath) {
@@ -85,6 +105,22 @@ export function FirstGradeJapaneseOfferExperience({
     }
 
     setBusy(true);
+    if (action === "accept_full" || action === "accept_starter") {
+      trackAnalyticsEvent("select_promotion", {
+        creative_name: mode === "full" ? "Japanese bundle upsell" : "Japanese starter downsell",
+        promotion_id: selectedOffer.key,
+        promotion_name: selectedOffer.title,
+        currency: selectedOffer.currencyCode,
+        value: selectedOffer.priceInCents / 100,
+        items: [{
+          item_id: selectedOffer.key,
+          item_name: selectedOffer.title,
+          item_category: mode === "full" ? "upsell" : "downsell",
+          price: selectedOffer.priceInCents / 100,
+          quantity: 1
+        }]
+      });
+    }
     try {
       const response = await fetch("/api/post-checkout-offers/first-grade-japanese", {
         method: "POST",

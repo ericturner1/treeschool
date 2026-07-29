@@ -550,6 +550,8 @@ export default async function FirstGradeHomeschoolCurriculumPage() {
                   <CurriculumCheckoutChoice
                     bundleSlug={bundle.slug}
                     bundlePrice={bundlePrice}
+                    bundlePriceInCents={bundle.priceInCents}
+                    currencyCode={bundle.currencyCode}
                     userEmail={user?.email ?? null}
                     triggerLabel={`Buy the curriculum · ${bundlePrice}`}
                   />
@@ -599,6 +601,8 @@ export default async function FirstGradeHomeschoolCurriculumPage() {
                     <CurriculumCheckoutChoice
                       bundleSlug={bundle.slug}
                       bundlePrice={bundlePrice}
+                      bundlePriceInCents={bundle.priceInCents}
+                      currencyCode={bundle.currencyCode}
                       userEmail={user?.email ?? null}
                       triggerLabel="Try Treeschool for $6"
                       triggerStyle="green"

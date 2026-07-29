@@ -7,6 +7,8 @@ import { startWorkbookCheckoutAction } from "../bookstore/actions";
 type Props = {
   bundleSlug: string;
   bundlePrice: string;
+  bundlePriceInCents: number;
+  currencyCode: string;
   userEmail: string | null;
   triggerLabel: string;
   triggerStyle?: "green" | "dark";
@@ -15,6 +17,8 @@ type Props = {
 export function CurriculumCheckoutChoice({
   bundleSlug,
   bundlePrice,
+  bundlePriceInCents,
+  currencyCode,
   userEmail,
   triggerLabel,
   triggerStyle = "dark"
@@ -105,6 +109,11 @@ export function CurriculumCheckoutChoice({
                   action={startPricingSubscriptionCheckoutAction}
                   className="mt-5"
                   data-revenue-path="first-grade-curriculum-membership-bump"
+                  data-analytics-item-id="treeschool-single-membership"
+                  data-analytics-item-name="Treeschool Single membership"
+                  data-analytics-item-category="membership"
+                  data-analytics-currency="USD"
+                  data-analytics-value="6"
                 >
                   <input type="hidden" name="interval" value="monthly" />
                   <input type="hidden" name="planTier" value="single" />
@@ -134,6 +143,11 @@ export function CurriculumCheckoutChoice({
                   action={startWorkbookCheckoutAction}
                   className="mt-5 grid gap-3"
                   data-revenue-path="first-grade-curriculum-bundle-after-bump"
+                  data-analytics-item-id={bundleSlug}
+                  data-analytics-item-name="First-grade curriculum bundle"
+                  data-analytics-item-category="bundle"
+                  data-analytics-currency={currencyCode}
+                  data-analytics-value={(bundlePriceInCents / 100).toFixed(2)}
                 >
                   <input type="hidden" name="slug" value={bundleSlug} />
                   <input type="hidden" name="funnelKey" value="first_grade_curriculum" />

@@ -2775,11 +2775,23 @@ const server = Bun.serve({
         parentUserId?: string;
         profileId?: string;
         entryId?: string;
+        attendanceDate?: string;
         activityType?: string;
+        subjectLabel?: string | null;
+        title?: string;
+        notes?: string | null;
+        minutes?: number | null;
       };
-      if (!body.parentUserId || !body.profileId || !body.entryId || !body.activityType) {
+      if (
+        !body.parentUserId ||
+        !body.profileId ||
+        !body.entryId ||
+        !body.attendanceDate ||
+        !body.activityType ||
+        !body.title
+      ) {
         return Response.json(
-          { error: "parentUserId, profileId, entryId, and activityType are required." },
+          { error: "parentUserId, profileId, entryId, attendanceDate, activityType, and title are required." },
           { status: 400 }
         );
       }
@@ -2788,7 +2800,12 @@ const server = Bun.serve({
           parentUserId: body.parentUserId,
           profileId: body.profileId,
           entryId: body.entryId,
-          activityType: body.activityType
+          attendanceDate: body.attendanceDate,
+          activityType: body.activityType,
+          subjectLabel: body.subjectLabel,
+          title: body.title,
+          notes: body.notes,
+          minutes: body.minutes
         }));
       } catch (error) {
         return Response.json(
