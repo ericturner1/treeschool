@@ -46,6 +46,11 @@ import {
 } from "./membership-plans";
 import { withTreeschoolCheckoutBranding } from "./stripe-checkout";
 import { reportMetaCheckoutPurchase } from "./meta-conversions";
+import {
+  funnelCheckoutMetadata,
+  recordStripeFunnelSale,
+  type FunnelCheckoutAttribution
+} from "./funnels";
 
 const PLAN_PACK_PRODUCT_NAME = "Treeschool Printable School-Year Planner";
 const PLAN_PACK_PRODUCT_DESCRIPTION =
@@ -556,6 +561,9 @@ export async function createCoreSubscriptionCheckout(input: {
   intakeId?: string | null;
   nativeCatalogItemIds?: string[];
   funnelKey?: string | null;
+  landingVariant?: string | null;
+  funnelVisitorId?: string | null;
+  funnelAttribution?: FunnelCheckoutAttribution | null;
 }) {
   await requireAccountRole(input.userId, ["OWNER", "ADMIN"]);
   if (!isBillingInterval(input.interval)) {
@@ -618,6 +626,17 @@ export async function createCoreSubscriptionCheckout(input: {
     : undefined;
   const stripe = getStripe();
   const funnelKey = input.funnelKey === FIRST_GRADE_FUNNEL_KEY ? FIRST_GRADE_FUNNEL_KEY : null;
+  const landingVariant =
+    funnelKey && (input.landingVariant === "a" || input.landingVariant === "b")
+      ? input.landingVariant
+      : null;
+  const funnelVisitorId =
+    funnelKey &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      input.funnelVisitorId ?? ""
+    )
+      ? input.funnelVisitorId!.toLowerCase()
+      : null;
   const session = await stripe.checkout.sessions.create(withTreeschoolCheckoutBranding({
     mode: "subscription",
     customer: existingSubscription?.stripeCustomerId ?? undefined,
@@ -643,6 +662,9 @@ export async function createCoreSubscriptionCheckout(input: {
       additionalStudentQuantity: String(additionalStudentQuantity),
       checkoutKind: "core_subscription",
       ...(funnelKey ? { funnelKey } : {}),
+      ...(landingVariant ? { landingVariant } : {}),
+      ...(funnelVisitorId ? { funnelVisitorId } : {}),
+      ...funnelCheckoutMetadata(input.funnelAttribution),
       ...(includesMonthlyIntro ? { introductoryOffer: INTRODUCTORY_OFFER_KEY } : {}),
       ...nativeSelectionMetadata(nativeSelections, paidNativeIds),
       ...(input.intakeId ? { intakeId: input.intakeId, checkoutSource: "generator_upsell" } : {})
@@ -656,6 +678,9 @@ export async function createCoreSubscriptionCheckout(input: {
         additionalStudentQuantity: String(additionalStudentQuantity),
         checkoutKind: "core_subscription",
         ...(funnelKey ? { funnelKey } : {}),
+        ...(landingVariant ? { landingVariant } : {}),
+        ...(funnelVisitorId ? { funnelVisitorId } : {}),
+        ...funnelCheckoutMetadata(input.funnelAttribution),
         ...(includesMonthlyIntro ? { introductoryOffer: INTRODUCTORY_OFFER_KEY } : {}),
         ...(input.intakeId ? { intakeId: input.intakeId, checkoutSource: "generator_upsell" } : {})
       }
@@ -674,6 +699,9 @@ export async function createPublicCoreSubscriptionCheckout(input: {
   successUrl: string;
   cancelUrl: string;
   funnelKey?: string | null;
+  landingVariant?: string | null;
+  funnelVisitorId?: string | null;
+  funnelAttribution?: FunnelCheckoutAttribution | null;
 }) {
   if (!isBillingInterval(input.interval)) {
     throw new Error("Choose monthly or yearly billing.");
@@ -692,6 +720,17 @@ export async function createPublicCoreSubscriptionCheckout(input: {
       })
     : undefined;
   const funnelKey = input.funnelKey === FIRST_GRADE_FUNNEL_KEY ? FIRST_GRADE_FUNNEL_KEY : null;
+  const landingVariant =
+    funnelKey && (input.landingVariant === "a" || input.landingVariant === "b")
+      ? input.landingVariant
+      : null;
+  const funnelVisitorId =
+    funnelKey &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      input.funnelVisitorId ?? ""
+    )
+      ? input.funnelVisitorId!.toLowerCase()
+      : null;
   const session = await getStripe().checkout.sessions.create(withTreeschoolCheckoutBranding({
     mode: "subscription",
     success_url: input.successUrl,
@@ -706,6 +745,9 @@ export async function createPublicCoreSubscriptionCheckout(input: {
       additionalStudentQuantity: "0",
       checkoutKind: "public_core_subscription",
       ...(funnelKey ? { funnelKey } : {}),
+      ...(landingVariant ? { landingVariant } : {}),
+      ...(funnelVisitorId ? { funnelVisitorId } : {}),
+      ...funnelCheckoutMetadata(input.funnelAttribution),
       ...(includesMonthlyIntro ? { introductoryOffer: INTRODUCTORY_OFFER_KEY } : {})
     },
     subscription_data: {
@@ -715,6 +757,9 @@ export async function createPublicCoreSubscriptionCheckout(input: {
         additionalStudentQuantity: "0",
         checkoutKind: "public_core_subscription",
         ...(funnelKey ? { funnelKey } : {}),
+        ...(landingVariant ? { landingVariant } : {}),
+        ...(funnelVisitorId ? { funnelVisitorId } : {}),
+        ...funnelCheckoutMetadata(input.funnelAttribution),
         ...(includesMonthlyIntro ? { introductoryOffer: INTRODUCTORY_OFFER_KEY } : {})
       }
     }
@@ -2040,6 +2085,25 @@ export async function handleStripeWebhook(input: {
         error instanceof Error ? error.message : "Unknown Meta API error."
       );
     });
+    await recordStripeFunnelSale({
+      checkoutSessionId: event.data.object.id,
+      paymentIntentId: stripeObjectId(event.data.object.payment_intent),
+      email: event.data.object.customer_details?.email ?? event.data.object.customer_email,
+      orderKind:
+        event.data.object.metadata?.checkoutKind ??
+        event.data.object.metadata?.checkoutSource ??
+        null,
+      amountSubtotalCents: event.data.object.amount_subtotal,
+      amountTotalCents: event.data.object.amount_total,
+      currency: event.data.object.currency,
+      metadata: event.data.object.metadata,
+      purchasedAt: new Date(event.created * 1000)
+    }).catch((error) => {
+      console.error(
+        "Funnel sale attribution failed after checkout completion:",
+        error instanceof Error ? error.message : "Unknown funnel attribution error."
+      );
+    });
   }
 
   if (event.type === "payment_intent.succeeded") {
@@ -2055,6 +2119,25 @@ export async function handleStripeWebhook(input: {
       console.error(
         "Meta purchase reporting failed after asynchronous payment:",
         error instanceof Error ? error.message : "Unknown Meta API error."
+      );
+    });
+    await recordStripeFunnelSale({
+      checkoutSessionId: event.data.object.id,
+      paymentIntentId: stripeObjectId(event.data.object.payment_intent),
+      email: event.data.object.customer_details?.email ?? event.data.object.customer_email,
+      orderKind:
+        event.data.object.metadata?.checkoutKind ??
+        event.data.object.metadata?.checkoutSource ??
+        null,
+      amountSubtotalCents: event.data.object.amount_subtotal,
+      amountTotalCents: event.data.object.amount_total,
+      currency: event.data.object.currency,
+      metadata: event.data.object.metadata,
+      purchasedAt: new Date(event.created * 1000)
+    }).catch((error) => {
+      console.error(
+        "Funnel sale attribution failed after asynchronous payment:",
+        error instanceof Error ? error.message : "Unknown funnel attribution error."
       );
     });
   }

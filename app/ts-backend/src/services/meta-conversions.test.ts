@@ -79,6 +79,25 @@ describe("Meta Conversions API purchase events", () => {
     expect(JSON.stringify(event)).not.toContain("parent@example.com");
   });
 
+  test("attributes first-grade funnel purchases to the assigned landing variant", () => {
+    const event = buildMetaCheckoutPurchaseEvent(
+      checkoutSession({
+        metadata: {
+          checkoutKind: "public_core_subscription",
+          funnelKey: "first_grade_curriculum",
+          landingVariant: "b",
+          planTier: "single"
+        }
+      }),
+      1_785_283_200
+    );
+
+    expect(event?.event_source_url).toBe(
+      "https://www.treehomeschool.com/first-grade-curriculum"
+    );
+    expect(event?.custom_data.landing_variant).toBe("b");
+  });
+
   test("skips unpaid, untracked, and regulated-country checkouts", () => {
     expect(
       buildMetaCheckoutPurchaseEvent(

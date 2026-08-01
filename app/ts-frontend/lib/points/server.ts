@@ -14,6 +14,7 @@ export type StudentPointsPayload = {
     id: string;
     firstName: string;
   };
+  canTransact: boolean;
   canManage: boolean;
   settings: {
     singularName: string;
@@ -82,7 +83,7 @@ export function awardStudentPoints(input: {
   amount: number;
   reason: string;
 }) {
-  return pointsMutation({ ...input, action: "award" });
+  return pointsMutation<{ id: string; amount: number }>({ ...input, action: "award" });
 }
 
 export function redeemStudentPoints(input: {

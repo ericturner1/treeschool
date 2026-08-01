@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing auth tokens." }, { status: 400 });
   }
 
-  setSessionCookies({
+  const traceId = setSessionCookies({
     access_token: payload.access_token,
     refresh_token: payload.refresh_token,
     expires_in: payload.expires_in,
@@ -48,6 +48,11 @@ export async function POST(request: Request) {
   });
 
   await setParentAsActiveAccount(payload.access_token);
+  console.info(JSON.stringify({
+    event: "auth_session_established",
+    traceId,
+    entryPoint: "browser_session_callback"
+  }));
 
   return NextResponse.json({ ok: true });
 }

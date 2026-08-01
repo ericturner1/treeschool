@@ -1,4 +1,5 @@
 import { backendFetch } from "../backend/server";
+import type { ManagedFunnelAttribution } from "../funnels/server";
 import type { CurriculumCompletenessResult } from "../curriculum-completeness/server";
 
 const DEFAULT_INTERNAL_BACKEND_URL = "http://ts-backend:3001";
@@ -483,6 +484,9 @@ export function createNativeWorkbookCheckout(input: {
   cancelUrl: string;
   addToLearningYearId?: string | null;
   funnelKey?: string | null;
+  landingVariant?: "a" | "b" | null;
+  funnelVisitorId?: string | null;
+  funnelAttribution?: ManagedFunnelAttribution | null;
 }) {
   return postJson<{ id: string; url: string | null }>(
     "/internal/native-workbooks/checkout",
@@ -497,6 +501,7 @@ export function createNativeWorkbookCartCheckout(input: {
   workbookIds: string[];
   successUrl: string;
   cancelUrl: string;
+  funnelAttribution?: ManagedFunnelAttribution | null;
 }) {
   return postJson<{ id: string; url: string | null }>(
     "/internal/native-workbooks/cart-checkout",

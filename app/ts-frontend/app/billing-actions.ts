@@ -5,12 +5,17 @@ import { redirect } from "next/navigation";
 import { bootstrapParentAccount } from "../lib/accounts/server";
 import { getCurrentUser } from "../lib/auth/server";
 import {
+  normalizeFirstGradeCurriculumVariant,
+  normalizeFunnelVisitorId
+} from "../lib/first-grade-curriculum/experiment";
+import {
   createPublicParentBillingCheckout,
   createParentBillingCheckout,
   createParentBillingPortal,
   createParentPlanChange,
   getParentBillingOverview
 } from "../lib/billing/server";
+import { getFunnelAttributionFromCookies } from "../lib/funnels/attribution";
 
 function getRequestOrigin() {
   const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
@@ -52,6 +57,24 @@ function getFunnelKey(formData: FormData) {
     : null;
 }
 
+function getFunnelAttribution(formData: FormData) {
+  if (getField(formData, "experimentPreview") === "true") {
+    return {
+      landingVariant: null,
+      funnelVisitorId: null
+    };
+  }
+
+  return {
+    landingVariant: normalizeFirstGradeCurriculumVariant(
+      getField(formData, "landingVariant")
+    ),
+    funnelVisitorId: normalizeFunnelVisitorId(
+      getField(formData, "funnelVisitorId")
+    )
+  };
+}
+
 function getSafePath(path: string, fallback: string) {
   if (!path || !path.startsWith("/") || path.startsWith("//")) {
     return fallback;
@@ -89,6 +112,7 @@ export async function startCoreSubscriptionCheckoutAction(formData: FormData) {
   const successPath = getSafePath(getField(formData, "successPath"), "/p/billing?checkout=success");
   const currentUser = await requireBillingUser();
   const origin = getRequestOrigin();
+  const managedFunnelAttribution = getFunnelAttributionFromCookies();
   let session: { url: string | null };
   try {
     session = await createParentBillingCheckout({
@@ -96,7 +120,8 @@ export async function startCoreSubscriptionCheckoutAction(formData: FormData) {
       interval,
       planTier,
       successUrl: `${origin}${successPath}`,
-      cancelUrl: `${origin}${returnPath}?checkout=canceled`
+      cancelUrl: `${origin}${returnPath}?checkout=canceled`,
+      funnelAttribution: managedFunnelAttribution
     });
   } catch {
     redirect(`${returnPath}?error=${encodeURIComponent("We couldn’t open secure checkout. Please try again.")}`);
@@ -114,8 +139,10 @@ export async function startPricingSubscriptionCheckoutAction(formData: FormData)
   const planTier = getMembershipTier(formData);
   const returnPath = getSafePath(getField(formData, "returnPath"), "/pricing");
   const funnelKey = getFunnelKey(formData);
+  const funnelAttribution = getFunnelAttribution(formData);
   const origin = getRequestOrigin();
   const currentUser = await getCurrentUser();
+  const managedFunnelAttribution = getFunnelAttributionFromCookies();
 
   if (currentUser?.id && currentUser.email) {
     await bootstrapParentAccount({
@@ -146,7 +173,9 @@ export async function startPricingSubscriptionCheckoutAction(formData: FormData)
           ? `${origin}/offers/us/first-grade-japanese?session_id={CHECKOUT_SESSION_ID}`
           : `${origin}/p/dashboard?checkout=success`,
         cancelUrl: `${origin}${returnPath}?checkout=canceled`,
-        funnelKey
+        funnelKey,
+        ...funnelAttribution,
+        funnelAttribution: managedFunnelAttribution
       });
     } catch {
       redirect(`${returnPath}?error=${encodeURIComponent("We couldn’t open secure checkout. Please try again.")}`);
@@ -166,7 +195,9 @@ export async function startPricingSubscriptionCheckoutAction(formData: FormData)
         ? `${origin}/offers/us/first-grade-japanese?session_id={CHECKOUT_SESSION_ID}`
         : `${origin}/membership/complete?session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${origin}${returnPath}?checkout=canceled`,
-      funnelKey
+      funnelKey,
+      ...funnelAttribution,
+      funnelAttribution: managedFunnelAttribution
     });
   } catch {
     redirect(`${returnPath}?error=${encodeURIComponent("We couldn’t open secure checkout. Please try again.")}`);

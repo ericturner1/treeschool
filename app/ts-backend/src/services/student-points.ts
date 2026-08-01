@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import {
   profiles,
   studentPointSettings,
-  studentPointTransactions
+  studentPointTransactions,
+  teacherActivityEvents
 } from "ts-db";
 import { db } from "../db";
 import {
@@ -165,6 +166,7 @@ export async function getStudentPoints(input: {
       id: studentProfile.id,
       firstName: studentProfile.firstName
     },
+    canTransact: ["OWNER", "ADMIN", "TEACHER"].includes(requester.accountRole),
     canManage: requester.accountRole === "OWNER" || requester.accountRole === "ADMIN",
     settings: {
       singularName: settings.singularName,
@@ -336,21 +338,38 @@ export async function awardStudentPoints(input: {
   reason: string;
 }) {
   await requirePremiumFeatureAccess(input.parentUserId);
-  await requireAccountRole(input.parentUserId, ["OWNER", "ADMIN"]);
-  await getManageableStudentProfile(input.parentUserId, input.profileId);
+  const [actor, { studentProfile }, settings] = await Promise.all([
+    requireAccountRole(input.parentUserId, ["OWNER", "ADMIN", "TEACHER"]),
+    getManageableStudentProfile(input.parentUserId, input.profileId),
+    ensureStudentPointSettings(input.profileId)
+  ]);
   const amount = normalizeAmount(input.amount);
   const reason = normalizeReason(input.reason);
-  const [transaction] = await db
-    .insert(studentPointTransactions)
-    .values({
+  return db.transaction(async (tx) => {
+    const [transaction] = await tx.insert(studentPointTransactions).values({
       profileId: input.profileId,
       amount,
       kind: "award",
       reason,
       createdByUserId: input.parentUserId
-    })
-    .returning();
-  return transaction!;
+    }).returning();
+    if (!transaction) throw new Error("The points could not be awarded.");
+    await tx.insert(teacherActivityEvents).values({
+      accountId: actor.accountId,
+      actorUserId: input.parentUserId,
+      actorProfileId: actor.profileId,
+      studentProfileId: studentProfile.id,
+      eventType: "points_awarded",
+      metadata: {
+        pointTransactionId: transaction.id,
+        pointsAmount: amount,
+        pointsReason: reason,
+        pointSingularName: settings.singularName,
+        pointPluralName: settings.pluralName
+      }
+    });
+    return transaction;
+  });
 }
 
 export async function redeemStudentPoints(input: {
@@ -360,8 +379,11 @@ export async function redeemStudentPoints(input: {
   reason: string;
 }) {
   await requirePremiumFeatureAccess(input.parentUserId);
-  await requireAccountRole(input.parentUserId, ["OWNER", "ADMIN"]);
-  await getManageableStudentProfile(input.parentUserId, input.profileId);
+  const [actor, { studentProfile }, settings] = await Promise.all([
+    requireAccountRole(input.parentUserId, ["OWNER", "ADMIN", "TEACHER"]),
+    getManageableStudentProfile(input.parentUserId, input.profileId),
+    ensureStudentPointSettings(input.profileId)
+  ]);
   const amount = normalizeAmount(input.amount);
   const reason = normalizeReason(input.reason);
 
@@ -387,7 +409,22 @@ export async function redeemStudentPoints(input: {
         createdByUserId: input.parentUserId
       })
       .returning();
-    return transaction!;
+    if (!transaction) throw new Error("The point usage could not be recorded.");
+    await tx.insert(teacherActivityEvents).values({
+      accountId: actor.accountId,
+      actorUserId: input.parentUserId,
+      actorProfileId: actor.profileId,
+      studentProfileId: studentProfile.id,
+      eventType: "points_used",
+      metadata: {
+        pointTransactionId: transaction.id,
+        pointsAmount: amount,
+        pointsReason: reason,
+        pointSingularName: settings.singularName,
+        pointPluralName: settings.pluralName
+      }
+    });
+    return transaction;
   });
 }
 

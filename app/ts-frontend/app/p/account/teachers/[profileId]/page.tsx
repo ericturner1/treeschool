@@ -135,14 +135,15 @@ export default async function TeacherProfilePage({ params, searchParams }: Props
               <p className="text-xs font-black uppercase tracking-[0.13em] text-earth">Activity</p>
               <h2 className="mt-2 text-[30px] font-semibold tracking-[-0.05em] text-ink">Teaching activity</h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/62">
-                A record of grades and other learning recorded by {activity.teacher.name} during the last year.
+                A record of grades, points, and other learning recorded by {activity.teacher.name} during the last year.
               </p>
             </div>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
               <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Actions</p><p className="mt-1 text-3xl font-semibold text-ink">{activity.summary.totalActions}</p></div>
               <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Other learning</p><p className="mt-1 text-3xl font-semibold text-ink">{activity.summary.attendanceRecorded}</p></div>
               <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Grades saved</p><p className="mt-1 text-3xl font-semibold text-ink">{activity.summary.gradesSaved}</p></div>
               <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Grades removed</p><p className="mt-1 text-3xl font-semibold text-ink">{activity.summary.gradesRemoved}</p></div>
+              <div className="rounded-[18px] bg-[#eef5e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#587443]">Point activity</p><p className="mt-1 text-3xl font-semibold text-ink">{activity.summary.pointActions}</p></div>
               <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Active days</p><p className="mt-1 text-3xl font-semibold text-ink">{activity.summary.activeDays}</p></div>
             </div>
             <div className="mt-6 rounded-[20px] border border-[#e4d5bd] bg-white px-4 py-5">
@@ -163,7 +164,13 @@ export default async function TeacherProfilePage({ params, searchParams }: Props
                 <p className="rounded-[18px] bg-[#fffaf2] px-5 py-7 text-sm text-ink/60">No teaching activity has been recorded for this teacher yet.</p>
               ) : activity.events.map((event) => {
                 const manualAttendance = event.eventType === "attendance_manual";
-                const context = manualAttendance
+                const pointActivity = event.eventType === "points_awarded" || event.eventType === "points_used";
+                const pointUnit = event.pointsAmount === 1
+                  ? event.pointSingularName ?? "point"
+                  : event.pointPluralName ?? "points";
+                const context = pointActivity
+                  ? [event.pointsReason].filter(Boolean).join(" · ")
+                  : manualAttendance
                   ? [
                       event.studentName,
                       event.attendanceDate ? `Learning date ${attendanceDate(event.attendanceDate)}` : null,
@@ -180,7 +187,11 @@ export default async function TeacherProfilePage({ params, searchParams }: Props
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                       <div>
                         <p className="font-semibold text-ink">
-                          {manualAttendance
+                          {pointActivity
+                            ? event.eventType === "points_awarded"
+                              ? `Awarded ${event.pointsAmount ?? 0} ${pointUnit} to ${event.studentName ?? "a student"}`
+                              : `Recorded ${event.pointsAmount ?? 0} ${pointUnit} used by ${event.studentName ?? "a student"}`
+                            : manualAttendance
                             ? `Recorded ${activityTypeLabel(event.activityType)}: ${event.activityTitle ?? "Learning activity"}`
                             : event.eventType === "grade_removed"
                             ? `Removed the grade for ${event.subjectLabel ?? "a lesson"}`

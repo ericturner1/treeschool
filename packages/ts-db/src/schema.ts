@@ -2093,6 +2093,502 @@ export const salesFaqs = pgTable(
   })
 );
 
+export type FunnelStatus = "draft" | "live" | "paused" | "archived";
+export type FunnelStepStatus = "draft" | "active" | "inactive";
+export type FunnelStepType =
+  | "landing"
+  | "sales"
+  | "checkout"
+  | "order_bump"
+  | "upsell"
+  | "downsell"
+  | "thank_you"
+  | "redirect"
+  | "fulfillment";
+export type FunnelStepSourceType = "code" | "generated" | "external" | "runtime";
+export type FunnelPageStatus = "draft" | "published" | "archived";
+export type FunnelPageRevisionSource = "manual" | "ai" | "imported";
+export type FunnelExperimentStatus = "draft" | "running" | "paused" | "completed";
+export type FunnelExperimentGoal =
+  | "primary_cta_click"
+  | "secondary_cta_click"
+  | "checkout_started"
+  | "purchase"
+  | "thank_you_view";
+export type FunnelEventType =
+  | "page_view"
+  | "lead_captured"
+  | "primary_cta_click"
+  | "secondary_cta_click"
+  | "checkout_started"
+  | "purchase"
+  | "thank_you_view";
+export type FunnelPageGenerationStatus = "running" | "succeeded" | "failed";
+export type FunnelPageGenerationMode = "create" | "rewrite" | "optimize" | "variant";
+export type FunnelLeadStatus = "lead" | "customer" | "unsubscribed";
+export type FunnelAutomationTrigger = "lead_captured" | "purchase";
+export type FunnelAutomationAction = "add_tag";
+
+export const funnels = pgTable(
+  "funnels",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    badgeLabel: text("badge_label"),
+    audience: text("audience").notNull().default(""),
+    objective: text("objective").notNull().default(""),
+    status: text("status").$type<FunnelStatus>().notNull().default("draft"),
+    publicPath: text("public_path"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    slugUnique: unique("funnels_slug_unique").on(table.slug),
+    statusUpdatedIndex: index("funnels_status_updated_idx").on(table.status, table.updatedAt)
+  })
+);
+
+export const funnelSteps = pgTable(
+  "funnel_steps",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    funnelId: uuid("funnel_id")
+      .notNull()
+      .references(() => funnels.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    stepType: text("step_type").$type<FunnelStepType>().notNull().default("landing"),
+    status: text("status").$type<FunnelStepStatus>().notNull().default("draft"),
+    sourceType: text("source_type").$type<FunnelStepSourceType>().notNull().default("code"),
+    sourceRef: text("source_ref"),
+    publicPath: text("public_path"),
+    previewPath: text("preview_path"),
+    linkLabel: text("link_label"),
+    displayOrder: integer("display_order").notNull().default(0),
+    isTopOfFunnel: boolean("is_top_of_funnel").notNull().default(false),
+    settingsJson: jsonb("settings_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    funnelSlugUnique: unique("funnel_steps_funnel_slug_unique").on(table.funnelId, table.slug),
+    funnelOrderIndex: index("funnel_steps_funnel_order_idx").on(table.funnelId, table.displayOrder),
+    funnelStatusIndex: index("funnel_steps_funnel_status_idx").on(table.funnelId, table.status)
+  })
+);
+
+export const funnelPages = pgTable(
+  "funnel_pages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    funnelStepId: uuid("funnel_step_id")
+      .notNull()
+      .references(() => funnelSteps.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull().default("control"),
+    name: text("name").notNull(),
+    status: text("status").$type<FunnelPageStatus>().notNull().default("draft"),
+    isPrimary: boolean("is_primary").notNull().default(true),
+    publishedRevisionNumber: integer("published_revision_number"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    stepSlugUnique: unique("funnel_pages_step_slug_unique").on(table.funnelStepId, table.slug),
+    stepStatusIndex: index("funnel_pages_step_status_idx").on(table.funnelStepId, table.status)
+  })
+);
+
+export const funnelPageRevisions = pgTable(
+  "funnel_page_revisions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    funnelPageId: uuid("funnel_page_id")
+      .notNull()
+      .references(() => funnelPages.id, { onDelete: "cascade" }),
+    revisionNumber: integer("revision_number").notNull(),
+    source: text("source").$type<FunnelPageRevisionSource>().notNull().default("manual"),
+    contentJson: jsonb("content_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    seoJson: jsonb("seo_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    pageRevisionUnique: unique("funnel_page_revisions_page_revision_unique").on(
+      table.funnelPageId,
+      table.revisionNumber
+    ),
+    pageCreatedIndex: index("funnel_page_revisions_page_created_idx").on(
+      table.funnelPageId,
+      table.createdAt
+    )
+  })
+);
+
+export const funnelExperiments = pgTable(
+  "funnel_experiments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    funnelStepId: uuid("funnel_step_id")
+      .notNull()
+      .references(() => funnelSteps.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    status: text("status").$type<FunnelExperimentStatus>().notNull().default("draft"),
+    goalEvent: text("goal_event")
+      .$type<FunnelExperimentGoal>()
+      .notNull()
+      .default("primary_cta_click"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    stepStatusIndex: index("funnel_experiments_step_status_idx").on(
+      table.funnelStepId,
+      table.status
+    )
+  })
+);
+
+export const funnelExperimentVariants = pgTable(
+  "funnel_experiment_variants",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    experimentId: uuid("experiment_id")
+      .notNull()
+      .references(() => funnelExperiments.id, { onDelete: "cascade" }),
+    funnelPageId: uuid("funnel_page_id")
+      .notNull()
+      .references(() => funnelPages.id, { onDelete: "cascade" }),
+    weight: integer("weight").notNull().default(50),
+    isControl: boolean("is_control").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    experimentPageUnique: unique("funnel_experiment_variants_experiment_page_unique").on(
+      table.experimentId,
+      table.funnelPageId
+    ),
+    experimentIndex: index("funnel_experiment_variants_experiment_idx").on(
+      table.experimentId
+    )
+  })
+);
+
+export const funnelVisitorAssignments = pgTable(
+  "funnel_visitor_assignments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    experimentId: uuid("experiment_id")
+      .notNull()
+      .references(() => funnelExperiments.id, { onDelete: "cascade" }),
+    experimentVariantId: uuid("experiment_variant_id")
+      .notNull()
+      .references(() => funnelExperimentVariants.id, { onDelete: "cascade" }),
+    visitorId: uuid("visitor_id").notNull(),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    experimentVisitorUnique: unique("funnel_visitor_assignments_experiment_visitor_unique").on(
+      table.experimentId,
+      table.visitorId
+    ),
+    variantIndex: index("funnel_visitor_assignments_variant_idx").on(
+      table.experimentVariantId
+    )
+  })
+);
+
+export const funnelEvents = pgTable(
+  "funnel_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    eventId: uuid("event_id").notNull(),
+    funnelId: uuid("funnel_id")
+      .notNull()
+      .references(() => funnels.id, { onDelete: "cascade" }),
+    funnelStepId: uuid("funnel_step_id")
+      .notNull()
+      .references(() => funnelSteps.id, { onDelete: "cascade" }),
+    funnelPageId: uuid("funnel_page_id")
+      .references(() => funnelPages.id, { onDelete: "cascade" }),
+    funnelPageRevisionNumber: integer("funnel_page_revision_number"),
+    experimentId: uuid("experiment_id").references(() => funnelExperiments.id, {
+      onDelete: "set null"
+    }),
+    experimentVariantId: uuid("experiment_variant_id").references(
+      () => funnelExperimentVariants.id,
+      { onDelete: "set null" }
+    ),
+    visitorId: uuid("visitor_id").notNull(),
+    eventType: text("event_type").$type<FunnelEventType>().notNull(),
+    valueCents: integer("value_cents"),
+    currency: text("currency"),
+    metadataJson: jsonb("metadata_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    eventIdUnique: unique("funnel_events_event_id_unique").on(table.eventId),
+    funnelOccurredIndex: index("funnel_events_funnel_occurred_idx").on(
+      table.funnelId,
+      table.occurredAt
+    ),
+    experimentOccurredIndex: index("funnel_events_experiment_occurred_idx").on(
+      table.experimentId,
+      table.occurredAt
+    ),
+    visitorIndex: index("funnel_events_visitor_idx").on(table.visitorId)
+  })
+);
+
+export const funnelPageGenerationRuns = pgTable(
+  "funnel_page_generation_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    funnelStepId: uuid("funnel_step_id")
+      .notNull()
+      .references(() => funnelSteps.id, { onDelete: "cascade" }),
+    funnelPageId: uuid("funnel_page_id").references(() => funnelPages.id, {
+      onDelete: "set null"
+    }),
+    requestedByUserId: uuid("requested_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    mode: text("mode").$type<FunnelPageGenerationMode>().notNull(),
+    status: text("status").$type<FunnelPageGenerationStatus>().notNull().default("running"),
+    prompt: text("prompt").notNull(),
+    providerRequestId: text("provider_request_id"),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    totalTokens: integer("total_tokens").notNull().default(0),
+    durationMs: integer("duration_ms"),
+    outputRevisionNumber: integer("output_revision_number"),
+    errorMessage: text("error_message"),
+    providerUsageJson: jsonb("provider_usage_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true })
+  },
+  (table) => ({
+    stepCreatedIndex: index("funnel_page_generation_runs_step_created_idx").on(
+      table.funnelStepId,
+      table.createdAt
+    )
+  })
+);
+
+export const funnelLeads = pgTable(
+  "funnel_leads",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    funnelId: uuid("funnel_id")
+      .notNull()
+      .references(() => funnels.id, { onDelete: "cascade" }),
+    visitorId: uuid("visitor_id").notNull(),
+    email: text("email").notNull(),
+    firstName: text("first_name"),
+    status: text("status").$type<FunnelLeadStatus>().notNull().default("lead"),
+    firstFunnelStepId: uuid("first_funnel_step_id").references(() => funnelSteps.id, {
+      onDelete: "set null"
+    }),
+    firstFunnelPageId: uuid("first_funnel_page_id").references(() => funnelPages.id, {
+      onDelete: "set null"
+    }),
+    lastFunnelStepId: uuid("last_funnel_step_id").references(() => funnelSteps.id, {
+      onDelete: "set null"
+    }),
+    lastFunnelPageId: uuid("last_funnel_page_id").references(() => funnelPages.id, {
+      onDelete: "set null"
+    }),
+    experimentId: uuid("experiment_id").references(() => funnelExperiments.id, {
+      onDelete: "set null"
+    }),
+    experimentVariantId: uuid("experiment_variant_id").references(
+      () => funnelExperimentVariants.id,
+      { onDelete: "set null" }
+    ),
+    tagsJson: jsonb("tags_json").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    attributionJson: jsonb("attribution_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    metadataJson: jsonb("metadata_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow().notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+    convertedAt: timestamp("converted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    funnelVisitorUnique: unique("funnel_leads_funnel_visitor_unique").on(
+      table.funnelId,
+      table.visitorId
+    ),
+    funnelEmailIndex: index("funnel_leads_funnel_email_idx").on(table.funnelId, table.email),
+    funnelCreatedIndex: index("funnel_leads_funnel_created_idx").on(
+      table.funnelId,
+      table.createdAt
+    )
+  })
+);
+
+export const funnelSales = pgTable(
+  "funnel_sales",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    funnelId: uuid("funnel_id").references(() => funnels.id, { onDelete: "set null" }),
+    funnelSlug: text("funnel_slug").notNull(),
+    funnelName: text("funnel_name").notNull(),
+    visitorId: uuid("visitor_id").notNull(),
+    funnelStepId: uuid("funnel_step_id").references(() => funnelSteps.id, {
+      onDelete: "set null"
+    }),
+    funnelPageId: uuid("funnel_page_id").references(() => funnelPages.id, {
+      onDelete: "set null"
+    }),
+    funnelPageRevisionNumber: integer("funnel_page_revision_number"),
+    experimentId: uuid("experiment_id").references(() => funnelExperiments.id, {
+      onDelete: "set null"
+    }),
+    experimentVariantId: uuid("experiment_variant_id").references(
+      () => funnelExperimentVariants.id,
+      { onDelete: "set null" }
+    ),
+    stripeCheckoutSessionId: text("stripe_checkout_session_id").notNull(),
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
+    email: text("email"),
+    orderKind: text("order_kind").notNull().default("unknown"),
+    amountSubtotalCents: integer("amount_subtotal_cents"),
+    amountTotalCents: integer("amount_total_cents").notNull().default(0),
+    currency: text("currency").notNull().default("USD"),
+    status: text("status").notNull().default("paid"),
+    metadataJson: jsonb("metadata_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    purchasedAt: timestamp("purchased_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    checkoutSessionUnique: unique("funnel_sales_checkout_session_unique").on(
+      table.stripeCheckoutSessionId
+    ),
+    funnelPurchasedIndex: index("funnel_sales_funnel_purchased_idx").on(
+      table.funnelId,
+      table.purchasedAt
+    ),
+    visitorIndex: index("funnel_sales_visitor_idx").on(table.visitorId)
+  })
+);
+
+export const funnelAutomationRules = pgTable(
+  "funnel_automation_rules",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    funnelId: uuid("funnel_id")
+      .notNull()
+      .references(() => funnels.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    triggerEvent: text("trigger_event").$type<FunnelAutomationTrigger>().notNull(),
+    actionType: text("action_type").$type<FunnelAutomationAction>().notNull(),
+    actionConfigJson: jsonb("action_config_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    active: boolean("active").notNull().default(true),
+    displayOrder: integer("display_order").notNull().default(0),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    funnelOrderIndex: index("funnel_automation_rules_funnel_order_idx").on(
+      table.funnelId,
+      table.displayOrder
+    )
+  })
+);
+
+export const authSessionDiagnostics = pgTable(
+  "auth_session_diagnostics",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    traceId: uuid("trace_id"),
+    event: text("event").notNull(),
+    reason: text("reason"),
+    path: text("path"),
+    statusCode: integer("status_code"),
+    metadataJson: jsonb("metadata_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    traceCreatedIndex: index("auth_session_diagnostics_trace_created_idx").on(
+      table.traceId,
+      table.createdAt
+    ),
+    eventCreatedIndex: index("auth_session_diagnostics_event_created_idx").on(
+      table.event,
+      table.createdAt
+    )
+  })
+);
+
 export const blogGenerationRuns = pgTable(
   "blog_generation_runs",
   {

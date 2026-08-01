@@ -12,8 +12,11 @@ describe("public analytics route policy", () => {
     expect(isPublicAnalyticsPath("/bookstore")).toBe(true);
     expect(isPublicAnalyticsPath("/bookstore/reading-level-d")).toBe(true);
     expect(isPublicAnalyticsPath("/blog/how-to-start-homeschooling")).toBe(true);
+    expect(isPublicAnalyticsPath("/first-grade-curriculum")).toBe(true);
     expect(isPublicAnalyticsPath("/first-grade-homeschool-curriculum")).toBe(true);
     expect(isPublicAnalyticsPath("/offers/us/first-grade-japanese")).toBe(true);
+    expect(isPublicAnalyticsPath("/f/japanese-launch")).toBe(true);
+    expect(isPublicAnalyticsPath("/f/japanese-launch/upsell")).toBe(true);
   });
 
   test("blocks private, identifying, authentication, and admin pages", () => {

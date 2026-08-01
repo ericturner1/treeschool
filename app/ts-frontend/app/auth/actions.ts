@@ -77,17 +77,22 @@ async function finishPasswordlessSignIn(
     }));
   }
 
-  setSessionCookies(result.session);
+  const traceId = setSessionCookies(result.session);
   try {
     await setParentAsActiveAccount(result.session.access_token);
   } catch {
-    clearSessionCookies();
+    clearSessionCookies("account_bootstrap_failed");
     redirect(buildPath("/signin", {
       lang,
       next,
       account: "missing"
     }));
   }
+  console.info(JSON.stringify({
+    event: "auth_session_established",
+    traceId,
+    entryPoint: "passwordless_signin"
+  }));
   redirect(safeNext(next));
 }
 
@@ -173,8 +178,13 @@ export async function verifyEmailTokenHashAction(formData: FormData) {
     }));
   }
 
-  setSessionCookies(result.session);
+  const traceId = setSessionCookies(result.session);
   await setParentAsActiveAccount(result.session.access_token);
+  console.info(JSON.stringify({
+    event: "auth_session_established",
+    traceId,
+    entryPoint: "email_change_confirmation"
+  }));
   redirect(next);
 }
 

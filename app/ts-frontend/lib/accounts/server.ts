@@ -73,11 +73,14 @@ export type TeacherActivity = {
     gradesSaved: number;
     gradesRemoved: number;
     attendanceRecorded: number;
+    pointActions: number;
+    pointsAwarded: number;
+    pointsUsed: number;
     activeDays: number;
   };
   events: Array<{
     id: string;
-    eventType: "grade_saved" | "grade_removed" | "attendance_manual";
+    eventType: "grade_saved" | "grade_removed" | "attendance_manual" | "points_awarded" | "points_used";
     subjectLabel: string | null;
     score: number | null;
     studentName: string | null;
@@ -87,6 +90,10 @@ export type TeacherActivity = {
     activityType: string | null;
     attendanceDate: string | null;
     minutes: number | null;
+    pointsAmount: number | null;
+    pointsReason: string | null;
+    pointSingularName: string | null;
+    pointPluralName: string | null;
     occurredAt: string;
   }>;
 };

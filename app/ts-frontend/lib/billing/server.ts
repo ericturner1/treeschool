@@ -1,4 +1,5 @@
 import { backendFetch } from "../backend/server";
+import type { ManagedFunnelAttribution } from "../funnels/server";
 
 const DEFAULT_INTERNAL_BACKEND_URL = "http://ts-backend:3001";
 
@@ -103,6 +104,9 @@ export async function createParentBillingCheckout(input: {
   successUrl: string;
   cancelUrl: string;
   funnelKey?: string | null;
+  landingVariant?: "a" | "b" | null;
+  funnelVisitorId?: string | null;
+  funnelAttribution?: ManagedFunnelAttribution | null;
 }) {
   return postBillingJson<{ url: string | null }>(
     "/internal/billing/checkout",
@@ -117,6 +121,9 @@ export async function createPublicParentBillingCheckout(input: {
   successUrl: string;
   cancelUrl: string;
   funnelKey?: string | null;
+  landingVariant?: "a" | "b" | null;
+  funnelVisitorId?: string | null;
+  funnelAttribution?: ManagedFunnelAttribution | null;
 }) {
   return postBillingJson<{ url: string | null }>(
     "/internal/billing/public-checkout",

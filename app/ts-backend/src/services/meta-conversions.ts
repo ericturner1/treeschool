@@ -71,7 +71,7 @@ export function canSendMetaServerEvent(countryCode: string | null | undefined) {
 function checkoutSourceUrl(checkoutKind: string, funnelKey?: string | null) {
   const appUrl = (env.PUBLIC_APP_URL ?? "https://www.treehomeschool.com").replace(/\/$/, "");
   if (funnelKey === "first_grade_curriculum") {
-    return `${appUrl}/first-grade-homeschool-curriculum`;
+    return `${appUrl}/first-grade-curriculum`;
   }
   if (checkoutKind.includes("workbook")) return `${appUrl}/bookstore`;
   if (checkoutKind === "plan_pack") {
@@ -124,6 +124,7 @@ type MetaServerEvent = {
     content_name: string;
     content_category: string;
     content_type: "product";
+    landing_variant?: "a" | "b";
   };
 };
 
@@ -180,7 +181,10 @@ export function buildMetaCheckoutPurchaseEvent(
       content_ids: [content.contentId],
       content_name: content.contentName,
       content_category: content.contentCategory,
-      content_type: "product"
+      content_type: "product",
+      ...(metadata.landingVariant === "a" || metadata.landingVariant === "b"
+        ? { landing_variant: metadata.landingVariant }
+        : {})
     }
   };
 }
@@ -236,4 +240,3 @@ export async function reportMetaCheckoutPurchase(
   if (!event) return { sent: false as const };
   return sendMetaServerEvent(event);
 }
-

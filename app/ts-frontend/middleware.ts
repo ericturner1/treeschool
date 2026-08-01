@@ -7,10 +7,21 @@ import {
 import {
   AUTH_SESSION_ACTIVITY_COOKIE_NAME,
   AUTH_SESSION_COOKIE_MAX_AGE_SECONDS,
+  AUTH_SESSION_TRACE_COOKIE_NAME,
+  createAuthSessionTraceId,
   hasAuthSessionGoneIdle
 } from "./lib/auth/session-policy";
+import { recordAuthSessionDiagnostic } from "./lib/auth/session-diagnostics";
 import { refreshSupabaseSession } from "./lib/auth/refresh-session";
 import { authRenewalPathFor } from "./lib/auth/renewal-path";
+import {
+  FIRST_GRADE_CURRICULUM_EXPERIMENT_MAX_AGE_SECONDS,
+  FIRST_GRADE_CURRICULUM_VARIANT_COOKIE,
+  FIRST_GRADE_CURRICULUM_VISITOR_COOKIE,
+  normalizeFirstGradeCurriculumVariant,
+  normalizeFunnelVisitorId,
+  variantForVisitorId
+} from "./lib/first-grade-curriculum/experiment";
 
 const ACCESS_TOKEN_COOKIE_NAME = "treeschool_access_token";
 const REFRESH_TOKEN_COOKIE_NAME = "treeschool_refresh_token";
@@ -88,6 +99,31 @@ export async function middleware(request: NextRequest) {
   const cookieLocale = request.cookies.get(LOCALE_COOKIE_NAME)?.value;
   const locale = resolveLocale(queryLocale ?? cookieLocale ?? DEFAULT_LOCALE);
   const requestHeaders = new Headers(request.headers);
+  const isFirstGradeCurriculumExperiment =
+    request.nextUrl.pathname === "/first-grade-curriculum";
+  const isManagedFunnel =
+    request.nextUrl.pathname === "/f" ||
+    request.nextUrl.pathname.startsWith("/f/");
+  const funnelVisitorId = isFirstGradeCurriculumExperiment || isManagedFunnel
+    ? normalizeFunnelVisitorId(
+        request.cookies.get(FIRST_GRADE_CURRICULUM_VISITOR_COOKIE)?.value
+      ) ?? crypto.randomUUID()
+    : null;
+  const firstGradeCurriculumVariant =
+    isFirstGradeCurriculumExperiment && funnelVisitorId
+      ? normalizeFirstGradeCurriculumVariant(
+          request.cookies.get(FIRST_GRADE_CURRICULUM_VARIANT_COOKIE)?.value
+        ) ?? variantForVisitorId(funnelVisitorId)
+      : null;
+  if (funnelVisitorId) {
+    requestHeaders.set("x-treeschool-funnel-visitor-id", funnelVisitorId);
+    if (firstGradeCurriculumVariant) {
+      requestHeaders.set(
+        "x-treeschool-first-grade-curriculum-variant",
+        firstGradeCurriculumVariant
+      );
+    }
+  }
   const countryCode =
     request.headers.get("x-vercel-ip-country") ??
     request.headers.get("cf-ipcountry") ??
@@ -99,7 +135,16 @@ export async function middleware(request: NextRequest) {
   const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)?.value;
   const refreshToken = request.cookies.get(REFRESH_TOKEN_COOKIE_NAME)?.value;
   const lastActivitySeconds = request.cookies.get(AUTH_SESSION_ACTIVITY_COOKIE_NAME)?.value;
+  const existingTraceId = request.cookies.get(AUTH_SESSION_TRACE_COOKIE_NAME)?.value;
+  const traceId =
+    existingTraceId ??
+    (accessToken || refreshToken ? createAuthSessionTraceId() : undefined);
   const nowSeconds = Math.floor(Date.now() / 1000);
+  const parsedLastActivity = Number(lastActivitySeconds);
+  const activityAgeSeconds =
+    Number.isFinite(parsedLastActivity) && parsedLastActivity > 0
+      ? Math.max(0, nowSeconds - parsedLastActivity)
+      : null;
   const sessionWentIdle = Boolean(
     (accessToken || refreshToken) &&
     hasAuthSessionGoneIdle(lastActivitySeconds, nowSeconds)
@@ -117,8 +162,77 @@ export async function middleware(request: NextRequest) {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const usesLocalDevSession = effectiveAccessToken?.startsWith(LOCAL_DEV_TOKEN_PREFIX) === true ||
     effectiveRefreshToken?.startsWith("local-dev-refresh:") === true;
+  const isProtectedPath =
+    request.nextUrl.pathname === "/p" ||
+    request.nextUrl.pathname.startsWith("/p/") ||
+    request.nextUrl.pathname.startsWith("/admin/");
+  if (sessionWentIdle) {
+    console.info(JSON.stringify({
+      event: "auth_session_idle_expired",
+      traceId: traceId ?? null,
+      path: request.nextUrl.pathname,
+      activityAgeSeconds
+    }));
+    await recordAuthSessionDiagnostic({
+      traceId: traceId ?? null,
+      event: "idle_expired",
+      reason: "idle_timeout",
+      path: request.nextUrl.pathname,
+      metadata: { activityAgeSeconds }
+    });
+  }
   if (
-    request.nextUrl.pathname.startsWith("/p/") &&
+    isProtectedPath &&
+    traceId &&
+    !sessionWentIdle &&
+    !effectiveAccessToken &&
+    !effectiveRefreshToken
+  ) {
+    console.warn(JSON.stringify({
+      event: "auth_session_credentials_missing",
+      traceId,
+      path: request.nextUrl.pathname,
+      hasActivityCookie: Boolean(lastActivitySeconds),
+      activityAgeSeconds
+    }));
+    await recordAuthSessionDiagnostic({
+      traceId,
+      event: "credentials_missing",
+      reason: "access_and_refresh_cookies_missing",
+      path: request.nextUrl.pathname,
+      metadata: {
+        hasActivityCookie: Boolean(lastActivitySeconds),
+        activityAgeSeconds
+      }
+    });
+  }
+  if (
+    isProtectedPath &&
+    traceId &&
+    effectiveAccessToken &&
+    tokenExpiresSoon(effectiveAccessToken) &&
+    !effectiveRefreshToken
+  ) {
+    console.warn(JSON.stringify({
+      event: "auth_session_refresh_cookie_missing",
+      traceId,
+      path: request.nextUrl.pathname,
+      hasActivityCookie: Boolean(lastActivitySeconds),
+      activityAgeSeconds
+    }));
+    await recordAuthSessionDiagnostic({
+      traceId,
+      event: "refresh_cookie_missing",
+      reason: "expired_access_without_refresh_cookie",
+      path: request.nextUrl.pathname,
+      metadata: {
+        hasActivityCookie: Boolean(lastActivitySeconds),
+        activityAgeSeconds
+      }
+    });
+  }
+  if (
+    isProtectedPath &&
     lastActivitySeconds &&
     !sessionWentIdle &&
     !effectiveAccessToken &&
@@ -126,6 +240,8 @@ export async function middleware(request: NextRequest) {
   ) {
     console.warn(JSON.stringify({
       event: "auth_session_cookies_missing",
+      traceId: traceId ?? null,
+      path: request.nextUrl.pathname,
       hasActivityCookie: true
     }));
   }
@@ -136,9 +252,21 @@ export async function middleware(request: NextRequest) {
   ) {
     console.error(JSON.stringify({
       event: "auth_session_refresh_unavailable",
+      traceId: traceId ?? null,
+      path: request.nextUrl.pathname,
       missingSupabaseUrl: !supabaseUrl,
       missingAnonKey: !anonKey
     }));
+    await recordAuthSessionDiagnostic({
+      traceId: traceId ?? null,
+      event: "refresh_unavailable",
+      reason: "missing_supabase_config",
+      path: request.nextUrl.pathname,
+      metadata: {
+        missingSupabaseUrl: !supabaseUrl,
+        missingAnonKey: !anonKey
+      }
+    });
   }
   const shouldRefreshSession = Boolean(
     !usesLocalDevSession &&
@@ -147,6 +275,7 @@ export async function middleware(request: NextRequest) {
     supabaseUrl &&
     anonKey
   );
+  const isAuthPath = request.nextUrl.pathname.startsWith("/auth/");
   const isSafeRequest =
     request.method === "GET" || request.method === "HEAD";
   const isSpeculativeRequest =
@@ -157,7 +286,7 @@ export async function middleware(request: NextRequest) {
     shouldRefreshSession &&
     isSafeRequest &&
     !isSpeculativeRequest &&
-    !request.nextUrl.pathname.startsWith("/auth/")
+    !isAuthPath
   );
 
   // Rotate Supabase credentials in a normal Route Handler response. Vercel
@@ -169,7 +298,25 @@ export async function middleware(request: NextRequest) {
     const parsedRenewalPath = new URL(renewalPath, request.nextUrl);
     renewalUrl.pathname = parsedRenewalPath.pathname;
     renewalUrl.search = parsedRenewalPath.search;
-    return NextResponse.redirect(renewalUrl, 307);
+    const response = NextResponse.redirect(renewalUrl, 307);
+    if (traceId) {
+      response.cookies.set(AUTH_SESSION_TRACE_COOKIE_NAME, traceId, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: request.nextUrl.protocol === "https:",
+        path: "/",
+        maxAge: AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
+      });
+    }
+    console.info(JSON.stringify({
+      event: "auth_session_renewal_requested",
+      traceId: traceId ?? null,
+      path: request.nextUrl.pathname,
+      hasAccessCookie: Boolean(effectiveAccessToken),
+      hasRefreshCookie: Boolean(effectiveRefreshToken),
+      activityAgeSeconds
+    }));
+    return response;
   }
 
   let refreshedSession: {
@@ -178,7 +325,16 @@ export async function middleware(request: NextRequest) {
     expires_in?: number;
   } | null = null;
 
-  if (shouldRefreshSession && effectiveRefreshToken && supabaseUrl && anonKey) {
+  // Auth route handlers own their credential lifecycle. In particular,
+  // /auth/renew must rotate the refresh token exactly once; refreshing it in
+  // middleware first would produce two competing rotated cookies.
+  if (
+    shouldRefreshSession &&
+    !isAuthPath &&
+    effectiveRefreshToken &&
+    supabaseUrl &&
+    anonKey
+  ) {
     const refreshResult = await refreshSupabaseSession({
       supabaseUrl,
       anonKey,
@@ -193,6 +349,7 @@ export async function middleware(request: NextRequest) {
       requestHeaders.set("cookie", cookieHeader);
       console.info(JSON.stringify({
         event: "auth_session_refreshed_inline",
+        traceId: traceId ?? null,
         method: request.method,
         path: request.nextUrl.pathname,
         expiresIn: refreshedSession.expires_in ?? null
@@ -200,11 +357,23 @@ export async function middleware(request: NextRequest) {
     } else {
       console.warn(JSON.stringify({
         event: "auth_session_refresh_failed",
+        traceId: traceId ?? null,
         method: request.method,
         path: request.nextUrl.pathname,
         status: refreshResult.status,
         errorCode: refreshResult.errorCode
       }));
+      await recordAuthSessionDiagnostic({
+        traceId: traceId ?? null,
+        event: "renewal_failed",
+        reason: refreshResult.errorCode,
+        path: request.nextUrl.pathname,
+        statusCode: refreshResult.status,
+        metadata: {
+          method: request.method,
+          mode: "inline"
+        }
+      });
     }
     // A failed refresh deliberately leaves the HttpOnly refresh cookie alone.
     // Concurrent requests can race during token rotation; a stale request must
@@ -247,6 +416,28 @@ export async function middleware(request: NextRequest) {
     });
   }
 
+  if (funnelVisitorId) {
+    const experimentCookieOptions = {
+      httpOnly: true,
+      sameSite: "lax" as const,
+      secure: request.nextUrl.protocol === "https:",
+      path: "/",
+      maxAge: FIRST_GRADE_CURRICULUM_EXPERIMENT_MAX_AGE_SECONDS
+    };
+    if (firstGradeCurriculumVariant) {
+      response.cookies.set(
+        FIRST_GRADE_CURRICULUM_VARIANT_COOKIE,
+        firstGradeCurriculumVariant,
+        experimentCookieOptions
+      );
+    }
+    response.cookies.set(
+      FIRST_GRADE_CURRICULUM_VISITOR_COOKIE,
+      funnelVisitorId,
+      experimentCookieOptions
+    );
+  }
+
   const hasHealthySession = Boolean(
     !sessionWentIdle &&
     (
@@ -265,6 +456,15 @@ export async function middleware(request: NextRequest) {
       path: "/",
       maxAge: AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
     });
+    if (traceId) {
+      response.cookies.set(AUTH_SESSION_TRACE_COOKIE_NAME, traceId, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: request.nextUrl.protocol === "https:",
+        path: "/",
+        maxAge: AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
+      });
+    }
   }
 
   return response;

@@ -24,21 +24,42 @@ export const FUNNELS: Funnel[] = [
     status: "Primary launch funnel",
     audience: "Parents looking for a complete, printable first-grade curriculum.",
     objective: "Sell the core curriculum once or convert the parent to a Treeschool membership.",
-    landingHref: "/first-grade-homeschool-curriculum",
-    landingLabel: "First-grade curriculum landing page",
+    landingHref: "/first-grade-curriculum",
+    landingLabel: "A/B-tested first-grade curriculum landing page",
     steps: [
       {
-        name: "Landing page",
-        description: "Introduces the complete first-grade curriculum, standards coverage, included workbooks, and both buying paths.",
+        name: "Live A/B landing page",
+        description: "Assigns each new visitor persistently to one of two sales-page variants and carries that assignment through checkout.",
+        href: "/first-grade-curriculum",
+        linkLabel: "Open live experiment",
+        kind: "landing"
+      },
+      {
+        name: "Variant A · concise visual page",
+        description: "The shorter, highly visual control page leads with the complete offer, actual workbooks, subject coverage, and fast answers.",
+        href: "/first-grade-curriculum?preview_variant=a",
+        linkLabel: "Preview Variant A",
+        kind: "landing"
+      },
+      {
+        name: "Variant B · direct-response page",
+        description: "The longer challenger page develops the parent’s planning and screen-time problems before presenting the same curriculum and checkout.",
+        href: "/first-grade-curriculum?preview_variant=b",
+        linkLabel: "Preview Variant B",
+        kind: "landing"
+      },
+      {
+        name: "Detailed curriculum page",
+        description: "Gives parents who want more detail the complete workbook list, curriculum coverage, and a fuller product comparison.",
         href: "/first-grade-homeschool-curriculum",
-        linkLabel: "Open landing page",
+        linkLabel: "Open detailed page",
         kind: "landing"
       },
       {
         name: "Purchase choice",
         description: "An order-bump dialog asks whether the parent wants the curriculum alone or the curriculum with Treeschool planning and records.",
-        href: "/first-grade-homeschool-curriculum#choose-your-path",
-        linkLabel: "Open buying section",
+        href: "/first-grade-curriculum",
+        linkLabel: "Open offer page",
         kind: "checkout"
       },
       {

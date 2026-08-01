@@ -8,7 +8,9 @@ import {
 } from "../../lib/accounts/server";
 import { getCurrentUser } from "../../lib/auth/server";
 import { getRequestDictionary } from "../../lib/i18n/server";
+import { getStudentPoints, type StudentPointsPayload } from "../../lib/points/server";
 import { returnToParentAction } from "./actions";
+import { QuickAddPoints } from "./quick-add-points";
 import { ParentShell } from "../p/parent-shell";
 
 type DashboardPageProps = {
@@ -29,6 +31,18 @@ function ageFromBirthDate(value: string | null) {
     || (today.getUTCMonth() + 1 === month && today.getUTCDate() >= day);
   if (!birthdayHasPassed) age -= 1;
   return age >= 0 ? age : null;
+}
+
+function frequentAwardReasons(points: StudentPointsPayload) {
+  const counts = new Map<string, number>();
+  for (const transaction of points.transactions) {
+    if (transaction.kind !== "award" || transaction.reversed || transaction.amount <= 0) continue;
+    counts.set(transaction.reason, (counts.get(transaction.reason) ?? 0) + 1);
+  }
+  return Array.from(counts)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 5)
+    .map(([reason]) => reason);
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
@@ -55,13 +69,20 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const householdProfiles = await listHouseholdProfiles(userId);
   const parentProfile = householdProfiles.find((profile) => profile.role === "PARENT");
   const studentProfiles = householdProfiles.filter((profile) => profile.role === "STUDENT");
-  const streaks = new Map(
+  const studentStatus = new Map(
     await Promise.all(studentProfiles.map(async (profile) => {
-      const streak = await getStudentStreakSettings({
-        parentUserId: userId,
-        profileId: profile.id
-      });
-      return [profile.id, streak] as const;
+      const [streak, points] = await Promise.all([
+        getStudentStreakSettings({
+          parentUserId: userId,
+          profileId: profile.id
+        }),
+        getStudentPoints({
+          parentUserId: userId,
+          profileId: profile.id,
+          historyLimit: 100
+        }).catch(() => null)
+      ]);
+      return [profile.id, { streak, points }] as const;
     }))
   );
   const activeProfileCookie = getActiveProfileCookie();
@@ -102,7 +123,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                             ? `${dashboard.profileManagement.columns.grade} K`
                             : `${dashboard.profileManagement.columns.grade} ${profile.gradeLevel}`
                           : dashboard.profileManagement.noGrade;
-                        const streakCount = streaks.get(profile.id)?.currentCount ?? 0;
+                        const status = studentStatus.get(profile.id);
+                        const streakCount = status?.streak.currentCount ?? 0;
+                        const points = status?.points ?? null;
 
                         return (
                           <article key={profile.id} className="rounded-[20px] border border-[#dcc8aa] bg-white p-4">
@@ -126,6 +149,23 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                                 </p>
                               </div>
                             </div>
+                            {isParentView && points?.canTransact ? (
+                              <div className="mt-4 border-t border-[#eadfcd] pt-4">
+                                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-ink/52">
+                                  Points
+                                </p>
+                                <QuickAddPoints
+                                  profileId={profile.id}
+                                  studentName={profile.firstName}
+                                  initialBalance={points.summary.balance}
+                                  singularName={points.settings.singularName}
+                                  pluralName={points.settings.pluralName}
+                                  iconKey={points.settings.iconKey}
+                                  customIconUrl={points.settings.customIconUrl}
+                                  frequentReasons={frequentAwardReasons(points)}
+                                />
+                              </div>
+                            ) : null}
                             <Link
                               href={`/p/student/${profile.slug ?? profile.id}`}
                               className="cta-button cta-button--outline cta-button--small mt-4 w-full"
@@ -138,66 +178,90 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     </div>
 
                     <div className="hidden max-w-full overflow-x-auto rounded-[24px] border border-[#dcc8aa] bg-[#fffaf2] md:block">
-                      <div className="grid min-w-[760px] grid-cols-[minmax(160px,1.6fr)_80px_120px_110px_180px] gap-4 border-b border-[#e4d5bd] bg-[#f6ecdc] px-5 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-ink/62">
+                      <div className="grid min-w-[940px] grid-cols-[minmax(160px,1.5fr)_70px_110px_105px_170px_180px] gap-4 border-b border-[#e4d5bd] bg-[#f6ecdc] px-5 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-ink/62">
                         <span>{dashboard.profileManagement.columns.name}</span>
                         <span>{dashboard.profileManagement.columns.age}</span>
                         <span>{dashboard.profileManagement.columns.grade}</span>
                         <span>Streak</span>
+                        <span>Points</span>
                         <span className="text-right">{dashboard.profileManagement.columns.actions}</span>
                       </div>
 
-                      {studentProfiles.map((profile, index) => (
-                        <div
-                          key={profile.id}
-                          className={`grid min-w-[760px] grid-cols-[minmax(160px,1.6fr)_80px_120px_110px_180px] gap-4 px-5 py-4 ${
-                            index === studentProfiles.length - 1 ? "" : "border-b border-[#eadfcd]"
-                          }`}
-                        >
-                          <div className="flex min-w-0 items-center gap-3">
-                            <div
-                              role="img"
-                              aria-label={profile.avatarUrl ? `${profile.firstName}'s private profile photo` : `${profile.firstName}'s profile photo placeholder`}
-                              className="flex h-12 w-12 flex-none items-center justify-center overflow-hidden rounded-full border-2 border-[#c9d9b7] bg-[#e7efdc] bg-cover bg-center text-lg font-semibold text-[#4f703c]"
-                              style={profile.avatarUrl ? { backgroundImage: `url(${JSON.stringify(profile.avatarUrl)})` } : undefined}
-                            >
-                              {!profile.avatarUrl ? profile.firstName.trim().slice(0, 1).toUpperCase() : null}
+                      {studentProfiles.map((profile, index) => {
+                        const status = studentStatus.get(profile.id);
+                        const streakCount = status?.streak.currentCount ?? 0;
+                        const points = status?.points ?? null;
+
+                        return (
+                          <div
+                            key={profile.id}
+                            className={`grid min-w-[940px] grid-cols-[minmax(160px,1.5fr)_70px_110px_105px_170px_180px] gap-4 px-5 py-4 ${
+                              index === studentProfiles.length - 1 ? "" : "border-b border-[#eadfcd]"
+                            }`}
+                          >
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div
+                                role="img"
+                                aria-label={profile.avatarUrl ? `${profile.firstName}'s private profile photo` : `${profile.firstName}'s profile photo placeholder`}
+                                className="flex h-12 w-12 flex-none items-center justify-center overflow-hidden rounded-full border-2 border-[#c9d9b7] bg-[#e7efdc] bg-cover bg-center text-lg font-semibold text-[#4f703c]"
+                                style={profile.avatarUrl ? { backgroundImage: `url(${JSON.stringify(profile.avatarUrl)})` } : undefined}
+                              >
+                                {!profile.avatarUrl ? profile.firstName.trim().slice(0, 1).toUpperCase() : null}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate text-lg font-semibold tracking-[-0.04em] text-ink">
+                                  {profile.firstName}
+                                </p>
+                                <p className="mt-1 text-sm text-ink/62">{dashboard.studentRole}</p>
+                              </div>
                             </div>
-                            <div className="min-w-0">
-                              <p className="truncate text-lg font-semibold tracking-[-0.04em] text-ink">
-                                {profile.firstName}
-                              </p>
-                              <p className="mt-1 text-sm text-ink/62">{dashboard.studentRole}</p>
+
+                            <div className="flex items-center text-sm font-semibold text-ink/78">
+                              {ageFromBirthDate(profile.birthDate) ?? "—"}
+                            </div>
+
+                            <div className="flex items-center text-sm font-semibold text-ink/78">
+                              {profile.gradeLevel != null
+                                ? profile.gradeLevel === 0
+                                  ? `${dashboard.profileManagement.columns.grade} K`
+                                  : `${dashboard.profileManagement.columns.grade} ${profile.gradeLevel}`
+                                : dashboard.profileManagement.noGrade}
+                            </div>
+
+                            <div className="flex items-center">
+                              <span className="rounded-full bg-[#e7efdc] px-3 py-1.5 text-sm font-semibold text-[#4f703c]">
+                                {streakCount} {streakCount === 1 ? "day" : "days"}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center">
+                              {isParentView && points?.canTransact ? (
+                                <QuickAddPoints
+                                  profileId={profile.id}
+                                  studentName={profile.firstName}
+                                  initialBalance={points.summary.balance}
+                                  singularName={points.settings.singularName}
+                                  pluralName={points.settings.pluralName}
+                                  iconKey={points.settings.iconKey}
+                                  customIconUrl={points.settings.customIconUrl}
+                                  frequentReasons={frequentAwardReasons(points)}
+                                />
+                              ) : (
+                                <span className="text-sm text-ink/42">—</span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-end">
+                              <Link
+                                href={`/p/student/${profile.slug ?? profile.id}`}
+                                className="cta-button cta-button--outline cta-button--small"
+                              >
+                                {`${dashboard.profileManagement.manageLabel} ${profile.firstName}`}
+                              </Link>
                             </div>
                           </div>
-
-                          <div className="flex items-center text-sm font-semibold text-ink/78">
-                            {ageFromBirthDate(profile.birthDate) ?? "—"}
-                          </div>
-
-                          <div className="flex items-center text-sm font-semibold text-ink/78">
-                            {profile.gradeLevel != null
-                              ? profile.gradeLevel === 0
-                                ? `${dashboard.profileManagement.columns.grade} K`
-                                : `${dashboard.profileManagement.columns.grade} ${profile.gradeLevel}`
-                              : dashboard.profileManagement.noGrade}
-                          </div>
-
-                          <div className="flex items-center">
-                            <span className="rounded-full bg-[#e7efdc] px-3 py-1.5 text-sm font-semibold text-[#4f703c]">
-                              {streaks.get(profile.id)?.currentCount ?? 0} {(streaks.get(profile.id)?.currentCount ?? 0) === 1 ? "day" : "days"}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-end">
-                            <Link
-                              href={`/p/student/${profile.slug ?? profile.id}`}
-                              className="cta-button cta-button--outline cta-button--small"
-                            >
-                              {`${dashboard.profileManagement.manageLabel} ${profile.firstName}`}
-                            </Link>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </>
                 )}

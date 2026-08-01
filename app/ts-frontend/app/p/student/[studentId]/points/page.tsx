@@ -14,6 +14,7 @@ import {
   redeemStudentPointsAction,
   updateStudentPointSettingsAction
 } from "./actions";
+import { PointAwardSuccessSound } from "./point-award-success-sound";
 import { PointsSubmitButton } from "./points-submit-button";
 
 type Props = {
@@ -76,17 +77,9 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
         activeNav="points"
       >
         <div className="space-y-6">
-          {searchParams?.message ? (
-            <div className="rounded-[20px] border border-[#b8cf9f] bg-[#eef5e4] px-5 py-4 text-sm font-semibold text-[#4d6a39]">
-              {searchParams.message}
-            </div>
-          ) : null}
-          {searchParams?.error ? (
-            <div role="alert" className="rounded-[20px] border border-[#d9afa2] bg-[#fff1ec] px-5 py-4 text-sm font-semibold text-[#8b3e2f]">
-              {searchParams.error}
-            </div>
-          ) : null}
-
+          <PointAwardSuccessSound
+            playKey={searchParams?.resetForm === "award" ? searchParams.resetToken ?? null : null}
+          />
           <section className="overflow-hidden rounded-[30px] border border-[#b7ce9f] bg-[#eef5e4] shadow-[0_8px_0_#cadbb9]">
             <div className="grid gap-6 px-6 py-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
               <div>
@@ -118,7 +111,7 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
             </div>
           </section>
 
-          {points.canManage ? (
+          {points.canTransact ? (
             <section className="grid gap-5 lg:grid-cols-2">
               <form
                 key={`award-${searchParams?.resetForm === "award" ? searchParams.resetToken : "initial"}`}
@@ -149,7 +142,11 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
                   </label>
                 </div>
                 <div className="mt-5">
-                  <PointsSubmitButton idleLabel={`Award ${pluralName}`} pendingLabel="Awarding…" />
+                  <PointsSubmitButton
+                    idleLabel={`Award ${pluralName}`}
+                    pendingLabel="Awarding…"
+                    prepareAwardSound
+                  />
                 </div>
               </form>
 
@@ -192,11 +189,7 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
                 </div>
               </form>
             </section>
-          ) : (
-            <div className="rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] px-5 py-4 text-sm leading-6 text-ink/65">
-              Account owners and admins can award or use {pluralName}. Teachers can view the balance and history.
-            </div>
-          )}
+          ) : null}
 
           <section className="site-panel rounded-[28px] px-6 py-7">
             <div className="flex flex-wrap items-end justify-between gap-3">

@@ -2,6 +2,7 @@ const PUBLIC_ANALYTICS_EXACT_PATHS = new Set([
   "/",
   "/faq",
   "/first-grade-homeschool",
+  "/first-grade-curriculum",
   "/first-grade-homeschool-curriculum",
   "/homeschool-without-a-subscription",
   "/pricing",
@@ -15,6 +16,7 @@ const PUBLIC_ANALYTICS_EXACT_PATHS = new Set([
 const PUBLIC_ANALYTICS_PATH_PREFIXES = [
   "/blog/",
   "/bookstore/",
+  "/f/",
   "/homeschool-lesson-plan-generator/",
   "/offers/ds/",
   "/offers/us/"

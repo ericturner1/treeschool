@@ -12,6 +12,10 @@ type Props = {
   userEmail: string | null;
   triggerLabel: string;
   triggerStyle?: "green" | "dark";
+  returnPath?: string;
+  landingVariant?: "a" | "b" | null;
+  funnelVisitorId?: string | null;
+  previewMode?: boolean;
 };
 
 export function CurriculumCheckoutChoice({
@@ -21,7 +25,11 @@ export function CurriculumCheckoutChoice({
   currencyCode,
   userEmail,
   triggerLabel,
-  triggerStyle = "dark"
+  triggerStyle = "dark",
+  returnPath = "/first-grade-homeschool-curriculum",
+  landingVariant = null,
+  funnelVisitorId = null,
+  previewMode = false
 }: Props) {
   const [open, setOpen] = useState(false);
   const titleId = useId();
@@ -47,6 +55,7 @@ export function CurriculumCheckoutChoice({
         className={`cta-button w-full justify-center ${
           triggerStyle === "green" ? "cta-button--light" : "cta-button--dark"
         }`}
+        data-funnel-cta="open-checkout-choice"
         onClick={() => setOpen(true)}
       >
         {triggerLabel}
@@ -108,6 +117,7 @@ export function CurriculumCheckoutChoice({
                 <form
                   action={startPricingSubscriptionCheckoutAction}
                   className="mt-5"
+                  data-funnel-cta="start-membership-checkout"
                   data-revenue-path="first-grade-curriculum-membership-bump"
                   data-analytics-item-id="treeschool-single-membership"
                   data-analytics-item-name="Treeschool Single membership"
@@ -117,8 +127,17 @@ export function CurriculumCheckoutChoice({
                 >
                   <input type="hidden" name="interval" value="monthly" />
                   <input type="hidden" name="planTier" value="single" />
-                  <input type="hidden" name="returnPath" value="/first-grade-homeschool-curriculum" />
+                  <input type="hidden" name="returnPath" value={returnPath} />
                   <input type="hidden" name="funnelKey" value="first_grade_curriculum" />
+                  {landingVariant ? (
+                    <input type="hidden" name="landingVariant" value={landingVariant} />
+                  ) : null}
+                  {funnelVisitorId ? (
+                    <input type="hidden" name="funnelVisitorId" value={funnelVisitorId} />
+                  ) : null}
+                  {previewMode ? (
+                    <input type="hidden" name="experimentPreview" value="true" />
+                  ) : null}
                   <button type="submit" className="cta-button cta-button--light w-full justify-center">
                     Start Treeschool for $6
                   </button>
@@ -142,6 +161,7 @@ export function CurriculumCheckoutChoice({
                 <form
                   action={startWorkbookCheckoutAction}
                   className="mt-5 grid gap-3"
+                  data-funnel-cta="start-bundle-checkout"
                   data-revenue-path="first-grade-curriculum-bundle-after-bump"
                   data-analytics-item-id={bundleSlug}
                   data-analytics-item-name="First-grade curriculum bundle"
@@ -151,6 +171,16 @@ export function CurriculumCheckoutChoice({
                 >
                   <input type="hidden" name="slug" value={bundleSlug} />
                   <input type="hidden" name="funnelKey" value="first_grade_curriculum" />
+                  <input type="hidden" name="returnPath" value={returnPath} />
+                  {landingVariant ? (
+                    <input type="hidden" name="landingVariant" value={landingVariant} />
+                  ) : null}
+                  {funnelVisitorId ? (
+                    <input type="hidden" name="funnelVisitorId" value={funnelVisitorId} />
+                  ) : null}
+                  {previewMode ? (
+                    <input type="hidden" name="experimentPreview" value="true" />
+                  ) : null}
                   {userEmail ? (
                     <input type="hidden" name="email" value={userEmail} />
                   ) : (

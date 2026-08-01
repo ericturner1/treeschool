@@ -74,11 +74,17 @@ test.describe("production purchase paths", () => {
     }
   });
 
-  test("the first-grade curriculum landing page opens both checkout paths", async ({ page }) => {
+  test("the cold first-grade curriculum landing page opens the one-time checkout", async ({ page }) => {
     await page.context().clearCookies();
-    await page.goto("/first-grade-homeschool-curriculum", { waitUntil: "networkidle" });
+    await page.goto("/first-grade-curriculum", { waitUntil: "networkidle" });
 
-    await page.getByRole("button", { name: /Buy the curriculum/ }).click();
+    await page
+      .getByRole("button", { name: /Get the complete curriculum/ })
+      .first()
+      .click();
+    const funnelVisitorId = (await page.context().cookies()).find(
+      (cookie) => cookie.name === "treeschool_funnel_visitor_id"
+    )?.value;
     const bundlePath = page.locator(
       '[data-revenue-path="first-grade-curriculum-bundle-after-bump"]'
     );
@@ -86,16 +92,33 @@ test.describe("production purchase paths", () => {
     await expect(bundlePath.locator('input[name="funnelKey"]')).toHaveValue(
       "first_grade_curriculum"
     );
+    await expect(bundlePath.locator('input[name="returnPath"]')).toHaveValue(
+      "/first-grade-curriculum"
+    );
+    // The managed experiment is authoritative. Its variant can intentionally
+    // differ from the legacy middleware fallback cookie while an experiment is
+    // running, so verify the variant actually submitted to checkout instead.
+    await expect(bundlePath.locator('input[name="landingVariant"]')).toHaveValue(
+      /^[ab]$/
+    );
+    await expect(bundlePath.locator('input[name="funnelVisitorId"]')).toHaveValue(
+      funnelVisitorId ?? ""
+    );
     await bundlePath
       .getByLabel("Delivery email")
       .fill(`revenue-smoke+curriculum-${Date.now()}@treehomeschool.com`);
     await expectStripeCheckout(page, () =>
       bundlePath.locator('button[type="submit"]').click()
     );
+  });
 
+  test("the cold first-grade curriculum landing page opens the membership checkout", async ({ page }) => {
     await page.context().clearCookies();
-    await page.goto("/first-grade-homeschool-curriculum", { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "Try Treeschool for $6" }).click();
+    await page.goto("/first-grade-curriculum", { waitUntil: "networkidle" });
+    await page
+      .getByRole("button", { name: /Get the complete curriculum/ })
+      .first()
+      .click();
     const membershipPath = page.locator(
       '[data-revenue-path="first-grade-curriculum-membership-bump"]'
     );
@@ -104,6 +127,17 @@ test.describe("production purchase paths", () => {
     await expect(membershipPath.locator('input[name="interval"]')).toHaveValue("monthly");
     await expect(membershipPath.locator('input[name="funnelKey"]')).toHaveValue(
       "first_grade_curriculum"
+    );
+    await expect(membershipPath.locator('input[name="returnPath"]')).toHaveValue(
+      "/first-grade-curriculum"
+    );
+    await expect(
+      membershipPath.locator('input[name="landingVariant"]')
+    ).toHaveValue(/^[ab]$/);
+    await expect(
+      membershipPath.locator('input[name="funnelVisitorId"]')
+    ).toHaveValue(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
     );
     await expectStripeCheckout(page, () =>
       membershipPath.locator('button[type="submit"]').click()

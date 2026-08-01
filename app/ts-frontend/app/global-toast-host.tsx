@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import {
+  GLOBAL_TOAST_EVENT,
+  type GlobalToastDetail
+} from "../lib/toast";
 
 type ToastKind = "success" | "error";
 
@@ -34,6 +38,25 @@ export function GlobalToastHost() {
 
     return next;
   }, [searchParams]);
+
+  useEffect(() => {
+    function onToast(event: Event) {
+      const detail = (event as CustomEvent<GlobalToastDetail>).detail;
+      const text = detail?.text?.trim();
+      if (!text) return;
+      setToasts((current) => [
+        ...current,
+        {
+          id: Date.now(),
+          kind: detail.kind === "error" ? "error" : "success",
+          text
+        }
+      ]);
+    }
+
+    window.addEventListener(GLOBAL_TOAST_EVENT, onToast);
+    return () => window.removeEventListener(GLOBAL_TOAST_EVENT, onToast);
+  }, []);
 
   useEffect(() => {
     if (incomingToasts.length === 0) {
@@ -82,7 +105,7 @@ export function GlobalToastHost() {
   }, [toasts]);
 
   return (
-    <div className="pointer-events-none fixed right-4 top-4 z-[120] flex w-[min(92vw,420px)] flex-col gap-3">
+    <div className="pointer-events-none fixed right-4 top-4 z-[300] flex w-[min(92vw,420px)] flex-col gap-3">
       {toasts.map((toast) => (
         <div
           key={toast.id}

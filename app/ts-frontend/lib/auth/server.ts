@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 import {
   AUTH_SESSION_ACTIVITY_COOKIE_NAME,
-  AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
+  AUTH_SESSION_COOKIE_MAX_AGE_SECONDS,
+  AUTH_SESSION_TRACE_COOKIE_NAME,
+  createAuthSessionTraceId
 } from "./session-policy";
 import { backendFetch } from "../backend/server";
 
@@ -390,6 +392,7 @@ export async function verifyPassword(email: string, password: string) {
 
 export function setSessionCookies(session: SupabaseSession) {
   const cookieStore = cookies();
+  const traceId = createAuthSessionTraceId();
 
   cookieStore.set(ACCESS_TOKEN_COOKIE_NAME, session.access_token, {
     httpOnly: true,
@@ -420,14 +423,37 @@ export function setSessionCookies(session: SupabaseSession) {
       maxAge: AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
     }
   );
+  cookieStore.set(AUTH_SESSION_TRACE_COOKIE_NAME, traceId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
+  });
+
+  console.info(JSON.stringify({
+    event: "auth_session_cookies_staged",
+    traceId,
+    cookieMaxAgeSeconds: AUTH_SESSION_COOKIE_MAX_AGE_SECONDS
+  }));
+
+  return traceId;
 }
 
-export function clearSessionCookies() {
+export function clearSessionCookies(reason = "explicit_signout") {
   const cookieStore = cookies();
+  const traceId = cookieStore.get(AUTH_SESSION_TRACE_COOKIE_NAME)?.value;
 
   cookieStore.delete(ACCESS_TOKEN_COOKIE_NAME);
   cookieStore.delete(REFRESH_TOKEN_COOKIE_NAME);
   cookieStore.delete(AUTH_SESSION_ACTIVITY_COOKIE_NAME);
+  cookieStore.delete(AUTH_SESSION_TRACE_COOKIE_NAME);
+
+  console.info(JSON.stringify({
+    event: "auth_session_cleared",
+    traceId: traceId ?? null,
+    reason
+  }));
 }
 
 export type AuthUser = {

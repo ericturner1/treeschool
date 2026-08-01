@@ -69,6 +69,10 @@ import {
   scoreCompetencyCoverage
 } from "./curriculum-coverage";
 import { checkWorkbookReplacementCompatibility } from "./native-workbook-replacement";
+import {
+  funnelCheckoutMetadata,
+  type FunnelCheckoutAttribution
+} from "./funnels";
 
 const MAX_NATIVE_WORKBOOK_PAGES = 2_000;
 const MAX_NATIVE_WORKBOOK_JOB_ATTEMPTS = 3;
@@ -4177,6 +4181,9 @@ export async function createNativeWorkbookCheckout(input: {
   cancelUrl: string;
   addToLearningYearId?: string | null;
   funnelKey?: string | null;
+  landingVariant?: string | null;
+  funnelVisitorId?: string | null;
+  funnelAttribution?: FunnelCheckoutAttribution | null;
 }) {
   const parent = await getOptionalParentContext(input.userId);
   const email = normalizeText(parent?.email || input.email, 320).toLowerCase();
@@ -4190,6 +4197,17 @@ export async function createNativeWorkbookCheckout(input: {
     .from(subscriptions).where(eq(subscriptions.accountId, parent.accountId)).limit(1) : [];
   const funnelKey = normalizeText(input.funnelKey, 80);
   const isFirstGradeFunnel = funnelKey === "first_grade_curriculum";
+  const landingVariant =
+    isFirstGradeFunnel && (input.landingVariant === "a" || input.landingVariant === "b")
+      ? input.landingVariant
+      : null;
+  const funnelVisitorId =
+    isFirstGradeFunnel &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      input.funnelVisitorId ?? ""
+    )
+      ? input.funnelVisitorId!.toLowerCase()
+      : null;
   const checkoutKind = workbook.catalogKind === "bundle" ? "native_workbook_bundle" : "native_workbook";
   const bundleVersionIds = workbook.catalogKind === "bundle"
     ? await snapshotBundleActiveVersionIds(workbook.id)
@@ -4205,7 +4223,10 @@ export async function createNativeWorkbookCheckout(input: {
     deliveryEmail: email,
     ...(parent ? { accountId: parent.accountId, userId: input.userId! } : {}),
     ...(input.addToLearningYearId ? { addToLearningYearId: input.addToLearningYearId } : {}),
-    ...(funnelKey ? { funnelKey } : {})
+    ...(funnelKey ? { funnelKey } : {}),
+    ...(landingVariant ? { landingVariant } : {}),
+    ...(funnelVisitorId ? { funnelVisitorId } : {}),
+    ...funnelCheckoutMetadata(input.funnelAttribution)
   };
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create(withTreeschoolCheckoutBranding({
@@ -4230,9 +4251,9 @@ export async function createNativeWorkbookCheckout(input: {
           })
     }],
     metadata: checkoutMetadata,
-    payment_intent_data: isFirstGradeFunnel
+    payment_intent_data: isFirstGradeFunnel || input.funnelAttribution
       ? {
-          setup_future_usage: "off_session",
+          ...(isFirstGradeFunnel ? { setup_future_usage: "off_session" as const } : {}),
           metadata: checkoutMetadata
         }
       : undefined
@@ -4246,6 +4267,7 @@ export async function createNativeWorkbookCartCheckout(input: {
   workbookIds: string[];
   successUrl: string;
   cancelUrl: string;
+  funnelAttribution?: FunnelCheckoutAttribution | null;
 }) {
   const workbookIds = Array.from(new Set(input.workbookIds.map((id) => normalizeText(id, 80)).filter(Boolean)));
   if (!workbookIds.length) throw new Error("Add at least one item to your cart.");
@@ -4329,8 +4351,19 @@ export async function createNativeWorkbookCartCheckout(input: {
       itemCount: String(workbooks.length),
       deliveryEmail: email,
       ...(parent ? { accountId: parent.accountId, userId: input.userId! } : {}),
-      ...itemMetadata
-    }
+      ...itemMetadata,
+      ...funnelCheckoutMetadata(input.funnelAttribution)
+    },
+    payment_intent_data: input.funnelAttribution
+      ? {
+          metadata: {
+            checkoutKind: "native_workbook_cart",
+            itemCount: String(workbooks.length),
+            deliveryEmail: email,
+            ...funnelCheckoutMetadata(input.funnelAttribution)
+          }
+        }
+      : undefined
   }));
   return { id: session.id, url: session.url };
 }

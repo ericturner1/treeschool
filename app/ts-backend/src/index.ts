@@ -200,6 +200,35 @@ import {
   reorderSalesFaqs,
   saveSalesFaq
 } from "./services/sales-faqs";
+import {
+  capturePublicFunnelLead,
+  completeAdminFunnelExperiment,
+  createAdminFunnelTestSale,
+  createAdminFunnelPageVariant,
+  deleteAdminFunnelAutomation,
+  deleteAdminFunnelStep,
+  duplicateAdminFunnelStep,
+  generateAdminFunnelPageDraft,
+  getAdminFunnel,
+  getAdminFunnelOperations,
+  getAdminFunnelPage,
+  getPublicCodeFunnelExperiment,
+  getPublicFunnelPage,
+  listAdminFunnels,
+  promoteAdminFunnelExperimentWinner,
+  publishAdminFunnelPage,
+  recordPublicCodeFunnelEvent,
+  recordPublicFunnelEvent,
+  reorderAdminFunnelSteps,
+  saveAdminFunnel,
+  saveAdminFunnelAutomation,
+  saveAdminFunnelPageDraft,
+  saveAdminFunnelStep,
+  startAdminFunnelExperiment,
+  updateAdminCodeFunnelExperiment,
+  unpublishAdminFunnelPage
+} from "./services/funnels";
+import { recordAuthSessionDiagnostic } from "./services/auth-session-diagnostics";
 
 const server = Bun.serve({
   port: env.PORT,
@@ -224,6 +253,21 @@ const server = Bun.serve({
         service: "ts-backend",
         timestamp: now
       });
+    }
+
+    if (url.pathname === "/internal/auth/session-diagnostic" && request.method === "POST") {
+      try {
+        return Response.json(await recordAuthSessionDiagnostic(await request.json()));
+      } catch (error) {
+        return Response.json(
+          {
+            error: error instanceof Error
+              ? error.message
+              : "Could not record the authentication diagnostic."
+          },
+          { status: 400 }
+        );
+      }
     }
 
     if (url.pathname === "/") {
@@ -256,6 +300,273 @@ const server = Bun.serve({
         return Response.json({ faqs: await listPublishedSalesFaqs() });
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : "Could not load FAQs." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
+        return Response.json(await listAdminFunnels(userId));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not load funnel administration." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/detail" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        const idOrSlug = url.searchParams.get("idOrSlug");
+        if (!userId || !idOrSlug) {
+          return Response.json({ error: "userId and idOrSlug are required." }, { status: 400 });
+        }
+        return Response.json(await getAdminFunnel({ userId, idOrSlug }));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not load the funnel." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/operations" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        const funnelId = url.searchParams.get("funnelId");
+        if (!userId || !funnelId) {
+          return Response.json({ error: "userId and funnelId are required." }, { status: 400 });
+        }
+        return Response.json(await getAdminFunnelOperations({ userId, funnelId }));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not load funnel operations." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/automation/save" && request.method === "POST") {
+      try {
+        return Response.json(await saveAdminFunnelAutomation(
+          await request.json() as Parameters<typeof saveAdminFunnelAutomation>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not save the automation." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/automation/delete" && request.method === "POST") {
+      try {
+        return Response.json(await deleteAdminFunnelAutomation(
+          await request.json() as Parameters<typeof deleteAdminFunnelAutomation>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not delete the automation." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/test-sale" && request.method === "POST") {
+      try {
+        return Response.json(await createAdminFunnelTestSale(
+          await request.json() as Parameters<typeof createAdminFunnelTestSale>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not record the test sale." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/save" && request.method === "POST") {
+      try {
+        return Response.json(await saveAdminFunnel(await request.json() as Parameters<typeof saveAdminFunnel>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not save the funnel." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/steps/save" && request.method === "POST") {
+      try {
+        return Response.json(await saveAdminFunnelStep(await request.json() as Parameters<typeof saveAdminFunnelStep>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not save the funnel step." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/steps/reorder" && request.method === "POST") {
+      try {
+        return Response.json(await reorderAdminFunnelSteps(await request.json() as Parameters<typeof reorderAdminFunnelSteps>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not reorder the funnel." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/steps/duplicate" && request.method === "POST") {
+      try {
+        return Response.json(await duplicateAdminFunnelStep(await request.json() as Parameters<typeof duplicateAdminFunnelStep>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not duplicate the funnel step." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/steps/delete" && request.method === "POST") {
+      try {
+        return Response.json(await deleteAdminFunnelStep(await request.json() as Parameters<typeof deleteAdminFunnelStep>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not delete the funnel step." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/page" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        const funnelId = url.searchParams.get("funnelId");
+        const stepId = url.searchParams.get("stepId");
+        const pageId = url.searchParams.get("pageId");
+        if (!userId || !funnelId || !stepId) {
+          return Response.json({ error: "userId, funnelId, and stepId are required." }, { status: 400 });
+        }
+        return Response.json(await getAdminFunnelPage({ userId, funnelId, stepId, pageId }));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not load the managed page." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/page/save" && request.method === "POST") {
+      try {
+        return Response.json(await saveAdminFunnelPageDraft(
+          await request.json() as Parameters<typeof saveAdminFunnelPageDraft>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not save the page draft." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/page/publish" && request.method === "POST") {
+      try {
+        return Response.json(await publishAdminFunnelPage(
+          await request.json() as Parameters<typeof publishAdminFunnelPage>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not publish the page." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/page/unpublish" && request.method === "POST") {
+      try {
+        return Response.json(await unpublishAdminFunnelPage(
+          await request.json() as Parameters<typeof unpublishAdminFunnelPage>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not unpublish the page." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/page/variant" && request.method === "POST") {
+      try {
+        return Response.json(await createAdminFunnelPageVariant(
+          await request.json() as Parameters<typeof createAdminFunnelPageVariant>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not create the page variant." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/page/generate" && request.method === "POST") {
+      try {
+        return Response.json(await generateAdminFunnelPageDraft(
+          await request.json() as Parameters<typeof generateAdminFunnelPageDraft>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not generate the page draft." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/experiment/start" && request.method === "POST") {
+      try {
+        return Response.json(await startAdminFunnelExperiment(
+          await request.json() as Parameters<typeof startAdminFunnelExperiment>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not start the experiment." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/experiment/complete" && request.method === "POST") {
+      try {
+        return Response.json(await completeAdminFunnelExperiment(
+          await request.json() as Parameters<typeof completeAdminFunnelExperiment>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not complete the experiment." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/experiment/promote" && request.method === "POST") {
+      try {
+        return Response.json(await promoteAdminFunnelExperimentWinner(
+          await request.json() as Parameters<typeof promoteAdminFunnelExperimentWinner>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not promote the winning page." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/code-experiment/update" && request.method === "POST") {
+      try {
+        return Response.json(await updateAdminCodeFunnelExperiment(
+          await request.json() as Parameters<typeof updateAdminCodeFunnelExperiment>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not update the experiment." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/public/funnels/code-experiment" && request.method === "GET") {
+      try {
+        const funnelSlug = url.searchParams.get("funnelSlug");
+        const stepSlug = url.searchParams.get("stepSlug");
+        const visitorId = url.searchParams.get("visitorId");
+        if (!funnelSlug || !stepSlug || !visitorId) {
+          return Response.json({ error: "Not found." }, { status: 404 });
+        }
+        return Response.json(await getPublicCodeFunnelExperiment({ funnelSlug, stepSlug, visitorId }));
+      } catch {
+        return Response.json({ error: "Not found." }, { status: 404 });
+      }
+    }
+
+    if (url.pathname === "/public/funnels/page" && request.method === "GET") {
+      try {
+        const funnelSlug = url.searchParams.get("funnelSlug");
+        const stepSlug = url.searchParams.get("stepSlug");
+        const visitorId = url.searchParams.get("visitorId");
+        if (!funnelSlug) return Response.json({ error: "Not found." }, { status: 404 });
+        return Response.json(await getPublicFunnelPage({ funnelSlug, stepSlug, visitorId }));
+      } catch {
+        return Response.json({ error: "Not found." }, { status: 404 });
+      }
+    }
+
+    if (url.pathname === "/public/funnels/events" && request.method === "POST") {
+      try {
+        return Response.json(await recordPublicFunnelEvent(
+          await request.json() as Parameters<typeof recordPublicFunnelEvent>[0]
+        ));
+      } catch {
+        return Response.json({ error: "Could not record funnel activity." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/public/funnels/code-events" && request.method === "POST") {
+      try {
+        return Response.json(await recordPublicCodeFunnelEvent(
+          await request.json() as Parameters<typeof recordPublicCodeFunnelEvent>[0]
+        ));
+      } catch {
+        return Response.json({ error: "Could not record funnel activity." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/public/funnels/leads" && request.method === "POST") {
+      try {
+        return Response.json(await capturePublicFunnelLead(
+          await request.json() as Parameters<typeof capturePublicFunnelLead>[0]
+        ));
+      } catch {
+        return Response.json({ error: "Could not save your details. Please try again." }, { status: 400 });
       }
     }
 
@@ -1967,6 +2278,9 @@ const server = Bun.serve({
         successUrl?: string;
         cancelUrl?: string;
         funnelKey?: string | null;
+        landingVariant?: string | null;
+        funnelVisitorId?: string | null;
+        funnelAttribution?: Parameters<typeof createCoreSubscriptionCheckout>[0]["funnelAttribution"];
       };
 
       if (!body.userId || !body.interval || !body.successUrl || !body.cancelUrl) {
@@ -1986,7 +2300,10 @@ const server = Bun.serve({
             planTier: body.planTier,
             successUrl: body.successUrl,
             cancelUrl: body.cancelUrl,
-            funnelKey: body.funnelKey
+            funnelKey: body.funnelKey,
+            landingVariant: body.landingVariant,
+            funnelVisitorId: body.funnelVisitorId,
+            funnelAttribution: body.funnelAttribution
           })
         );
       } catch (error) {
@@ -2006,6 +2323,9 @@ const server = Bun.serve({
         successUrl?: string;
         cancelUrl?: string;
         funnelKey?: string | null;
+        landingVariant?: string | null;
+        funnelVisitorId?: string | null;
+        funnelAttribution?: Parameters<typeof createPublicCoreSubscriptionCheckout>[0]["funnelAttribution"];
       };
 
       if (!body.interval || !body.successUrl || !body.cancelUrl) {
@@ -2021,7 +2341,10 @@ const server = Bun.serve({
           planTier: body.planTier,
           successUrl: body.successUrl,
           cancelUrl: body.cancelUrl,
-          funnelKey: body.funnelKey
+          funnelKey: body.funnelKey,
+          landingVariant: body.landingVariant,
+          funnelVisitorId: body.funnelVisitorId,
+          funnelAttribution: body.funnelAttribution
         }));
       } catch (error) {
         return Response.json(

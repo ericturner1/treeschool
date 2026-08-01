@@ -7,6 +7,12 @@ import {
   listNativeWorkbookCatalog,
   type NativeWorkbookCatalogItem
 } from "../../lib/native-workbooks/server";
+import {
+  formatCurriculumPrice,
+  getFirstGradeMarketingCoverPath,
+  getFirstGradeMarketingCoverUrl,
+  selectFirstGradeBundle
+} from "../../lib/first-grade-curriculum/catalog";
 import { CurriculumBundleCover, WorkbookCover } from "./workbook-cover";
 import { CurriculumCheckoutChoice } from "./curriculum-checkout-choice";
 
@@ -53,30 +59,6 @@ export const metadata: Metadata = {
   }
 };
 
-function formatPrice(priceInCents: number, currencyCode: string) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currencyCode,
-    minimumFractionDigits: 2
-  }).format(priceInCents / 100);
-}
-
-function selectFirstGradeBundle(catalog: NativeWorkbookCatalogItem[]) {
-  const bundles = catalog.filter((item) => item.catalogKind === "bundle");
-  return (
-    bundles.find(
-      (item) => item.isRecommendedCurriculum && item.recommendedGradeLevel === 1
-    )
-    ?? bundles.find(
-      (item) =>
-        item.gradeMin <= 1
-        && item.gradeMax >= 1
-        && /(?:grade|first).*(?:1|one).*core|core.*(?:grade|first).*(?:1|one)/i.test(item.title)
-    )
-    ?? null
-  );
-}
-
 function CheckIcon() {
   return (
     <span
@@ -86,26 +68,6 @@ function CheckIcon() {
       ✓
     </span>
   );
-}
-
-function getMarketingCoverPath(workbook: NativeWorkbookCatalogItem) {
-  const title = workbook.title.toLowerCase();
-  const readingLevel = title.match(/(?:reader|reading).*level[\s(-]*([d-i])/i)?.[1]?.toLowerCase();
-
-  if (readingLevel) return `/first-grade-curriculum/reading-level-${readingLevel}.png`;
-  if (title.includes("phonics") && /\bb\b/.test(title)) return "/first-grade-curriculum/phonics-b.png";
-  if (title.includes("writing") && title.includes("grammar")) return "/first-grade-curriculum/writing-and-grammar-1.png";
-  if (title.includes("spell")) return "/first-grade-curriculum/spelling-1.png";
-  if (title.includes("social studies")) return "/first-grade-curriculum/social-studies-1.png";
-  if (title.includes("science")) return "/first-grade-curriculum/science-1.png";
-  if (title.includes("math")) return "/first-grade-curriculum/math-1.png";
-
-  return workbook.thumbnailUrl;
-}
-
-function getMarketingCoverUrl(workbook: NativeWorkbookCatalogItem) {
-  const path = getMarketingCoverPath(workbook);
-  return path?.startsWith("/") ? `${SITE_URL}${path}` : path;
 }
 
 const GRADE_ONE_EXPECTATION_AREAS = [
@@ -228,7 +190,10 @@ export default async function FirstGradeHomeschoolCurriculumPage() {
   const members = bundle.memberWorkbookIds
     .map((id) => workbooksById.get(id))
     .filter((item): item is NativeWorkbookCatalogItem => Boolean(item));
-  const bundlePrice = formatPrice(bundle.priceInCents, bundle.currencyCode);
+  const bundlePrice = formatCurriculumPrice(
+    bundle.priceInCents,
+    bundle.currencyCode
+  );
   const gradeOneCoverage = bundle.curriculumCoverage.find(
     (coverage) => coverage.gradeLevel === 1
   );
@@ -259,7 +224,7 @@ export default async function FirstGradeHomeschoolCurriculumPage() {
       "@type": ["Book", "LearningResource"],
       name: member.title,
       url: `${SITE_URL}/bookstore/${member.slug}`,
-      image: getMarketingCoverUrl(member) ?? undefined,
+      image: getFirstGradeMarketingCoverUrl(member) ?? undefined,
       numberOfPages: member.pageCount ?? undefined,
       about: member.subjectLabel
     }))
@@ -272,7 +237,7 @@ export default async function FirstGradeHomeschoolCurriculumPage() {
     url: bundleUrl,
     image: [
       bundle.thumbnailUrl,
-      ...members.map(getMarketingCoverUrl)
+      ...members.map(getFirstGradeMarketingCoverUrl)
     ].filter(Boolean),
     sku: bundle.id,
     brand: { "@type": "Brand", name: "Treeschool" },
@@ -452,7 +417,7 @@ export default async function FirstGradeHomeschoolCurriculumPage() {
               <article key={workbook.id} className="min-w-0">
                 <WorkbookCover
                   title={workbook.title}
-                  src={getMarketingCoverPath(workbook)}
+                  src={getFirstGradeMarketingCoverPath(workbook)}
                 />
                 {workbook.pageCount ? (
                   <p className="mt-2 text-center text-xs font-semibold text-ink/50">

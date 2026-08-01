@@ -194,6 +194,10 @@ export async function getTeacherActivity(input: {
       activityType: typeof event.metadata?.activityType === "string" ? event.metadata.activityType : null,
       attendanceDate: typeof event.metadata?.attendanceDate === "string" ? event.metadata.attendanceDate : null,
       minutes: typeof event.metadata?.minutes === "number" ? event.metadata.minutes : null,
+      pointsAmount: typeof event.metadata?.pointsAmount === "number" ? event.metadata.pointsAmount : null,
+      pointsReason: typeof event.metadata?.pointsReason === "string" ? event.metadata.pointsReason : null,
+      pointSingularName: typeof event.metadata?.pointSingularName === "string" ? event.metadata.pointSingularName : null,
+      pointPluralName: typeof event.metadata?.pointPluralName === "string" ? event.metadata.pointPluralName : null,
       occurredAt: event.occurredAt.toISOString()
     }))
   };
