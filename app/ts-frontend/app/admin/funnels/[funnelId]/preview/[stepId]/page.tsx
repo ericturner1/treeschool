@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { ManagedFunnelPageView } from "../../../../../../components/managed-funnel-page";
 import { getCurrentUser } from "../../../../../../lib/auth/server";
 import {
+  getAdminFunnel,
   getAdminFunnelPage,
   type ManagedFunnelPagePayload
 } from "../../../../../../lib/funnels/server";
@@ -28,9 +29,14 @@ export default async function AdminManagedFunnelPagePreview({
   const access = await getNativeWorkbookNavigation(user.id).catch(() => null);
   if (!access?.isAdmin) notFound();
 
+  // Admin URLs use the readable funnel slug, while the managed-page API uses
+  // the funnel UUID at its boundary. Resolve the slug before loading the page.
+  const funnelData = await getAdminFunnel(user.id, params.funnelId).catch(() => null);
+  if (!funnelData?.funnel.id) notFound();
+
   const data = await getAdminFunnelPage(
     user.id,
-    params.funnelId,
+    funnelData.funnel.id,
     params.stepId,
     searchParams?.page
   ).catch(() => null);

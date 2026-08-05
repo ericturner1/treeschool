@@ -4267,6 +4267,9 @@ export async function createNativeWorkbookCartCheckout(input: {
   workbookIds: string[];
   successUrl: string;
   cancelUrl: string;
+  funnelKey?: string | null;
+  landingVariant?: "a" | "b" | null;
+  funnelVisitorId?: string | null;
   funnelAttribution?: FunnelCheckoutAttribution | null;
 }) {
   const workbookIds = Array.from(new Set(input.workbookIds.map((id) => normalizeText(id, 80)).filter(Boolean)));
@@ -4325,6 +4328,28 @@ export async function createNativeWorkbookCartCheckout(input: {
       : [[`version${index}`, workbook.activeVersionId!]]),
     [`amount${index}`, String(workbook.priceInCents)]
   ]));
+  const funnelKey = normalizeText(input.funnelKey, 80) === "first_grade_curriculum"
+    ? "first_grade_curriculum"
+    : null;
+  const landingVariant = input.landingVariant === "a" || input.landingVariant === "b"
+    ? input.landingVariant
+    : null;
+  const funnelVisitorCandidate = String(input.funnelVisitorId ?? "").trim().toLowerCase();
+  const funnelVisitorId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(funnelVisitorCandidate)
+    ? funnelVisitorCandidate
+    : null;
+  const legacyFunnelMetadata = funnelKey && landingVariant && funnelVisitorId
+    ? { funnelKey, landingVariant, funnelVisitorId }
+    : {};
+  const checkoutMetadata = {
+    checkoutKind: "native_workbook_cart",
+    itemCount: String(workbooks.length),
+    deliveryEmail: email,
+    ...(parent ? { accountId: parent.accountId, userId: input.userId! } : {}),
+    ...itemMetadata,
+    ...legacyFunnelMetadata,
+    ...funnelCheckoutMetadata(input.funnelAttribution)
+  };
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create(withTreeschoolCheckoutBranding({
     mode: "payment",
@@ -4346,22 +4371,10 @@ export async function createNativeWorkbookCartCheckout(input: {
             }
           })
     })),
-    metadata: {
-      checkoutKind: "native_workbook_cart",
-      itemCount: String(workbooks.length),
-      deliveryEmail: email,
-      ...(parent ? { accountId: parent.accountId, userId: input.userId! } : {}),
-      ...itemMetadata,
-      ...funnelCheckoutMetadata(input.funnelAttribution)
-    },
-    payment_intent_data: input.funnelAttribution
+    metadata: checkoutMetadata,
+    payment_intent_data: Object.keys(legacyFunnelMetadata).length || input.funnelAttribution
       ? {
-          metadata: {
-            checkoutKind: "native_workbook_cart",
-            itemCount: String(workbooks.length),
-            deliveryEmail: email,
-            ...funnelCheckoutMetadata(input.funnelAttribution)
-          }
+          metadata: checkoutMetadata
         }
       : undefined
   }));
@@ -4769,7 +4782,7 @@ export async function fulfillNativeWorkbookCheckout(session: Stripe.Checkout.Ses
 export async function fulfillNativeWorkbookPaymentIntent(intent: Stripe.PaymentIntent) {
   if (
     intent.status !== "succeeded" ||
-    intent.metadata.checkoutSource !== "post_checkout_offer" ||
+    !["post_checkout_offer", "funnel_one_click_offer"].includes(intent.metadata.checkoutSource) ||
     intent.metadata.checkoutKind !== "native_workbook_cart"
   ) {
     return { handled: false };

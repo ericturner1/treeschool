@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { showGlobalToast } from "../../../lib/toast";
 import type { AdminNativeWorkbook } from "../../../lib/native-workbooks/server";
 import { formatNativeWorkbookGradeRange } from "../../../lib/native-workbooks/grades";
 import { parseWorkbookPriceInCents } from "../../../lib/native-workbooks/price";
@@ -120,7 +121,8 @@ export function WorkbookBundleForm({ workbooks }: { workbooks: AdminNativeWorkbo
       setDescriptionMode("auto");
       setIsRecommendedCurriculum(false);
       setRecommendedGradeLevel("");
-      setStatus("Bundle created and available in the bookstore and lesson planner.");
+      setStatus(null);
+      showGlobalToast({ kind: "success", text: "Bundle created and available in the bookstore and lesson planner." });
       router.refresh();
     } catch (caught) {
       if (bundleId) await discardWorkbookBundleAction({ bundleId }).catch(() => undefined);

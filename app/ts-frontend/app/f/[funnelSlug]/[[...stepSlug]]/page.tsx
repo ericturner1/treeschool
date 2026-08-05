@@ -3,13 +3,23 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { ManagedFunnelPageView } from "../../../../components/managed-funnel-page";
 import { getPublicFunnelPage } from "../../../../lib/funnels/server";
+import {
+  getFunnelDocumentDescription,
+  getFunnelDocumentTitle
+} from "../../../../lib/funnels/page-document";
 
 type PublicFunnelPageProps = {
   params: {
     funnelSlug: string;
     stepSlug?: string[];
   };
+  searchParams?: { source_session_id?: string | string[] };
 };
+
+function sourceSessionId(searchParams: PublicFunnelPageProps["searchParams"]) {
+  const value = searchParams?.source_session_id;
+  return (Array.isArray(value) ? value[0] : value)?.trim() || null;
+}
 
 async function loadPage(
   params: PublicFunnelPageProps["params"],
@@ -29,10 +39,10 @@ export async function generateMetadata({
   const data = await loadPage(params);
   if (!data) return {};
 
-  const title = data.page.seo.title || data.page.content.headline;
+  const title = data.page.seo.title || getFunnelDocumentTitle(data.page.content);
   const description =
     data.page.seo.description ||
-    data.page.content.subheadline ||
+    getFunnelDocumentDescription(data.page.content) ||
     data.funnel.name;
   const canonical = `https://www.treehomeschool.com${data.page.publicPath}`;
 
@@ -53,10 +63,11 @@ export async function generateMetadata({
 }
 
 export default async function PublicManagedFunnelPage({
-  params
+  params,
+  searchParams
 }: PublicFunnelPageProps) {
   const visitorId = headers().get("x-treeschool-funnel-visitor-id");
   const data = await loadPage(params, visitorId);
   if (!data) notFound();
-  return <ManagedFunnelPageView data={data} visitorId={visitorId} />;
+  return <ManagedFunnelPageView data={data} visitorId={visitorId} sourceCheckoutSessionId={sourceSessionId(searchParams)} />;
 }

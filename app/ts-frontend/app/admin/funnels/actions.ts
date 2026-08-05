@@ -7,6 +7,7 @@ import {
   completeAdminFunnelExperiment,
   createAdminFunnelPageVariant,
   createAdminFunnelTestSale,
+  deleteAdminFunnel,
   deleteAdminFunnelAutomation,
   deleteAdminFunnelStep,
   duplicateAdminFunnelStep,
@@ -73,30 +74,84 @@ export async function saveFunnelAction(formData: FormData) {
   redirect(destination);
 }
 
+export async function deleteFunnelAction(formData: FormData) {
+  const user = await requireUser();
+  const funnelId = value(formData, "funnelId");
+  const funnelSlug = value(formData, "funnelSlug");
+  let destination: string;
+  try {
+    await deleteAdminFunnel({ userId: user.id, funnelId });
+    revalidatePath("/admin/funnels");
+    revalidatePath(funnelPath(funnelSlug));
+    destination = "/admin/funnels?message=Funnel%20deleted.";
+  } catch (error) {
+    destination = funnelPath(funnelSlug, { error: errorMessage(error) });
+  }
+  redirect(destination);
+}
+
 export async function saveFunnelStepAction(formData: FormData) {
   const funnelSlug = value(formData, "funnelSlug");
   const user = await requireUser(funnelPath(funnelSlug));
   const id = value(formData, "id") || undefined;
+  const routePath = value(formData, "routePath");
+  const stepName = value(formData, "name");
+  const stepType = value(formData, "stepType");
+  const primaryProductId = value(formData, "orderPrimaryProductId") || null;
+  const oneClickProductId = value(formData, "oneClickProductId") || null;
+  const generatedSlug = (routePath.split("/").filter(Boolean).at(-1) || stepName)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   let destination: string;
   try {
+    if (stepType === "order_form" && !primaryProductId) {
+      throw new Error("Choose a primary bookstore product before saving an order form.");
+    }
+    if (["upsell", "downsell"].includes(stepType) && !oneClickProductId) {
+      throw new Error("Choose the bookstore product offered on this page.");
+    }
     const result = await saveAdminFunnelStep({
       id,
       funnelId: value(formData, "funnelId"),
       userId: user.id,
-      name: value(formData, "name"),
-      slug: value(formData, "slug"),
+      name: stepName,
+      slug: value(formData, "slug") || generatedSlug,
       description: value(formData, "description"),
-      stepType: value(formData, "stepType"),
+      stepType,
       status: value(formData, "status"),
       sourceType: value(formData, "sourceType"),
       sourceRef: value(formData, "sourceRef") || null,
+      routePath: routePath || null,
       publicPath: value(formData, "publicPath") || null,
       previewPath: value(formData, "previewPath") || null,
       linkLabel: value(formData, "linkLabel") || null,
-      isTopOfFunnel: formData.has("isTopOfFunnel")
+      isTopOfFunnel: formData.has("isTopOfFunnel"),
+      ...(stepType === "order_form"
+        ? {
+            settings: {
+              journeyNextAction: "button",
+              orderForm: {
+                primaryProductId,
+                orderBumpProductIds: formData.getAll("orderBumpProductId").map(String).filter((id) => Boolean(id) && id !== primaryProductId),
+                submitLabel: value(formData, "orderSubmitLabel") || "Continue to secure checkout"
+              }
+            }
+          }
+        : ["upsell", "downsell"].includes(stepType)
+          ? {
+              settings: {
+                journeyNextAction: "button",
+                oneClickOffer: {
+                  productId: oneClickProductId
+                }
+              }
+            }
+        : {})
     });
     revalidatePath("/admin/funnels");
     revalidatePath(funnelPath(funnelSlug));
+    if (result.step.routePath) revalidatePath(result.step.routePath);
     destination = funnelPath(funnelSlug, {
       step: result.step.id,
       message: id ? "Funnel step updated." : "Funnel step added."
@@ -171,37 +226,15 @@ export async function saveFunnelPageDraftAction(formData: FormData) {
   let destination: string;
 
   try {
+    const contentJson = value(formData, "contentJson");
+    if (!contentJson) throw new Error("The page document is missing.");
     const result = await saveAdminFunnelPageDraft({
       userId: user.id,
       funnelId: value(formData, "funnelId"),
       stepId,
       pageId: value(formData, "pageId") || null,
       source: "manual",
-      content: {
-        template: value(formData, "template") || "sales",
-        theme: value(formData, "theme") || "sage",
-        eyebrow: value(formData, "eyebrow"),
-        headline: value(formData, "headline"),
-        subheadline: value(formData, "subheadline"),
-        body: value(formData, "body"),
-        bullets: value(formData, "bullets")
-          .split("\n")
-          .map((bullet) => bullet.trim())
-          .filter(Boolean),
-        primaryCtaLabel: value(formData, "primaryCtaLabel"),
-        primaryCtaHref: value(formData, "primaryCtaHref") || null,
-        secondaryCtaLabel: value(formData, "secondaryCtaLabel") || null,
-        secondaryCtaHref: value(formData, "secondaryCtaHref") || null,
-        reassurance: value(formData, "reassurance"),
-        leadCapture: {
-          enabled: formData.has("leadCaptureEnabled"),
-          heading: value(formData, "leadCaptureHeading") || "Where should we send it?",
-          collectFirstName: formData.has("leadCaptureFirstName"),
-          firstNameLabel: value(formData, "leadCaptureFirstNameLabel") || "First name",
-          emailLabel: value(formData, "leadCaptureEmailLabel") || "Email address",
-          submitLabel: value(formData, "leadCaptureSubmitLabel") || "Continue"
-        }
-      },
+      content: JSON.parse(contentJson) as unknown,
       seo: {
         title: value(formData, "seoTitle"),
         description: value(formData, "seoDescription"),

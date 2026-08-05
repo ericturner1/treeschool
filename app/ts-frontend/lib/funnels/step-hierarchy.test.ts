@@ -4,7 +4,8 @@ import {
   buildFunnelStepHierarchy,
   funnelExperimentContainerForStep,
   moveFunnelStepGroup,
-  reorderFunnelStepGroups
+  reorderFunnelStepGroups,
+  reorderFunnelStepGroupsAtIndex
 } from "./step-hierarchy";
 
 function step(
@@ -22,6 +23,7 @@ function step(
     status: "active",
     sourceType: "code",
     sourceRef: null,
+    routePath: null,
     publicPath: null,
     previewPath: null,
     linkLabel: null,
@@ -71,6 +73,38 @@ describe("funnel step hierarchy", () => {
       "a",
       "b"
     ]);
+  });
+
+  test("moves a grouped step into a visible insertion slot", () => {
+    const original = [
+      step("parent", "experiment"),
+      step("a", "variant-a", variantSettings),
+      step("b", "variant-b", variantSettings),
+      step("checkout", "checkout"),
+      step("thanks", "thanks")
+    ];
+
+    expect(reorderFunnelStepGroupsAtIndex(original, "parent", 3).map((item) => item.id)).toEqual([
+      "checkout",
+      "thanks",
+      "parent",
+      "a",
+      "b"
+    ]);
+    expect(reorderFunnelStepGroupsAtIndex(original, "thanks", 1).map((item) => item.id)).toEqual([
+      "parent",
+      "a",
+      "b",
+      "thanks",
+      "checkout"
+    ]);
+  });
+
+  test("keeps the current order when an adjacent insertion slot is selected", () => {
+    const original = [step("first", "first"), step("second", "second")];
+
+    expect(reorderFunnelStepGroupsAtIndex(original, "first", 0)).toBe(original);
+    expect(reorderFunnelStepGroupsAtIndex(original, "first", 1)).toBe(original);
   });
 
   test("resolves a variant to the experiment container", () => {

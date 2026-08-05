@@ -501,6 +501,9 @@ export function createNativeWorkbookCartCheckout(input: {
   workbookIds: string[];
   successUrl: string;
   cancelUrl: string;
+  funnelKey?: string | null;
+  landingVariant?: "a" | "b" | null;
+  funnelVisitorId?: string | null;
   funnelAttribution?: ManagedFunnelAttribution | null;
 }) {
   return postJson<{ id: string; url: string | null }>(

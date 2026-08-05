@@ -103,7 +103,14 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname === "/first-grade-curriculum";
   const isManagedFunnel =
     request.nextUrl.pathname === "/f" ||
-    request.nextUrl.pathname.startsWith("/f/");
+    request.nextUrl.pathname.startsWith("/f/") ||
+    (!request.nextUrl.pathname.startsWith("/admin") &&
+      !request.nextUrl.pathname.startsWith("/api") &&
+      !request.nextUrl.pathname.startsWith("/auth") &&
+      !request.nextUrl.pathname.startsWith("/p/") &&
+      request.nextUrl.pathname !== "/p" &&
+      !request.nextUrl.pathname.startsWith("/student") &&
+      !request.nextUrl.pathname.includes("."));
   const funnelVisitorId = isFirstGradeCurriculumExperiment || isManagedFunnel
     ? normalizeFunnelVisitorId(
         request.cookies.get(FIRST_GRADE_CURRICULUM_VISITOR_COOKIE)?.value

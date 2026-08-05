@@ -73,11 +73,6 @@ export default async function SigninPage({ searchParams }: SigninPageProps) {
             </div>
           ) : null}
 
-          {searchParams?.message ? (
-            <p className="mt-5 rounded-[18px] border border-[#b8cf9f] bg-[#eef5e4] px-4 py-3 text-sm font-semibold text-[#4d6a39]">
-              {searchParams.message}
-            </p>
-          ) : null}
           {searchParams?.error ? (
             <p role="alert" className="mt-5 rounded-[18px] border border-[#d9afa2] bg-[#fff1ec] px-4 py-3 text-sm font-semibold text-[#8b3e2f]">
               {searchParams.error}

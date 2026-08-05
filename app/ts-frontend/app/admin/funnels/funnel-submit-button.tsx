@@ -7,17 +7,19 @@ export function FunnelSubmitButton({
   pendingLabel,
   tone = "primary",
   confirmMessage,
-  disabled = false
+  disabled = false,
+  className = ""
 }: {
   label: string;
   pendingLabel?: string;
   tone?: "primary" | "outline" | "danger";
   confirmMessage?: string;
   disabled?: boolean;
+  className?: string;
 }) {
   const { pending } = useFormStatus();
   const classes = tone === "primary"
-    ? "cta-button"
+    ? "cta-button cta-button--light"
     : tone === "danger"
       ? "rounded-[14px] border border-[#dfaa9d] bg-[#fff3ef] px-4 py-3 text-sm font-semibold text-[#8c4536] transition hover:bg-[#fde8e0]"
       : "cta-button cta-button--outline";
@@ -29,7 +31,7 @@ export function FunnelSubmitButton({
       onClick={(event) => {
         if (confirmMessage && !window.confirm(confirmMessage)) event.preventDefault();
       }}
-      className={`${classes} disabled:cursor-not-allowed disabled:opacity-60`}
+      className={`${classes} ${className} disabled:cursor-not-allowed disabled:opacity-60`}
     >
       {pending ? (
         <span className="inline-flex items-center gap-2">

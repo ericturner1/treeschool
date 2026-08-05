@@ -20,6 +20,15 @@ function safeReturnPath(value: FormDataEntryValue | null) {
     : "/first-grade-homeschool-curriculum";
 }
 
+function optionalSafePath(value: FormDataEntryValue | null) {
+  const path = String(value ?? "").trim();
+  return path.startsWith("/") && !path.startsWith("//") ? path : null;
+}
+
+function appendCheckoutSession(path: string) {
+  return `${path}${path.includes("?") ? "&" : "?"}source_session_id={CHECKOUT_SESSION_ID}`;
+}
+
 export async function startWorkbookCheckoutAction(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const email = String(formData.get("email") ?? "").trim();
@@ -95,5 +104,41 @@ export async function startWorkbookCartCheckoutAction(formData: FormData) {
     if (error && typeof error === "object" && "digest" in error) throw error;
     const message = error instanceof Error ? error.message : "Could not start checkout.";
     redirect(`/bookstore?error=${encodeURIComponent(message)}`);
+  }
+}
+
+export async function startFunnelOrderCheckoutAction(formData: FormData) {
+  const workbookIds = Array.from(new Set(formData.getAll("workbookId").map(String).filter(Boolean)));
+  const email = String(formData.get("email") ?? "").trim();
+  const isExperimentPreview = String(formData.get("experimentPreview") ?? "") === "true";
+  const landingVariant = isExperimentPreview ? null : normalizeFirstGradeCurriculumVariant(String(formData.get("landingVariant") ?? ""));
+  const funnelVisitorId = isExperimentPreview ? null : normalizeFunnelVisitorId(String(formData.get("funnelVisitorId") ?? ""));
+  const returnPath = safeReturnPath(formData.get("returnPath"));
+  const successPath = optionalSafePath(formData.get("successPath"));
+  const managedFunnelAttribution = getFunnelAttributionFromCookies();
+  const rawFunnelKey = String(formData.get("funnelKey") ?? "").trim();
+  const funnelKey = /^[a-z0-9_-]{1,80}$/.test(rawFunnelKey) ? rawFunnelKey : null;
+  try {
+    const user = await getCurrentUser();
+    const base = appUrl();
+    const session = await createNativeWorkbookCartCheckout({
+      userId: user?.id,
+      email: user?.email || email,
+      workbookIds,
+      successUrl: successPath
+        ? `${base}${appendCheckoutSession(successPath)}`
+        : `${base}/bookstore/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${base}${returnPath}?checkout=canceled`,
+      funnelKey,
+      landingVariant,
+      funnelVisitorId,
+      funnelAttribution: managedFunnelAttribution
+    });
+    if (!session.url) throw new Error("Stripe did not return a checkout link.");
+    redirect(session.url);
+  } catch (error) {
+    if (error && typeof error === "object" && "digest" in error) throw error;
+    const message = error instanceof Error ? error.message : "Could not start checkout.";
+    redirect(`${returnPath}?error=${encodeURIComponent(message)}`);
   }
 }

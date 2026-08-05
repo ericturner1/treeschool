@@ -37,6 +37,7 @@ import {
   createCustomerPortalSession,
   createMembershipPlanChangeSession,
   createStudentProfileWithBilling,
+  decideFunnelOneClickOffer,
   decideFirstGradePostCheckoutOffer,
   getFirstGradePostCheckoutOffer,
   getPlanGeneratorPricing,
@@ -200,32 +201,44 @@ import {
   reorderSalesFaqs,
   saveSalesFaq
 } from "./services/sales-faqs";
+import { getAdminDashboardMetrics } from "./services/admin-dashboard";
 import {
   capturePublicFunnelLead,
+  completeAdminFunnelAssetUpload,
   completeAdminFunnelExperiment,
   createAdminFunnelTestSale,
   createAdminFunnelPageVariant,
+  deleteAdminFunnel,
   deleteAdminFunnelAutomation,
   deleteAdminFunnelStep,
   duplicateAdminFunnelStep,
   generateAdminFunnelPageDraft,
   getAdminFunnel,
+  getAdminFunnelContact,
+  getAdminFunnelPathAvailability,
   getAdminFunnelOperations,
   getAdminFunnelPage,
+  getFunnelAsset,
   getPublicCodeFunnelExperiment,
   getPublicFunnelPage,
+  getPublicFunnelPageByPath,
+  getPublicFunnelOrderForm,
+  listAdminFunnelContacts,
   listAdminFunnels,
   promoteAdminFunnelExperimentWinner,
+  prepareAdminFunnelAssetUpload,
   publishAdminFunnelPage,
   recordPublicCodeFunnelEvent,
   recordPublicFunnelEvent,
   reorderAdminFunnelSteps,
   saveAdminFunnel,
+  saveAdminFunnelContact,
   saveAdminFunnelAutomation,
   saveAdminFunnelPageDraft,
   saveAdminFunnelStep,
   startAdminFunnelExperiment,
   updateAdminCodeFunnelExperiment,
+  discardAdminFunnelAssetUpload,
   unpublishAdminFunnelPage
 } from "./services/funnels";
 import { recordAuthSessionDiagnostic } from "./services/auth-session-diagnostics";
@@ -303,6 +316,16 @@ const server = Bun.serve({
       }
     }
 
+    if (url.pathname === "/internal/admin/dashboard" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
+        return Response.json(await getAdminDashboardMetrics(userId));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not load admin metrics." }, { status: 400 });
+      }
+    }
+
     if (url.pathname === "/internal/funnels/admin" && request.method === "GET") {
       try {
         const userId = url.searchParams.get("userId");
@@ -326,6 +349,20 @@ const server = Bun.serve({
       }
     }
 
+    if (url.pathname === "/internal/funnels/admin/path-availability" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        const path = url.searchParams.get("path");
+        const excludeStepId = url.searchParams.get("excludeStepId");
+        if (!userId || !path) {
+          return Response.json({ error: "userId and path are required." }, { status: 400 });
+        }
+        return Response.json(await getAdminFunnelPathAvailability({ userId, path, excludeStepId }));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not check the URL path." }, { status: 400 });
+      }
+    }
+
     if (url.pathname === "/internal/funnels/admin/operations" && request.method === "GET") {
       try {
         const userId = url.searchParams.get("userId");
@@ -336,6 +373,40 @@ const server = Bun.serve({
         return Response.json(await getAdminFunnelOperations({ userId, funnelId }));
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : "Could not load funnel operations." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/contacts" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
+        return Response.json(await listAdminFunnelContacts({
+          userId,
+          query: url.searchParams.get("query")
+        }));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not load contacts." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/contacts/detail" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        const contactId = url.searchParams.get("contactId");
+        if (!userId || !contactId) return Response.json({ error: "userId and contactId are required." }, { status: 400 });
+        return Response.json(await getAdminFunnelContact({ userId, contactId }));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not load the contact." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/contacts/save" && request.method === "POST") {
+      try {
+        return Response.json(await saveAdminFunnelContact(
+          await request.json() as Parameters<typeof saveAdminFunnelContact>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not save the contact." }, { status: 400 });
       }
     }
 
@@ -377,6 +448,16 @@ const server = Bun.serve({
       }
     }
 
+    if (url.pathname === "/internal/funnels/admin/delete" && request.method === "POST") {
+      try {
+        return Response.json(await deleteAdminFunnel(
+          await request.json() as Parameters<typeof deleteAdminFunnel>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not delete the funnel." }, { status: 400 });
+      }
+    }
+
     if (url.pathname === "/internal/funnels/admin/steps/save" && request.method === "POST") {
       try {
         return Response.json(await saveAdminFunnelStep(await request.json() as Parameters<typeof saveAdminFunnelStep>[0]));
@@ -406,6 +487,56 @@ const server = Bun.serve({
         return Response.json(await deleteAdminFunnelStep(await request.json() as Parameters<typeof deleteAdminFunnelStep>[0]));
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : "Could not delete the funnel step." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/asset" && request.method === "GET") {
+      try {
+        const funnelId = url.searchParams.get("funnelId");
+        const stepId = url.searchParams.get("stepId");
+        const filename = url.searchParams.get("filename");
+        if (!funnelId || !stepId || !filename) {
+          return Response.json({ error: "funnelId, stepId, and filename are required." }, { status: 400 });
+        }
+        const asset = await getFunnelAsset({ funnelId, stepId, filename });
+        return new Response(asset.bytes, {
+          headers: {
+            "Content-Type": asset.contentType,
+            "Cache-Control": "public, max-age=31536000, immutable"
+          }
+        });
+      } catch {
+        return Response.json({ error: "Funnel image not found." }, { status: 404 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/asset/prepare" && request.method === "POST") {
+      try {
+        return Response.json(await prepareAdminFunnelAssetUpload(
+          await request.json() as Parameters<typeof prepareAdminFunnelAssetUpload>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not prepare the funnel image upload." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/asset/complete" && request.method === "POST") {
+      try {
+        return Response.json(await completeAdminFunnelAssetUpload(
+          await request.json() as Parameters<typeof completeAdminFunnelAssetUpload>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not save the funnel image." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/asset/discard" && request.method === "POST") {
+      try {
+        return Response.json(await discardAdminFunnelAssetUpload(
+          await request.json() as Parameters<typeof discardAdminFunnelAssetUpload>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not discard the funnel image." }, { status: 400 });
       }
     }
 
@@ -540,6 +671,18 @@ const server = Bun.serve({
       }
     }
 
+
+    if (url.pathname === "/public/funnels/page-by-path" && request.method === "GET") {
+      try {
+        const path = url.searchParams.get("path");
+        const visitorId = url.searchParams.get("visitorId");
+        if (!path) return Response.json({ error: "Not found." }, { status: 404 });
+        return Response.json(await getPublicFunnelPageByPath({ path, visitorId }));
+      } catch {
+        return Response.json({ error: "Not found." }, { status: 404 });
+      }
+    }
+
     if (url.pathname === "/public/funnels/events" && request.method === "POST") {
       try {
         return Response.json(await recordPublicFunnelEvent(
@@ -567,6 +710,16 @@ const server = Bun.serve({
         ));
       } catch {
         return Response.json({ error: "Could not save your details. Please try again." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/public/funnels/order-form" && request.method === "GET") {
+      try {
+        const path = url.searchParams.get("path");
+        if (!path) return Response.json({ error: "path is required." }, { status: 400 });
+        return Response.json(await getPublicFunnelOrderForm({ path }));
+      } catch {
+        return Response.json({ error: "Order form not found." }, { status: 404 });
       }
     }
 
@@ -2407,6 +2560,34 @@ const server = Bun.serve({
       } catch (error) {
         return Response.json(
           { error: error instanceof Error ? error.message : "Could not update the offer." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/billing/funnel-one-click-offer" && request.method === "POST") {
+      const body = (await request.json()) as {
+        sourceCheckoutSessionId?: string;
+        funnelStepId?: string;
+        appBaseUrl?: string;
+        cancelPath?: string;
+      };
+      if (!body.sourceCheckoutSessionId || !body.funnelStepId || !body.appBaseUrl || !body.cancelPath) {
+        return Response.json(
+          { error: "sourceCheckoutSessionId, funnelStepId, appBaseUrl, and cancelPath are required." },
+          { status: 400 }
+        );
+      }
+      try {
+        return Response.json(await decideFunnelOneClickOffer({
+          sourceCheckoutSessionId: body.sourceCheckoutSessionId,
+          funnelStepId: body.funnelStepId,
+          appBaseUrl: body.appBaseUrl,
+          cancelPath: body.cancelPath
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Could not add the offer." },
           { status: 400 }
         );
       }

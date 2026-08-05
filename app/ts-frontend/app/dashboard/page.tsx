@@ -21,18 +21,6 @@ type DashboardPageProps = {
   };
 };
 
-function ageFromBirthDate(value: string | null) {
-  if (!value) return null;
-  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
-  if (!year || !month || !day) return null;
-  const today = new Date();
-  let age = today.getUTCFullYear() - year;
-  const birthdayHasPassed = today.getUTCMonth() + 1 > month
-    || (today.getUTCMonth() + 1 === month && today.getUTCDate() >= day);
-  if (!birthdayHasPassed) age -= 1;
-  return age >= 0 ? age : null;
-}
-
 function frequentAwardReasons(points: StudentPointsPayload) {
   const counts = new Map<string, number>();
   for (const transaction of points.transactions) {
@@ -117,7 +105,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   <>
                     <div className="grid gap-3 md:hidden">
                       {studentProfiles.map((profile) => {
-                        const age = ageFromBirthDate(profile.birthDate);
                         const grade = profile.gradeLevel != null
                           ? profile.gradeLevel === 0
                             ? `${dashboard.profileManagement.columns.grade} K`
@@ -142,7 +129,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                                 <h3 className="truncate text-xl font-semibold tracking-[-0.04em] text-ink">{profile.firstName}</h3>
                                 <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-ink/58">
                                   <span>{grade}</span>
-                                  {age != null ? <span>Age {age}</span> : null}
                                   <span className="rounded-full bg-[#e7efdc] px-2.5 py-1 text-[#4f703c]">
                                     {streakCount} {streakCount === 1 ? "day" : "days"} streak
                                   </span>
@@ -160,17 +146,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                                   initialBalance={points.summary.balance}
                                   singularName={points.settings.singularName}
                                   pluralName={points.settings.pluralName}
-                                  iconKey={points.settings.iconKey}
-                                  customIconUrl={points.settings.customIconUrl}
                                   frequentReasons={frequentAwardReasons(points)}
                                 />
                               </div>
                             ) : null}
                             <Link
                               href={`/p/student/${profile.slug ?? profile.id}`}
+                              data-pending-size="compact"
                               className="cta-button cta-button--outline cta-button--small mt-4 w-full"
                             >
-                              {`${dashboard.profileManagement.manageLabel} ${profile.firstName}`}
+                              {dashboard.profileManagement.manageLabel}
                             </Link>
                           </article>
                         );
@@ -178,9 +163,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     </div>
 
                     <div className="hidden max-w-full overflow-x-auto rounded-[24px] border border-[#dcc8aa] bg-[#fffaf2] md:block">
-                      <div className="grid min-w-[940px] grid-cols-[minmax(160px,1.5fr)_70px_110px_105px_170px_180px] gap-4 border-b border-[#e4d5bd] bg-[#f6ecdc] px-5 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-ink/62">
+                      <div className="grid min-w-[820px] grid-cols-[minmax(170px,1.5fr)_110px_105px_minmax(190px,1fr)_120px] gap-4 border-b border-[#e4d5bd] bg-[#f6ecdc] px-5 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-ink/62">
                         <span>{dashboard.profileManagement.columns.name}</span>
-                        <span>{dashboard.profileManagement.columns.age}</span>
                         <span>{dashboard.profileManagement.columns.grade}</span>
                         <span>Streak</span>
                         <span>Points</span>
@@ -195,7 +179,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                         return (
                           <div
                             key={profile.id}
-                            className={`grid min-w-[940px] grid-cols-[minmax(160px,1.5fr)_70px_110px_105px_170px_180px] gap-4 px-5 py-4 ${
+                            className={`grid min-w-[820px] grid-cols-[minmax(170px,1.5fr)_110px_105px_minmax(190px,1fr)_120px] gap-4 px-5 py-4 ${
                               index === studentProfiles.length - 1 ? "" : "border-b border-[#eadfcd]"
                             }`}
                           >
@@ -214,10 +198,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                                 </p>
                                 <p className="mt-1 text-sm text-ink/62">{dashboard.studentRole}</p>
                               </div>
-                            </div>
-
-                            <div className="flex items-center text-sm font-semibold text-ink/78">
-                              {ageFromBirthDate(profile.birthDate) ?? "—"}
                             </div>
 
                             <div className="flex items-center text-sm font-semibold text-ink/78">
@@ -242,8 +222,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                                   initialBalance={points.summary.balance}
                                   singularName={points.settings.singularName}
                                   pluralName={points.settings.pluralName}
-                                  iconKey={points.settings.iconKey}
-                                  customIconUrl={points.settings.customIconUrl}
                                   frequentReasons={frequentAwardReasons(points)}
                                 />
                               ) : (
@@ -254,9 +232,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                             <div className="flex items-center justify-end">
                               <Link
                                 href={`/p/student/${profile.slug ?? profile.id}`}
+                                data-pending-size="compact"
                                 className="cta-button cta-button--outline cta-button--small"
                               >
-                                {`${dashboard.profileManagement.manageLabel} ${profile.firstName}`}
+                                {dashboard.profileManagement.manageLabel}
                               </Link>
                             </div>
                           </div>

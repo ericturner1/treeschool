@@ -119,7 +119,6 @@ export default async function AdminFaqsPage({ searchParams }: Props) {
           </div>
         </header>
 
-        {searchParams?.message ? <div className="mt-6 rounded-[18px] border border-[#b8cf9f] bg-[#eef5e4] px-5 py-4 text-sm font-semibold text-[#4d6a39]">{searchParams.message}</div> : null}
         {searchParams?.error ? <div role="alert" className="mt-6 rounded-[18px] border border-[#d9afa2] bg-[#fff1ec] px-5 py-4 text-sm font-semibold text-[#8b3e2f]">{searchParams.error}</div> : null}
 
         <section className="mt-8 grid gap-4 sm:grid-cols-3">

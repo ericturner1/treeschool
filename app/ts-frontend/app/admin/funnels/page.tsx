@@ -44,11 +44,6 @@ export default async function AdminFunnelsPage({
           </div>
         </section>
 
-        {searchParams?.message ? (
-          <p className="mt-6 rounded-[18px] border border-[#b8cf9f] bg-[#edf5e7] px-5 py-4 font-semibold text-[#4d6a39]" role="status">
-            {searchParams.message}
-          </p>
-        ) : null}
         {searchParams?.error ? (
           <p className="mt-6 rounded-[18px] border border-[#e0ac9f] bg-[#fff0eb] px-5 py-4 font-semibold text-[#8c4536]" role="alert">
             {searchParams.error}
@@ -102,7 +97,7 @@ export default async function AdminFunnelsPage({
               <tbody className="divide-y divide-[#eadbc5]">
                 {data.funnels.map((funnel) => {
                   const topStep = funnel.steps.find((step) => step.isTopOfFunnel);
-                  const topPath = topStep?.publicPath ?? funnel.publicPath;
+                  const topPath = topStep?.routePath ?? topStep?.publicPath ?? funnel.publicPath;
                   return (
                     <tr key={funnel.id} className="align-top transition hover:bg-[#fbf6ed]">
                       <td className="px-5 py-5">

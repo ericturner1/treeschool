@@ -20,6 +20,17 @@ const GOAL_LABELS: Record<FunnelExperimentGoal, string> = {
   thank_you_view: "Thank-you page reached"
 };
 
+const EXPERIMENT_PAGE_TYPE_LABELS: Record<AdminFunnelStep["stepType"], string> = {
+  landing: "Landing Page",
+  sales: "Sales Page",
+  order_form: "Order Form",
+  upsell: "Upsell Page",
+  downsell: "Downsell Page",
+  thank_you: "Thank-you Page",
+  redirect: "Redirect",
+  fulfillment: "Fulfillment Page"
+};
+
 function defaultWeights(count: number) {
   if (count <= 0) return [];
   const base = Math.floor(100 / count);
@@ -90,8 +101,8 @@ export function FunnelExperimentPanel({
   }), { visitors: 0, ctaClicks: 0, checkoutStarts: 0, purchases: 0 });
 
   return (
-    <section className="border-t border-[#eadbc5] bg-white px-5 py-6 sm:px-7">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <section className="bg-white px-4 py-5 sm:px-6">
+      {!hasExistingExperiment ? (
         <div>
           <p className="text-xs font-black uppercase tracking-[0.12em] text-[#665481]">
             Experiment
@@ -104,25 +115,10 @@ export function FunnelExperimentPanel({
             and the winning page can become the new control without losing history.
           </p>
         </div>
-        {hasExistingExperiment ? (
-          <span className={`w-fit rounded-full px-3 py-1.5 text-xs font-semibold ${
-            isRunning
-              ? "bg-[#e4f0d7] text-[#466534]"
-              : "bg-[#eee7dc] text-ink/55"
-          }`}>
-            {experiment
-              ? isRunning ? "Test running" : "Last test completed"
-              : codeExperimentStatus === "running"
-                ? "Test running"
-                : codeExperimentStatus === "paused"
-                  ? "Test paused"
-                  : "Test completed"}
-          </span>
-        ) : null}
-      </div>
+      ) : null}
 
       {experiment ? (
-        <div className="mt-6 rounded-[20px] border border-[#d7cce5] bg-[#f7f4fb] p-5">
+        <div className="rounded-[20px] border border-[#d7cce5] bg-[#f7f4fb] p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="font-semibold">{experiment.name}</p>
@@ -175,6 +171,7 @@ export function FunnelExperimentPanel({
                       label={variant.isPrimary ? "Current control" : "Promote to control"}
                       pendingLabel="Promoting…"
                       tone="outline"
+                      className="cta-button--small !w-auto"
                       disabled={variant.isPrimary}
                       confirmMessage={
                         variant.isPrimary
@@ -197,6 +194,7 @@ export function FunnelExperimentPanel({
                 label="Finish test and keep control"
                 pendingLabel="Finishing…"
                 tone="outline"
+                className="cta-button--small !w-auto"
                 confirmMessage="Finish this A/B test? Visitor assignments and results will be preserved."
               />
             </form>
@@ -205,13 +203,13 @@ export function FunnelExperimentPanel({
       ) : null}
 
       {hasCodeBackedExperiment ? (
-        <div className="mt-6 overflow-hidden rounded-[22px] border border-[#d7cce5] bg-[#f8f6fb]">
-          <div className="border-b border-[#ded5e8] bg-white px-5 py-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
+        <div className="overflow-hidden rounded-[20px] border border-[#d7cce5] bg-[#f8f6fb] shadow-[0_8px_24px_rgba(78,61,102,.05)]">
+          <div className="border-b border-[#ded5e8] bg-white px-4 py-4 sm:px-5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-lg font-semibold">{data.step.name}</p>
-                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.08em] ${
+                  <h3 className="truncate text-lg font-semibold tracking-[-0.025em]">{data.step.name}</h3>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.08em] ${
                     codeExperimentStatus === "running"
                       ? "bg-[#e4f0d7] text-[#466534]"
                       : codeExperimentStatus === "paused"
@@ -225,9 +223,12 @@ export function FunnelExperimentPanel({
                   Goal: CTA selection · stable visitor assignment · 50/50 traffic split
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {data.step.publicPath ? (
-                  <a href={data.step.publicPath} className="cta-button cta-button--outline cta-button--small">
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {data.step.routePath || data.step.publicPath ? (
+                  <a
+                    href={data.step.routePath ?? data.step.publicPath ?? "#"}
+                    className="cta-button cta-button--outline cta-button--small !min-h-10 !w-auto !rounded-[12px] !px-4 !py-2 text-sm"
+                  >
                     Open live test ↗
                   </a>
                 ) : null}
@@ -241,6 +242,7 @@ export function FunnelExperimentPanel({
                       label="Pause test"
                       pendingLabel="Pausing…"
                       tone="outline"
+                      className="cta-button--small !min-h-10 !w-auto !rounded-[12px] !px-4 !py-2 text-sm"
                       confirmMessage="Pause the split test and send all visitors to the control page?"
                     />
                   </form>
@@ -250,7 +252,12 @@ export function FunnelExperimentPanel({
                     <input type="hidden" name="funnelSlug" value={funnelSlug} />
                     <input type="hidden" name="stepId" value={stepId} />
                     <input type="hidden" name="experimentAction" value="resume" />
-                    <FunnelSubmitButton label="Resume test" pendingLabel="Resuming…" tone="outline" />
+                    <FunnelSubmitButton
+                      label="Resume test"
+                      pendingLabel="Resuming…"
+                      tone="outline"
+                      className="cta-button--small !min-h-10 !w-auto !rounded-[12px] !px-4 !py-2 text-sm"
+                    />
                   </form>
                 ) : null}
               </div>
@@ -264,26 +271,34 @@ export function FunnelExperimentPanel({
               ["Checkout starts", codeTotals.checkoutStarts],
               ["Sales", codeTotals.purchases]
             ].map(([label, value]) => (
-              <div key={String(label)} className="bg-[#f8f6fb] px-5 py-4">
-                <p className="text-[11px] font-black uppercase tracking-[.1em] text-ink/38">{label}</p>
-                <p className="mt-1 text-3xl font-semibold tracking-[-.04em]">{value}</p>
+              <div key={String(label)} className="bg-[#f8f6fb] px-4 py-3.5 sm:px-5">
+                <p className="text-[10px] font-black uppercase tracking-[.09em] text-ink/40">{label}</p>
+                <p className="mt-1 text-2xl font-semibold tracking-[-.04em]">{value}</p>
               </div>
             ))}
           </div>
 
-          <div className="p-5">
+          <div className="p-3 sm:p-4">
             <div className="overflow-x-auto rounded-[17px] border border-[#d7cce5] bg-white">
-              <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="bg-[#f2eef7] text-[11px] font-black uppercase tracking-[.08em] text-ink/42">
+              <table className="w-full min-w-[730px] table-fixed text-left text-sm">
+                <colgroup>
+                  <col className="w-[220px]" />
+                  <col className="w-[74px]" />
+                  <col className="w-[78px]" />
+                  <col className="w-[116px]" />
+                  <col className="w-[88px]" />
+                  <col className="w-[68px]" />
+                  <col className="w-[150px]" />
+                </colgroup>
+                <thead className="bg-[#f2eef7] text-[10px] font-black uppercase tracking-[.07em] text-ink/45">
                   <tr>
                     <th className="px-4 py-3">Variant</th>
-                    <th>Traffic</th>
-                    <th>Visitors</th>
-                    <th>CTA clicks</th>
-                    <th>CTA rate</th>
-                    <th>Checkout</th>
-                    <th>Sales</th>
-                    <th className="pr-4 text-right">Manage</th>
+                    <th className="px-2 py-3">Traffic</th>
+                    <th className="px-2 py-3">Visitors</th>
+                    <th className="px-2 py-3">Clicks</th>
+                    <th className="px-2 py-3">Checkout</th>
+                    <th className="px-2 py-3">Sales</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -292,10 +307,23 @@ export function FunnelExperimentPanel({
                       ? Math.round((stats.primaryCtaClicks / stats.visitors) * 1000) / 10
                       : 0;
                     const isWinner = codeExperimentStatus === "completed" && codeWinnerStepId === variant.id;
+                    const previewPath = variant.previewPath ?? variant.routePath ?? variant.publicPath;
                     return (
                       <tr key={variant.id} className="border-t border-[#eee7f3]">
                         <td className="px-4 py-4">
-                          <strong className="block">{variant.name}</strong>
+                          {previewPath ? (
+                            <a
+                              href={previewPath}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block font-bold text-[#567b40] underline decoration-[#b8cba8] underline-offset-4 transition hover:text-[#3f6330]"
+                              aria-label={`Preview ${variant.name} in a new tab`}
+                            >
+                              {variant.name}
+                            </a>
+                          ) : (
+                            <strong className="block">{variant.name}</strong>
+                          )}
                           <span className="mt-1 inline-flex items-center gap-1.5 text-xs text-ink/48">
                             {index === 0 ? "Control" : `Variant ${index + 1}`}
                             {isWinner ? (
@@ -303,22 +331,16 @@ export function FunnelExperimentPanel({
                             ) : null}
                           </span>
                         </td>
-                        <td>{allocation}%</td>
-                        <td>{stats.visitors}</td>
-                        <td>{stats.primaryCtaClicks}</td>
-                        <td className="font-semibold text-[#65577e]">{ctaRate}%</td>
-                        <td>{stats.checkoutStarts}</td>
-                        <td>{stats.purchases}</td>
-                        <td className="pr-4">
-                          <div className="flex justify-end gap-3">
-                            {variant.previewPath || variant.publicPath ? (
-                              <a
-                                href={variant.previewPath ?? variant.publicPath ?? "#"}
-                                className="font-semibold text-[#567b40] underline decoration-[#8cad75] underline-offset-4"
-                              >
-                                Preview ↗
-                              </a>
-                            ) : null}
+                        <td className="px-2 py-4">{allocation}%</td>
+                        <td className="px-2 py-4">{stats.visitors}</td>
+                        <td className="px-2 py-4">
+                          <strong className="font-semibold text-[#65577e]">{stats.primaryCtaClicks}</strong>
+                          <span className="ml-1.5 text-xs text-ink/45">· {ctaRate}%</span>
+                        </td>
+                        <td className="px-2 py-4">{stats.checkoutStarts}</td>
+                        <td className="px-2 py-4">{stats.purchases}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                             {codeExperimentStatus !== "completed" ? (
                               <form action={updateCodeFunnelExperimentAction}>
                                 <input type="hidden" name="funnelId" value={funnelId} />
@@ -330,6 +352,7 @@ export function FunnelExperimentPanel({
                                   label="Choose winner"
                                   pendingLabel="Finishing…"
                                   tone="outline"
+                                  className="cta-button--small !min-h-9 !w-auto !rounded-[10px] !px-3 !py-1.5 text-xs"
                                   confirmMessage={`End the test and send all visitors to “${variant.name}”?`}
                                 />
                               </form>
@@ -369,7 +392,7 @@ export function FunnelExperimentPanel({
                 <input
                   name="name"
                   required
-                  defaultValue={`${data.step.name} test`}
+                  defaultValue={`${EXPERIMENT_PAGE_TYPE_LABELS[data.step.stepType]} A/B Test`}
                   className="ts-input"
                 />
               </label>

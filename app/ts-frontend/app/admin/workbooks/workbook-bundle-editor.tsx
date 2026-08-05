@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { type FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { showGlobalToast } from "../../../lib/toast";
 import type { AdminNativeWorkbook, AdminNativeWorkbookBundle } from "../../../lib/native-workbooks/server";
 import { formatNativeWorkbookGradeRange } from "../../../lib/native-workbooks/grades";
 import { parseWorkbookPriceInCents } from "../../../lib/native-workbooks/price";
@@ -169,7 +170,8 @@ export function WorkbookBundleEditor({
         thumbnailObjectPath
       });
       if (!result.ok) throw new Error(result.error);
-      setStatus("Bundle updated.");
+      setStatus(null);
+      showGlobalToast({ kind: "success", text: "Bundle updated." });
       setBusy(false);
       setOpen(false);
       router.refresh();

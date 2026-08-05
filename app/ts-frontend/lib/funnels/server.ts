@@ -1,4 +1,5 @@
 import { backendFetch } from "../backend/server";
+import type { FunnelPageDocument, FunnelPageTheme } from "./page-document";
 
 const DEFAULT_INTERNAL_BACKEND_URL = "http://ts-backend:3001";
 
@@ -27,8 +28,7 @@ export type AdminFunnelStepStatus = "draft" | "active" | "inactive";
 export type AdminFunnelStepType =
   | "landing"
   | "sales"
-  | "checkout"
-  | "order_bump"
+  | "order_form"
   | "upsell"
   | "downsell"
   | "thank_you"
@@ -46,6 +46,7 @@ export type AdminFunnelStep = {
   status: AdminFunnelStepStatus;
   sourceType: AdminFunnelStepSourceType;
   sourceRef: string | null;
+  routePath: string | null;
   publicPath: string | null;
   previewPath: string | null;
   linkLabel: string | null;
@@ -84,30 +85,8 @@ export type ManagedFunnelPageTemplate =
   | "upsell"
   | "downsell"
   | "thank_you";
-export type ManagedFunnelPageTheme = "sage" | "cream" | "violet" | "sky";
-
-export type ManagedFunnelPageContent = {
-  template: ManagedFunnelPageTemplate;
-  theme: ManagedFunnelPageTheme;
-  eyebrow: string;
-  headline: string;
-  subheadline: string;
-  body: string;
-  bullets: string[];
-  primaryCtaLabel: string;
-  primaryCtaHref: string | null;
-  secondaryCtaLabel: string | null;
-  secondaryCtaHref: string | null;
-  reassurance: string;
-  leadCapture: {
-    enabled: boolean;
-    heading: string;
-    collectFirstName: boolean;
-    firstNameLabel: string;
-    emailLabel: string;
-    submitLabel: string;
-  };
-};
+export type ManagedFunnelPageTheme = FunnelPageTheme;
+export type ManagedFunnelPageContent = FunnelPageDocument;
 
 export type ManagedFunnelAttribution = {
   funnelId: string;
@@ -295,6 +274,46 @@ export type AdminFunnelOperations = {
   }>;
 };
 
+export type AdminContactSummary = {
+  id: string;
+  email: string;
+  firstName: string | null;
+  status: "lead" | "customer" | "unsubscribed";
+  tags: string[];
+  funnelNames: string[];
+  firstSeenAt: string;
+  lastSeenAt: string;
+  convertedAt: string | null;
+  purchases: number;
+  revenue: Array<{ currency: string; amountCents: number }>;
+};
+
+export type AdminContactDetail = Pick<
+  AdminContactSummary,
+  "id" | "email" | "firstName" | "status" | "tags" | "firstSeenAt" | "lastSeenAt" | "convertedAt"
+> & {
+  sources: Array<{
+    id: string;
+    funnelName: string;
+    firstStepName: string | null;
+    lastStepName: string | null;
+    status: "lead" | "customer" | "unsubscribed";
+    firstSeenAt: string;
+    lastSeenAt: string;
+  }>;
+  sales: Array<{
+    id: string;
+    funnelName: string;
+    stepName: string | null;
+    orderKind: string;
+    amountTotalCents: number;
+    currency: string;
+    status: string;
+    purchasedAt: string;
+    test: boolean;
+  }>;
+};
+
 export async function listAdminFunnels(userId: string) {
   const response = await requireOk(await backendFetch(
     `${getBackendUrl()}/internal/funnels/admin?userId=${encodeURIComponent(userId)}`,
@@ -319,6 +338,33 @@ export async function getAdminFunnelOperations(userId: string, funnelId: string)
     { cache: "no-store" }
   ), "Could not load funnel operations.");
   return response.json() as Promise<AdminFunnelOperations>;
+}
+
+export async function listAdminFunnelContacts(userId: string, query?: string | null) {
+  const params = new URLSearchParams({ userId });
+  if (query) params.set("query", query);
+  const response = await requireOk(await backendFetch(
+    `${getBackendUrl()}/internal/funnels/admin/contacts?${params}`,
+    { cache: "no-store" }
+  ), "Could not load contacts.");
+  return response.json() as Promise<{ contacts: AdminContactSummary[] }>;
+}
+
+export async function getAdminFunnelContact(userId: string, contactId: string) {
+  const params = new URLSearchParams({ userId, contactId });
+  const response = await requireOk(await backendFetch(
+    `${getBackendUrl()}/internal/funnels/admin/contacts/detail?${params}`,
+    { cache: "no-store" }
+  ), "Could not load the contact.");
+  return response.json() as Promise<{ contact: AdminContactDetail }>;
+}
+
+export function saveAdminFunnelContact(input: Record<string, unknown>) {
+  return postJson<{ saved: boolean }>(
+    "/internal/funnels/admin/contacts/save",
+    input,
+    "Could not save the contact."
+  );
 }
 
 export function saveAdminFunnelAutomation(input: Record<string, unknown>) {
@@ -353,12 +399,44 @@ export function saveAdminFunnel(input: Record<string, unknown>) {
   );
 }
 
+export function deleteAdminFunnel(input: {
+  userId: string;
+  funnelId: string;
+}) {
+  return postJson<{
+    deleted: boolean;
+    funnel: { id: string; slug: string; name: string };
+  }>(
+    "/internal/funnels/admin/delete",
+    input,
+    "Could not delete the funnel."
+  );
+}
+
 export function saveAdminFunnelStep(input: Record<string, unknown>) {
   return postJson<{ step: AdminFunnelStep }>(
     "/internal/funnels/admin/steps/save",
     input,
     "Could not save the funnel step."
   );
+}
+
+export async function getAdminFunnelPathAvailability(
+  userId: string,
+  path: string,
+  excludeStepId?: string | null
+) {
+  const query = new URLSearchParams({ userId, path });
+  if (excludeStepId) query.set("excludeStepId", excludeStepId);
+  const response = await requireOk(await backendFetch(
+    `${getBackendUrl()}/internal/funnels/admin/path-availability?${query}`,
+    { cache: "no-store" }
+  ), "Could not check the URL path.");
+  return response.json() as Promise<{
+    available: boolean;
+    path: string | null;
+    reason: string | null;
+  }>;
 }
 
 export function reorderAdminFunnelSteps(input: {
@@ -418,6 +496,40 @@ export function saveAdminFunnelPageDraft(input: Record<string, unknown>) {
     input,
     "Could not save the page draft."
   );
+}
+
+export function prepareAdminFunnelAssetUpload(input: Record<string, unknown>) {
+  return postJson<{
+    assetId: string;
+    objectPath: string;
+    contentType: string;
+    uploadUrl: string;
+    publicUrl: string;
+  }>("/internal/funnels/admin/asset/prepare", input, "Could not prepare the funnel image upload.");
+}
+
+export function completeAdminFunnelAssetUpload(input: Record<string, unknown>) {
+  return postJson<{
+    assetId: string;
+    storagePath: string;
+    publicUrl: string;
+    alt: string;
+    width: number | null;
+    height: number | null;
+  }>("/internal/funnels/admin/asset/complete", input, "Could not save the funnel image.");
+}
+
+export function discardAdminFunnelAssetUpload(input: Record<string, unknown>) {
+  return postJson<{ discarded: boolean }>(
+    "/internal/funnels/admin/asset/discard",
+    input,
+    "Could not discard the funnel image upload."
+  );
+}
+
+export function getFunnelAssetResponse(input: { funnelId: string; stepId: string; filename: string }) {
+  const query = new URLSearchParams(input);
+  return backendFetch(`${getBackendUrl()}/internal/funnels/asset?${query}`, { cache: "force-cache" });
 }
 
 export function publishAdminFunnelPage(input: {
@@ -540,6 +652,36 @@ export async function getPublicFunnelPage(
     { cache: "no-store" }
   ), "Funnel page not found.");
   return response.json() as Promise<ManagedFunnelPagePayload>;
+}
+
+export async function getPublicFunnelPageByPath(
+  path: string,
+  visitorId?: string | null
+) {
+  const query = new URLSearchParams({ path });
+  if (visitorId) query.set("visitorId", visitorId);
+  const response = await requireOk(await backendFetch(
+    `${getBackendUrl()}/public/funnels/page-by-path?${query}`,
+    { cache: "no-store" }
+  ), "Funnel page not found.");
+  return response.json() as Promise<ManagedFunnelPagePayload>;
+}
+
+export async function getPublicFunnelOrderForm(path: string) {
+  const query = new URLSearchParams({ path });
+  const response = await requireOk(await backendFetch(
+    `${getBackendUrl()}/public/funnels/order-form?${query}`,
+    { cache: "no-store" }
+  ), "Order form not found.");
+  return response.json() as Promise<{
+    funnel: Pick<AdminFunnel, "id" | "slug" | "name">;
+    step: AdminFunnelStep;
+    orderForm: {
+      primaryProductId: string | null;
+      orderBumpProductIds: string[];
+      submitLabel: string;
+    };
+  }>;
 }
 
 export function recordPublicFunnelEvent(input: Record<string, unknown>) {

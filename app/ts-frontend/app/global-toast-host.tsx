@@ -13,6 +13,8 @@ type ToastItem = {
   id: number;
   kind: ToastKind;
   text: string;
+  actionHref?: string;
+  actionLabel?: string;
 };
 
 const TOAST_DURATION_MS = 4200;
@@ -21,23 +23,54 @@ export function GlobalToastHost() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const handledKeysRef = useRef<Set<string>>(new Set());
+  const handledKeyRef = useRef<string | null>(null);
 
   const incomingToasts = useMemo(() => {
     const next: Array<Omit<ToastItem, "id">> = [];
     const message = searchParams.get("message");
     const error = searchParams.get("error");
+    const published = searchParams.get("published");
 
     if (message) {
-      next.push({ kind: "success", text: message });
+      next.push({
+        kind: "success",
+        text: message,
+        ...(published
+          ? {
+              actionHref: `/blog/${encodeURIComponent(published)}`,
+              actionLabel: "View post"
+            }
+          : {})
+      });
     }
 
     if (error) {
       next.push({ kind: "error", text: error });
     }
 
+    if (pathname === "/p/billing" && searchParams.get("checkout") === "success") {
+      next.push({
+        kind: "success",
+        text: "Stripe checkout completed. Your access will update as soon as Stripe confirms the subscription."
+      });
+    }
+
+    if (pathname === "/p/billing" && searchParams.get("planChanged") === "1") {
+      next.push({
+        kind: "success",
+        text: "Your plan change was confirmed. Student capacity will update as soon as Stripe sends its confirmation."
+      });
+    }
+
+    if (pathname === "/p/dashboard" && searchParams.get("student_checkout") === "success") {
+      next.push({
+        kind: "success",
+        text: "Payment received. The additional student will appear as soon as Stripe confirms it."
+      });
+    }
+
     return next;
-  }, [searchParams]);
+  }, [pathname, searchParams]);
 
   useEffect(() => {
     function onToast(event: Event) {
@@ -49,7 +82,13 @@ export function GlobalToastHost() {
         {
           id: Date.now(),
           kind: detail.kind === "error" ? "error" : "success",
-          text
+          text,
+          ...(detail.actionHref
+            ? {
+                actionHref: detail.actionHref,
+                ...(detail.actionLabel ? { actionLabel: detail.actionLabel } : {})
+              }
+            : {})
         }
       ]);
     }
@@ -60,15 +99,16 @@ export function GlobalToastHost() {
 
   useEffect(() => {
     if (incomingToasts.length === 0) {
+      handledKeyRef.current = null;
       return;
     }
 
-    const nextKey = incomingToasts.map((toast) => `${toast.kind}:${toast.text}`).join("|");
-    if (handledKeysRef.current.has(nextKey)) {
+    const nextKey = `${pathname}?${searchParams.toString()}`;
+    if (handledKeyRef.current === nextKey) {
       return;
     }
 
-    handledKeysRef.current.add(nextKey);
+    handledKeyRef.current = nextKey;
 
     setToasts((current) => [
       ...current,
@@ -81,6 +121,14 @@ export function GlobalToastHost() {
     const nextSearchParams = new URLSearchParams(searchParams.toString());
     nextSearchParams.delete("message");
     nextSearchParams.delete("error");
+    nextSearchParams.delete("published");
+    if (pathname === "/p/billing") {
+      nextSearchParams.delete("checkout");
+      nextSearchParams.delete("planChanged");
+    }
+    if (pathname === "/p/dashboard") {
+      nextSearchParams.delete("student_checkout");
+    }
     const nextQuery = nextSearchParams.toString();
     const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
     window.history.replaceState(null, "", nextUrl);
@@ -113,7 +161,19 @@ export function GlobalToastHost() {
           role="status"
           aria-live="polite"
         >
-          <p className="pr-8 text-sm font-semibold leading-[1.6]">{toast.text}</p>
+          <div className="pr-8">
+            <p className="text-sm font-semibold leading-[1.6]">{toast.text}</p>
+            {toast.actionHref ? (
+              <a
+                href={toast.actionHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 text-sm font-bold underline decoration-current/35 underline-offset-4 hover:decoration-current"
+              >
+                {toast.actionLabel ?? "Open"} <span aria-hidden="true">↗</span>
+              </a>
+            ) : null}
+          </div>
           <button
             type="button"
             aria-label="Dismiss notification"

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export type FunnelWorkspaceTab = "configuration" | "experiment" | "leads" | "stats" | "sales";
 
@@ -13,33 +13,44 @@ const TABS: ReadonlyArray<{ key: FunnelWorkspaceTab; label: string }> = [
   { key: "sales", label: "Sales" }
 ];
 
-function tabFromUrl(): FunnelWorkspaceTab {
+function tabFromUrl(availableTabs: ReadonlyArray<FunnelWorkspaceTab>): FunnelWorkspaceTab {
   const value = new URL(window.location.href).searchParams.get("tab");
-  return TABS.some((tab) => tab.key === value)
+  return availableTabs.includes(value as FunnelWorkspaceTab)
     ? value as FunnelWorkspaceTab
-    : "configuration";
+    : availableTabs[0] ?? "configuration";
 }
 
 export function FunnelTabWorkspace({
   initialTab,
   selectedStepId,
   experimentStepId,
-  selectedPageId,
+  availableTabs,
   panels
 }: {
   initialTab: FunnelWorkspaceTab;
   selectedStepId: string;
   experimentStepId: string;
-  selectedPageId?: string;
+  availableTabs?: ReadonlyArray<FunnelWorkspaceTab>;
   panels: Record<FunnelWorkspaceTab, ReactNode>;
 }) {
-  const [activeTab, setActiveTab] = useState<FunnelWorkspaceTab>(initialTab);
+  const visibleTabs = useMemo(
+    () => TABS.filter((tab) => !availableTabs || availableTabs.includes(tab.key)),
+    [availableTabs]
+  );
+  const normalizedInitialTab = visibleTabs.some((tab) => tab.key === initialTab)
+    ? initialTab
+    : visibleTabs[0]?.key ?? "configuration";
+  const [activeTab, setActiveTab] = useState<FunnelWorkspaceTab>(normalizedInitialTab);
 
   useEffect(() => {
-    const handleHistoryChange = () => setActiveTab(tabFromUrl());
+    setActiveTab(normalizedInitialTab);
+  }, [normalizedInitialTab, selectedStepId]);
+
+  useEffect(() => {
+    const handleHistoryChange = () => setActiveTab(tabFromUrl(visibleTabs.map((tab) => tab.key)));
     window.addEventListener("popstate", handleHistoryChange);
     return () => window.removeEventListener("popstate", handleHistoryChange);
-  }, []);
+  }, [visibleTabs]);
 
   function selectTab(nextTab: FunnelWorkspaceTab) {
     if (nextTab === activeTab) return;
@@ -48,19 +59,15 @@ export function FunnelTabWorkspace({
     const url = new URL(window.location.href);
     url.searchParams.set("tab", nextTab);
     url.searchParams.set("step", nextTab === "experiment" ? experimentStepId : selectedStepId);
-    if (nextTab === "configuration" && selectedPageId) {
-      url.searchParams.set("page", selectedPageId);
-    } else {
-      url.searchParams.delete("page");
-    }
+    url.searchParams.delete("page");
     window.history.pushState({}, "", url);
   }
 
   return (
     <>
-      <div className="border-b border-[#eadbc5] px-5 pt-4 sm:px-7">
-        <div className="flex gap-2 overflow-x-auto" role="tablist" aria-label="Step administration">
-          {TABS.map(({ key, label }) => (
+      <div className="border-b border-[#eadbc5] bg-[#fffdf8] px-4 pt-1 sm:px-6">
+        <div className="flex gap-1 overflow-x-auto" role="tablist" aria-label="Step administration">
+          {visibleTabs.map(({ key, label }) => (
             <button
               key={key}
               type="button"
@@ -72,7 +79,7 @@ export function FunnelTabWorkspace({
               className={`whitespace-nowrap border-b-2 px-3 py-3 text-sm transition-colors ${
                 activeTab === key
                   ? "border-[#6f994f] font-semibold text-[#4f6f3c]"
-                  : "border-transparent text-ink/55 hover:text-ink"
+                  : "border-transparent text-ink/50 hover:border-[#d7c9b5] hover:text-ink"
               }`}
             >
               {label}
@@ -81,7 +88,7 @@ export function FunnelTabWorkspace({
         </div>
       </div>
 
-      {TABS.map(({ key }) => (
+      {visibleTabs.map(({ key }) => (
         <div
           key={key}
           id={`funnel-tab-panel-${key}`}

@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import type { AdminFunnel, AdminFunnelStatus } from "../../../lib/funnels/server";
-import { saveFunnelAction } from "./actions";
+import { deleteFunnelAction, saveFunnelAction } from "./actions";
 import { FunnelSubmitButton } from "./funnel-submit-button";
 
 export function FunnelSettingsDialog({
@@ -98,6 +98,28 @@ export function FunnelSettingsDialog({
             <FunnelSubmitButton label="Save settings" />
           </div>
         </form>
+
+        <div className="border-t border-[#eadbc5] bg-[#fff7f3] p-5 sm:p-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="max-w-lg">
+              <h3 className="text-base font-semibold text-[#8c4536]">Delete funnel</h3>
+              <p className="mt-1 text-sm leading-6 text-ink/65">
+                Permanently remove this funnel, its pages, experiments, leads, and analytics. Completed sale records remain in your business history.
+              </p>
+            </div>
+            <form action={deleteFunnelAction}>
+              <input type="hidden" name="funnelId" value={funnel.id} />
+              <input type="hidden" name="funnelSlug" value={funnel.slug} />
+              <FunnelSubmitButton
+                label="Delete funnel"
+                pendingLabel="Deleting…"
+                tone="danger"
+                confirmMessage={`Permanently delete “${funnel.name}”? Its pages, experiments, leads, and analytics will be removed. This cannot be undone.`}
+                className="shrink-0"
+              />
+            </form>
+          </div>
+        </div>
       </dialog>
     </>
   );

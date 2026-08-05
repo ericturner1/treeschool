@@ -169,11 +169,6 @@ export default async function PricingPage({ searchParams }: PricingPageProps) {
             Checkout was canceled. You can start your Treeschool membership whenever you are ready.
           </div>
         ) : null}
-        {searchParams?.message ? (
-          <div className="mx-auto mb-6 max-w-3xl rounded-[22px] border border-[#b8cf9f] bg-[#eef5e4] px-5 py-4 text-center text-sm font-semibold text-[#4d6a39]">
-            {searchParams.message}
-          </div>
-        ) : null}
         {error ? (
           <div className="mx-auto mb-6 max-w-3xl rounded-[22px] border border-[#d9afa2] bg-[#fff1ec] px-5 py-4 text-center text-sm font-semibold text-[#8b3e2f]">
             {error}

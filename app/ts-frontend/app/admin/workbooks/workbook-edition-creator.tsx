@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { showGlobalToast } from "../../../lib/toast";
 import {
   completeWorkbookEditionAction,
   discardWorkbookEditionAction,
@@ -82,6 +83,7 @@ export function WorkbookEditionCreator({
       prepared = null;
       setOpen(false);
       setStatus(null);
+      showGlobalToast({ kind: "success", text: "The new workbook edition was uploaded and queued for indexing." });
       router.refresh();
     } catch (caught) {
       if (prepared) await discardWorkbookEditionAction(prepared).catch(() => undefined);

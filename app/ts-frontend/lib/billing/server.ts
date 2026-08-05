@@ -192,6 +192,22 @@ export async function decideFirstGradePostCheckoutOffer(input: {
   );
 }
 
+export async function decideManagedFunnelOneClickOffer(input: {
+  sourceCheckoutSessionId: string;
+  funnelStepId: string;
+  appBaseUrl: string;
+  cancelPath: string;
+}) {
+  return postBillingJson<
+    | { status: "complete"; nextPath: string }
+    | { status: "redirect"; url: string | null }
+  >(
+    "/internal/billing/funnel-one-click-offer",
+    input,
+    "Could not add this offer."
+  );
+}
+
 export async function completePublicParentBillingCheckout(input: {
   sessionId: string;
 }) {

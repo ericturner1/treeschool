@@ -49,7 +49,6 @@ export default async function PackUploadPage({ searchParams }: UploadPageProps) 
   const checkoutSessionId = searchParams?.session_id ?? "";
   const draftKey = searchParams?.draftKey ?? "";
   const error = decodeParam(searchParams?.error);
-  const message = decodeParam(searchParams?.message);
 
   if (!intakeId || !checkoutSessionId) {
     return (
@@ -138,11 +137,6 @@ export default async function PackUploadPage({ searchParams }: UploadPageProps) 
 
       <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-10 sm:px-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.2fr)] lg:px-8">
         <section className="site-panel rounded-[32px] px-6 py-8 sm:px-8">
-          {message ? (
-            <div className="mb-6 rounded-[20px] border border-[#b8cf9f] bg-[#eef5e4] px-5 py-4 text-sm font-semibold text-[#4d6a39]">
-              {message}
-            </div>
-          ) : null}
           {error ? (
             <div className="mb-6 rounded-[20px] border border-[#d9afa2] bg-[#fff1ec] px-5 py-4 text-sm font-semibold text-[#8b3e2f]">
               {error}

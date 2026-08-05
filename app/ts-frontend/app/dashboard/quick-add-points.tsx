@@ -2,13 +2,11 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { PointIcon } from "../../components/point-icon";
 import {
   playPointAwardSound,
   preloadPointAwardSound,
   unlockPointAwardSound
 } from "../../lib/audio/point-award-sound";
-import type { StudentPointIconKey } from "../../lib/points/server";
 import { showGlobalToast } from "../../lib/toast";
 
 const COMMON_REASONS = [
@@ -26,8 +24,6 @@ export function QuickAddPoints({
   initialBalance,
   singularName,
   pluralName,
-  iconKey,
-  customIconUrl,
   frequentReasons
 }: {
   profileId: string;
@@ -35,8 +31,6 @@ export function QuickAddPoints({
   initialBalance: number;
   singularName: string;
   pluralName: string;
-  iconKey: StudentPointIconKey;
-  customIconUrl: string | null;
   frequentReasons: string[];
 }) {
   const [open, setOpen] = useState(false);
@@ -232,14 +226,12 @@ export function QuickAddPoints({
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e7efdc] px-3 py-1.5 text-sm font-semibold text-[#4f703c]">
-          <PointIcon iconKey={iconKey} customIconUrl={customIconUrl} className="text-base" />
+        <span className="inline-flex items-center rounded-full bg-[#e7efdc] px-3 py-1.5 text-sm font-semibold text-[#4f703c]">
           {balance}
         </span>
         <button
           type="button"
           onClick={openDialog}
-          onPointerDown={() => void unlockPointAwardSound()}
           className="rounded-[12px] border border-[#b6ca9f] bg-white px-3 py-1.5 text-sm font-semibold text-[#55763f] shadow-[0_3px_0_#c8d8b8] transition-transform hover:-translate-y-px hover:text-[#3f5f2d]"
         >
           Add {pluralName}

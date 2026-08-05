@@ -82,3 +82,31 @@ export function reorderFunnelStepGroups(
   next.splice(to, 0, node);
   return flattenFunnelStepHierarchy(next);
 }
+
+/**
+ * Moves a top-level funnel step (and any attached experiment variants) into
+ * one of the insertion slots between top-level groups. Slot 0 is before the
+ * first group and `hierarchy.length` is after the final group.
+ */
+export function reorderFunnelStepGroupsAtIndex(
+  steps: AdminFunnelStep[],
+  draggedId: string,
+  insertionIndex: number
+) {
+  const hierarchy = buildFunnelStepHierarchy(steps);
+  const from = hierarchy.findIndex(({ step }) => step.id === draggedId);
+  if (from < 0) return steps;
+
+  const slot = Math.max(0, Math.min(hierarchy.length, insertionIndex));
+  // These are the slots immediately before and after the dragged group, so
+  // dropping there would leave the journey unchanged.
+  if (slot === from || slot === from + 1) return steps;
+
+  const next = [...hierarchy];
+  const [node] = next.splice(from, 1);
+  if (!node) return steps;
+
+  const adjustedSlot = from < slot ? slot - 1 : slot;
+  next.splice(adjustedSlot, 0, node);
+  return flattenFunnelStepHierarchy(next);
+}

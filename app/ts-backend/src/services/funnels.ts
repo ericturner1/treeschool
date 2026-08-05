@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, desc, eq, max, ne } from "drizzle-orm";
+import { and, asc, desc, eq, max, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   funnelAutomationRules,
@@ -14,6 +14,9 @@ import {
   funnelVisitorAssignments,
   funnels,
   funnelSteps,
+  nativeWorkbookBundleItems,
+  nativeWorkbookBundles,
+  nativeWorkbooks,
   profiles,
   type FunnelEventType,
   type FunnelExperimentGoal,
@@ -27,6 +30,13 @@ import {
   type FunnelStepType
 } from "ts-db";
 import { db, env } from "../db";
+import {
+  deletePrivateFile,
+  deletePrivateFilesByPrefix,
+  downloadPrivateFile,
+  getPrivateFileMetadata,
+  getSignedPrivateUploadUrl
+} from "./media";
 import { normalizeGeminiUsage } from "./model-providers/gemini-usage";
 import { recordModelUsage } from "./model-usage";
 
@@ -35,8 +45,7 @@ export const FUNNEL_STEP_STATUSES = ["draft", "active", "inactive"] as const;
 export const FUNNEL_STEP_TYPES = [
   "landing",
   "sales",
-  "checkout",
-  "order_bump",
+  "order_form",
   "upsell",
   "downsell",
   "thank_you",
@@ -72,6 +81,12 @@ export const FUNNEL_PUBLIC_EVENT_TYPES = [
 const FUNNEL_PAGE_MODEL = "gemini-2.5-flash";
 const FUNNEL_PAGE_MODEL_ENDPOINT =
   `https://generativelanguage.googleapis.com/v1beta/models/${FUNNEL_PAGE_MODEL}:generateContent`;
+const FUNNEL_ASSET_MAX_BYTES = 10 * 1024 * 1024;
+const FUNNEL_ASSET_TYPES = new Map([
+  ["image/jpeg", "jpg"],
+  ["image/png", "png"],
+  ["image/webp", "webp"]
+]);
 
 function localFunnelTestSalesEnabled() {
   const usesLocalDatabase =
@@ -106,10 +121,12 @@ const stepInputSchema = z.object({
   status: z.enum(FUNNEL_STEP_STATUSES),
   sourceType: z.enum(FUNNEL_STEP_SOURCE_TYPES),
   sourceRef: z.string().trim().max(240).optional().nullable(),
+  routePath: optionalPathSchema,
   publicPath: optionalPathSchema,
   previewPath: optionalPathSchema,
   linkLabel: z.string().trim().max(100).optional().nullable(),
-  isTopOfFunnel: z.boolean().default(false)
+  isTopOfFunnel: z.boolean().default(false),
+  settings: z.record(z.unknown()).optional()
 });
 
 const codeExperimentMutationSchema = z.object({
@@ -154,7 +171,7 @@ function readCodeExperimentSettings(
   };
 }
 
-export const funnelPageContentSchema = z.object({
+const legacyFunnelPageContentSchema = z.object({
   template: z.enum(FUNNEL_PAGE_TEMPLATES).default("sales"),
   theme: z.enum(FUNNEL_PAGE_THEMES).default("sage"),
   eyebrow: z.string().trim().max(120).default(""),
@@ -183,6 +200,357 @@ export const funnelPageContentSchema = z.object({
     submitLabel: "Continue"
   })
 });
+
+const funnelActionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("next_step") }),
+  z.object({ type: z.literal("url"), target: z.string().trim().min(1).max(1000) }),
+  z.object({
+    type: z.literal("checkout"),
+    offerKey: z.string().trim().min(1).max(160),
+    target: z.string().trim().max(1000).optional().nullable()
+  }),
+  z.object({
+    type: z.literal("accept_offer"),
+    offerKey: z.string().trim().min(1).max(160),
+    target: z.string().trim().max(1000).optional().nullable()
+  }),
+  z.object({
+    type: z.literal("decline_offer"),
+    offerKey: z.string().trim().min(1).max(160),
+    target: z.string().trim().max(1000).optional().nullable()
+  }),
+  z.object({ type: z.literal("none") })
+]);
+
+const funnelMediaSnapshotSchema = z.object({
+  assetId: z.string().trim().max(160).optional().nullable().default(null),
+  storagePath: z.string().trim().max(1000).optional().nullable().default(null),
+  publicUrl: z.string().trim().max(2000).optional().nullable().default(null),
+  alt: z.string().trim().max(500).default(""),
+  width: z.number().int().positive().max(20_000).optional().nullable().default(null),
+  height: z.number().int().positive().max(20_000).optional().nullable().default(null)
+});
+
+const funnelElementBaseSchema = z.object({
+  id: z.string().trim().min(1).max(160),
+  visibility: z.object({
+    desktop: z.boolean().optional(),
+    mobile: z.boolean().optional()
+  }).optional()
+});
+
+const funnelCountdownTypographySchema = z.object({
+  fontFamily: z.string().trim().max(300).optional(),
+  fontSize: z.number().int().min(8).max(120).optional(),
+  fontWeight: z.number().int().min(300).max(900).optional(),
+  color: z.string().trim().max(40).optional()
+});
+
+const funnelListTypographySchema = z.object({
+  fontFamily: z.string().trim().max(300).optional(),
+  fontSize: z.number().int().min(10).max(96).optional(),
+  lineHeight: z.number().int().min(10).max(140).optional(),
+  fontWeight: z.number().int().min(300).max(900).optional(),
+  color: z.string().trim().max(40).optional()
+});
+
+const funnelListAppearanceSchema = z.object({
+  marker: z.enum(["check", "bullet", "arrow", "star"]).optional(),
+  markerSize: z.number().int().min(8).max(96).optional(),
+  markerColor: z.string().trim().max(40).optional(),
+  itemSpacing: z.number().int().min(0).max(80).optional(),
+  markerGap: z.number().int().min(0).max(80).optional(),
+  backgroundColor: z.string().trim().max(40).optional(),
+  borderColor: z.string().trim().max(40).optional(),
+  borderWidth: z.number().int().min(0).max(16).optional(),
+  borderRadius: z.number().int().min(0).max(160).optional(),
+  paddingX: z.number().int().min(0).max(160).optional(),
+  paddingY: z.number().int().min(0).max(160).optional()
+});
+
+const funnelCountdownExpiryActionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("none") }),
+  z.object({ type: z.literal("hide") }),
+  z.object({ type: z.literal("message"), message: z.string().trim().min(1).max(500) }),
+  z.object({ type: z.literal("redirect"), target: z.string().trim().min(1).max(1000) })
+]);
+
+const funnelPageElementSchema = z.discriminatedUnion("type", [
+  funnelElementBaseSchema.extend({
+    type: z.literal("eyebrow"),
+    props: z.object({
+      text: z.string().trim().max(300).default(""),
+      align: z.enum(["left", "center", "right"]).default("left")
+    })
+  }),
+  funnelElementBaseSchema.extend({
+    type: z.literal("heading"),
+    props: z.object({
+      text: z.string().trim().min(1).max(1000),
+      level: z.enum(["h1", "h2", "h3"]).default("h2"),
+      align: z.enum(["left", "center", "right"]).default("left")
+    })
+  }),
+  funnelElementBaseSchema.extend({
+    type: z.literal("text"),
+    props: z.object({
+      text: z.string().trim().max(20_000).default(""),
+      style: z.enum(["lead", "body", "small"]).default("body"),
+      align: z.enum(["left", "center", "right"]).default("left")
+    })
+  }),
+  funnelElementBaseSchema.extend({
+    type: z.literal("list"),
+    props: z.object({
+      items: z.array(z.string().trim().min(1).max(1000)).max(100).default([]),
+      style: z.enum(["checks", "bullets"]).default("checks"),
+      align: z.enum(["left", "center", "right"]).default("left"),
+      typography: funnelListTypographySchema.optional(),
+      appearance: funnelListAppearanceSchema.optional()
+    })
+  }),
+  funnelElementBaseSchema.extend({
+    type: z.literal("image"),
+    props: z.object({
+      media: funnelMediaSnapshotSchema,
+      fit: z.enum(["contain", "cover"]).default("contain"),
+      caption: z.string().trim().max(1000).default("")
+    })
+  }),
+  funnelElementBaseSchema.extend({
+    type: z.literal("button"),
+    props: z.object({
+      label: z.string().trim().min(1).max(200),
+      subtext: z.string().trim().max(300).optional(),
+      variant: z.enum(["primary", "secondary", "text"]).default("primary"),
+      align: z.enum(["left", "center", "right"]).default("left"),
+      typography: z.object({
+        fontFamily: z.string().trim().max(300).optional(),
+        fontSize: z.number().int().min(10).max(96).optional(),
+        lineHeight: z.number().int().min(10).max(120).optional(),
+        fontWeight: z.number().int().min(300).max(900).optional(),
+        color: z.string().trim().max(40).optional()
+      }).optional(),
+      subtextTypography: z.object({
+        fontFamily: z.string().trim().max(300).optional(),
+        fontSize: z.number().int().min(8).max(48).optional(),
+        lineHeight: z.number().int().min(8).max(72).optional(),
+        fontWeight: z.number().int().min(300).max(900).optional(),
+        color: z.string().trim().max(40).optional()
+      }).optional(),
+      appearance: z.object({
+        backgroundColor: z.string().trim().max(40).optional(),
+        borderColor: z.string().trim().max(40).optional(),
+        borderWidth: z.number().int().min(0).max(16).optional(),
+        borderRadius: z.number().int().min(0).max(999).optional(),
+        paddingX: z.number().int().min(0).max(160).optional(),
+        paddingY: z.number().int().min(0).max(100).optional(),
+        width: z.enum(["fit", "full"]).optional(),
+        shadowColor: z.string().trim().max(40).optional(),
+        shadowDepth: z.number().int().min(0).max(30).optional()
+      }).optional(),
+      showArrow: z.boolean().optional(),
+      action: funnelActionSchema
+    })
+  }),
+  funnelElementBaseSchema.extend({
+    type: z.literal("countdown"),
+    props: z.object({
+      mode: z.enum(["delay", "deadline"]).default("delay"),
+      duration: z.object({
+        days: z.number().int().min(0).max(3650).default(0),
+        hours: z.number().int().min(0).max(23).default(0),
+        minutes: z.number().int().min(0).max(59).default(0),
+        seconds: z.number().int().min(0).max(59).default(0)
+      }),
+      deadline: z.string().trim().max(80).optional(),
+      expiryAction: funnelCountdownExpiryActionSchema.default({ type: "none" }),
+      align: z.enum(["left", "center", "right"]).default("center"),
+      showDays: z.boolean().default(true),
+      showLabels: z.boolean().default(true),
+      separator: z.string().max(3).default(":"),
+      typography: funnelCountdownTypographySchema.optional(),
+      labelTypography: funnelCountdownTypographySchema.optional()
+    })
+  }),
+  funnelElementBaseSchema.extend({
+    type: z.literal("lead_capture"),
+    props: z.object({
+      heading: z.string().trim().max(300).default("Where should we send it?"),
+      collectFirstName: z.boolean().default(true),
+      firstNameLabel: z.string().trim().max(100).default("First name"),
+      emailLabel: z.string().trim().max(100).default("Email address"),
+      submitLabel: z.string().trim().max(200).default("Continue"),
+      action: funnelActionSchema
+    })
+  }),
+  funnelElementBaseSchema.extend({
+    type: z.literal("divider"),
+    props: z.object({}).default({})
+  })
+]);
+
+const funnelPageDocumentSchema = z.object({
+  schemaVersion: z.literal(2),
+  kind: z.literal("funnel_page"),
+  theme: z.enum(FUNNEL_PAGE_THEMES).default("sage"),
+  styles: z.object({
+    typography: z.object({
+      headingFontFamily: z.string().trim().max(300).optional(),
+      bodyFontFamily: z.string().trim().max(300).optional(),
+      headingColor: z.string().trim().max(40).optional(),
+      bodyColor: z.string().trim().max(40).optional(),
+      baseFontSize: z.number().min(12).max(30).optional()
+    }).optional(),
+    colors: z.object({
+      pageBackground: z.string().trim().max(40).optional(),
+      surface: z.string().trim().max(40).optional(),
+      primary: z.string().trim().max(40).optional(),
+      secondary: z.string().trim().max(40).optional()
+    }).optional(),
+    layout: z.object({
+      contentWidth: z.number().int().min(640).max(1600).optional(),
+      sectionGap: z.number().int().min(0).max(160).optional(),
+      sectionPaddingY: z.number().int().min(0).max(200).optional(),
+      columnGap: z.number().int().min(0).max(100).optional()
+    }).optional(),
+    buttons: z.object({ borderRadius: z.number().int().min(0).max(999).optional() }).optional()
+  }).optional(),
+  assets: z.array(funnelMediaSnapshotSchema).max(250).optional().default([]),
+  sections: z.array(z.object({
+    id: z.string().trim().min(1).max(160),
+    props: z.object({
+      tone: z.enum(["default", "muted", "accent", "dark"]).default("default"),
+      width: z.enum(["narrow", "standard", "wide"]).default("standard"),
+      background: funnelMediaSnapshotSchema.optional().nullable().default(null)
+    }),
+    rows: z.array(z.object({
+      id: z.string().trim().min(1).max(160),
+      columns: z.array(z.object({
+        id: z.string().trim().min(1).max(160),
+        span: z.number().int().min(1).max(12).default(12),
+        elements: z.array(funnelPageElementSchema).max(100)
+      })).min(1).max(4)
+    })).min(1).max(30)
+  })).min(1).max(40)
+});
+
+type FunnelPageDocumentContent = z.infer<typeof funnelPageDocumentSchema>;
+
+function stableLegacyId(seed: string) {
+  return `legacy_${createHash("sha256").update(seed).digest("hex").slice(0, 20)}`;
+}
+
+function actionFromLegacyHref(href: string | null | undefined) {
+  return href
+    ? { type: "url" as const, target: href }
+    : { type: "next_step" as const };
+}
+
+function legacyPageToDocument(input: z.infer<typeof legacyFunnelPageContentSchema>) {
+  const mainElements: Array<z.infer<typeof funnelPageElementSchema>> = [];
+  if (input.eyebrow) {
+    mainElements.push({
+      id: stableLegacyId(`eyebrow:${input.eyebrow}`),
+      type: "eyebrow",
+      props: { text: input.eyebrow, align: "left" }
+    });
+  }
+  mainElements.push({
+    id: stableLegacyId(`headline:${input.headline}`),
+    type: "heading",
+    props: { text: input.headline, level: "h1", align: "left" }
+  });
+  if (input.subheadline) {
+    mainElements.push({
+      id: stableLegacyId(`subheadline:${input.subheadline}`),
+      type: "text",
+      props: { text: input.subheadline, style: "lead", align: "left" }
+    });
+  }
+  if (input.body) {
+    mainElements.push({
+      id: stableLegacyId(`body:${input.body}`),
+      type: "text",
+      props: { text: input.body, style: "body", align: "left" }
+    });
+  }
+  if (input.bullets.length > 0) {
+    mainElements.push({
+      id: stableLegacyId(`list:${input.bullets.join("|")}`),
+      type: "list",
+      props: { items: input.bullets, style: "checks", align: "left" }
+    });
+  }
+  if (input.leadCapture.enabled) {
+    mainElements.push({
+      id: stableLegacyId(`lead:${input.leadCapture.heading}`),
+      type: "lead_capture",
+      props: {
+        heading: input.leadCapture.heading,
+        collectFirstName: input.leadCapture.collectFirstName,
+        firstNameLabel: input.leadCapture.firstNameLabel,
+        emailLabel: input.leadCapture.emailLabel,
+        submitLabel: input.leadCapture.submitLabel,
+        action: actionFromLegacyHref(input.primaryCtaHref)
+      }
+    });
+  } else {
+    mainElements.push({
+      id: stableLegacyId(`primary:${input.primaryCtaLabel}`),
+      type: "button",
+      props: {
+        label: input.primaryCtaLabel,
+        variant: "primary",
+        align: "left",
+        action: actionFromLegacyHref(input.primaryCtaHref)
+      }
+    });
+  }
+  if (input.secondaryCtaLabel) {
+    mainElements.push({
+      id: stableLegacyId(`secondary:${input.secondaryCtaLabel}`),
+      type: "button",
+      props: {
+        label: input.secondaryCtaLabel,
+        variant: "secondary",
+        align: "left",
+        action: input.secondaryCtaHref
+          ? { type: "url", target: input.secondaryCtaHref }
+          : { type: "none" }
+      }
+    });
+  }
+  if (input.reassurance) {
+    mainElements.push({
+      id: stableLegacyId(`reassurance:${input.reassurance}`),
+      type: "text",
+      props: { text: input.reassurance, style: "small", align: "left" }
+    });
+  }
+  return {
+    schemaVersion: 2 as const,
+    kind: "funnel_page" as const,
+    theme: input.theme,
+    sections: [{
+      id: stableLegacyId(`section:${input.headline}`),
+      props: { tone: "default" as const, width: "standard" as const, background: null },
+      rows: [{
+        id: stableLegacyId(`row:${input.headline}`),
+        columns: [{
+          id: stableLegacyId(`column:${input.headline}`),
+          span: 12,
+          elements: mainElements
+        }]
+      }]
+    }]
+  };
+}
+
+export const funnelPageContentSchema = z.preprocess((value) => {
+  const legacy = legacyFunnelPageContentSchema.safeParse(value);
+  return legacy.success ? legacyPageToDocument(legacy.data) : value;
+}, funnelPageDocumentSchema);
 
 const funnelPageSeoSchema = z.object({
   title: z.string().trim().max(140).default(""),
@@ -368,6 +736,76 @@ export function normalizeFunnelPath(value: string | null | undefined, label = "P
     // Use the clearer validation error below.
   }
   throw new Error(`${label} must be a site path beginning with / or a complete http(s) URL.`);
+}
+
+const RESERVED_FUNNEL_ROUTE_PREFIXES = [
+  "/admin",
+  "/api",
+  "/auth",
+  "/blog",
+  "/bookstore",
+  "/dashboard",
+  "/f",
+  "/homeschool-lesson-plan-generator",
+  "/lesson-plan-generator",
+  "/offers",
+  "/p",
+  "/pack",
+  "/parent",
+  "/parents",
+  "/signin",
+  "/signup",
+  "/student",
+  "/_next"
+] as const;
+
+const RESERVED_FUNNEL_ROUTE_PATHS = new Set([
+  "/",
+  "/after-purchase",
+  "/faq",
+  "/first-grade-curriculum",
+  "/first-grade-homeschool",
+  "/first-grade-homeschool-curriculum",
+  "/homeschool-without-a-subscription",
+  "/pricing",
+  "/privacy",
+  "/refunds",
+  "/support",
+  "/switch-to-paper-based-homeschool",
+  "/terms"
+]);
+
+export function normalizeFunnelRoutePath(value: string | null | undefined) {
+  const raw = normalizeOptional(value);
+  if (!raw) return null;
+  if (raw.includes("?") || raw.includes("#")) {
+    throw new Error("URL paths cannot contain a query string or page fragment.");
+  }
+  const withLeadingSlash = raw.startsWith("/") ? raw : `/${raw}`;
+  const normalized = withLeadingSlash
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9/_-]+/g, "-")
+    .replace(/\/{2,}/g, "/")
+    .replace(/-{2,}/g, "-")
+    .replace(/\/-+/g, "/")
+    .replace(/-+\//g, "/")
+    .replace(/\/$/, "");
+  if (!normalized || normalized === "/") return "/";
+  if (normalized.length > 240) throw new Error("URL paths must be 240 characters or fewer.");
+  return normalized;
+}
+
+function reservedFunnelRouteReason(path: string) {
+  if (RESERVED_FUNNEL_ROUTE_PATHS.has(path)) {
+    return "That address belongs to an existing Treeschool page.";
+  }
+  const prefix = RESERVED_FUNNEL_ROUTE_PREFIXES.find(
+    (candidate) => path === candidate || path.startsWith(`${candidate}/`)
+  );
+  return prefix
+    ? `Addresses beginning with ${prefix}/ are reserved by Treeschool.`
+    : null;
 }
 
 export function normalizeFunnelCheckoutAttribution(
@@ -567,6 +1005,7 @@ function presentStep(step: typeof funnelSteps.$inferSelect) {
     status: step.status,
     sourceType: step.sourceType,
     sourceRef: step.sourceRef,
+    routePath: step.routePath,
     publicPath: step.publicPath,
     previewPath: step.previewPath,
     linkLabel: step.linkLabel,
@@ -597,7 +1036,13 @@ function presentFunnel(
   };
 }
 
-function managedPagePath(funnelSlug: string, stepSlug: string, isTopOfFunnel: boolean) {
+function managedPagePath(
+  funnelSlug: string,
+  stepSlug: string,
+  isTopOfFunnel: boolean,
+  routePath?: string | null
+) {
+  if (routePath) return routePath;
   return isTopOfFunnel
     ? `/f/${encodeURIComponent(funnelSlug)}`
     : `/f/${encodeURIComponent(funnelSlug)}/${encodeURIComponent(stepSlug)}`;
@@ -677,13 +1122,141 @@ async function resolveNextStepHref(
     .slice(currentIndex + 1)
     .find((candidate) => candidate.status === "active");
   if (!next) return null;
-  if (next.sourceType === "generated") {
-    const page = await getPrimaryPage(next.id);
-    if (page?.status === "published" && page.publishedRevisionNumber) {
-      return managedPagePath(funnel.slug, next.slug, next.isTopOfFunnel);
-    }
+  const page = await getPrimaryPage(next.id);
+  if (page?.status === "published" && page.publishedRevisionNumber) {
+    return managedPagePath(funnel.slug, next.slug, next.isTopOfFunnel, next.routePath);
   }
   return next.publicPath;
+}
+
+async function isAvailableFunnelProduct(productId: string) {
+  const [[workbook], [bundle]] = await Promise.all([
+    db.select({ id: nativeWorkbooks.id })
+      .from(nativeWorkbooks)
+      .where(and(
+        eq(nativeWorkbooks.id, productId),
+        eq(nativeWorkbooks.active, true),
+        eq(nativeWorkbooks.status, "published")
+      ))
+      .limit(1),
+    db.select({ id: nativeWorkbookBundles.id })
+      .from(nativeWorkbookBundles)
+      .where(and(
+        eq(nativeWorkbookBundles.id, productId),
+        eq(nativeWorkbookBundles.active, true)
+      ))
+      .limit(1)
+  ]);
+  if (workbook) return true;
+  if (!bundle) return false;
+  const members = await db.select({
+    active: nativeWorkbooks.active,
+    status: nativeWorkbooks.status,
+    activeVersionId: nativeWorkbooks.activeVersionId
+  })
+    .from(nativeWorkbookBundleItems)
+    .innerJoin(nativeWorkbooks, eq(nativeWorkbooks.id, nativeWorkbookBundleItems.workbookId))
+    .where(eq(nativeWorkbookBundleItems.bundleId, bundle.id));
+  return members.length > 0 && members.every((member) =>
+    member.active && member.status === "published" && Boolean(member.activeVersionId)
+  );
+}
+
+export async function resolvePublicFunnelOneClickOffer(input: { stepId: string }) {
+  const parsed = z.object({ stepId: z.string().uuid() }).parse(input);
+  const [record] = await db.select({ funnel: funnels, step: funnelSteps })
+    .from(funnelSteps)
+    .innerJoin(funnels, eq(funnels.id, funnelSteps.funnelId))
+    .where(and(
+      eq(funnelSteps.id, parsed.stepId),
+      or(eq(funnelSteps.stepType, "upsell"), eq(funnelSteps.stepType, "downsell")),
+      eq(funnelSteps.status, "active"),
+      eq(funnels.status, "live")
+    ))
+    .limit(1);
+  if (!record) throw new Error("This offer is not available.");
+  const settings = record.step.settingsJson && typeof record.step.settingsJson === "object"
+    ? record.step.settingsJson as Record<string, unknown>
+    : {};
+  const rawOffer = settings.oneClickOffer;
+  const offer = rawOffer && typeof rawOffer === "object"
+    ? rawOffer as Record<string, unknown>
+    : {};
+  const productId = typeof offer.productId === "string" ? offer.productId.trim() : "";
+  if (!productId || !(await isAvailableFunnelProduct(productId))) {
+    throw new Error("This offer is no longer available.");
+  }
+  return {
+    funnelId: record.funnel.id,
+    funnelSlug: record.funnel.slug,
+    stepId: record.step.id,
+    productId,
+    nextHref: await resolveNextStepHref(record.funnel, record.step)
+  };
+}
+
+function normalizePageDocumentActions(
+  content: FunnelPageDocumentContent
+): FunnelPageDocumentContent {
+  return funnelPageDocumentSchema.parse({
+    ...content,
+    sections: content.sections.map((section) => ({
+      ...section,
+      rows: section.rows.map((row) => ({
+        ...row,
+        columns: row.columns.map((column) => ({
+          ...column,
+          elements: column.elements.map((element) => {
+            if (element.type !== "button" && element.type !== "lead_capture") {
+              return element;
+            }
+            const action = element.props.action;
+            if (action.type === "url") {
+              return {
+                ...element,
+                props: {
+                  ...element.props,
+                  action: {
+                    ...action,
+                    target: normalizeFunnelPath(action.target, "Button destination") ?? ""
+                  }
+                }
+              };
+            }
+            if (
+              (action.type === "checkout"
+                || action.type === "accept_offer"
+                || action.type === "decline_offer")
+              && action.target
+            ) {
+              return {
+                ...element,
+                props: {
+                  ...element.props,
+                  action: {
+                    ...action,
+                    target: normalizeFunnelPath(action.target, "Action destination")
+                  }
+                }
+              };
+            }
+            return element;
+          })
+        }))
+      }))
+    }))
+  });
+}
+
+function pageDocumentHasForwardAction(
+  content: FunnelPageDocumentContent
+) {
+  return content.sections.some((section) => section.rows.some((row) =>
+    row.columns.some((column) => column.elements.some((element) =>
+      (element.type === "button" || element.type === "lead_capture")
+        && element.props.action.type !== "none"
+    ))
+  ));
 }
 
 function presentManagedPage(input: {
@@ -705,7 +1278,8 @@ function presentManagedPage(input: {
   const publicPath = managedPagePath(
     input.funnel.slug,
     input.step.slug,
-    input.step.isTopOfFunnel
+    input.step.isTopOfFunnel,
+    input.step.routePath
   );
   return {
     funnel: {
@@ -780,13 +1354,67 @@ async function assertUniqueStepSlug(funnelId: string, slug: string, excludeId?: 
       ? and(eq(funnelSteps.funnelId, funnelId), eq(funnelSteps.slug, slug), ne(funnelSteps.id, excludeId))
       : and(eq(funnelSteps.funnelId, funnelId), eq(funnelSteps.slug, slug)))
     .limit(1);
-  if (existing) throw new Error("Another step in this funnel already uses that slug.");
+  if (existing) throw new Error("That URL path is already used by another step in this funnel.");
+}
+
+export async function getAdminFunnelPathAvailability(input: {
+  userId: string;
+  path: string;
+  excludeStepId?: string | null;
+}) {
+  const parsed = z.object({
+    userId: z.string().uuid(),
+    path: z.string().trim().min(1).max(240),
+    excludeStepId: z.string().uuid().optional().nullable()
+  }).parse(input);
+  await requireAdmin(parsed.userId);
+  const path = normalizeFunnelRoutePath(parsed.path);
+  if (!path) return { available: false, path: null, reason: "Enter a URL path." };
+
+  if (parsed.excludeStepId) {
+    const [current] = await db
+      .select({ routePath: funnelSteps.routePath, publicPath: funnelSteps.publicPath })
+      .from(funnelSteps)
+      .where(eq(funnelSteps.id, parsed.excludeStepId))
+      .limit(1);
+    if (current && (current.routePath === path || current.publicPath === path)) {
+      return { available: true, path, reason: null };
+    }
+  }
+
+  const reservedReason = reservedFunnelRouteReason(path);
+  if (reservedReason) return { available: false, path, reason: reservedReason };
+
+  const [existing] = await db
+    .select({ id: funnelSteps.id })
+    .from(funnelSteps)
+    .where(parsed.excludeStepId
+      ? and(eq(funnelSteps.routePath, path), ne(funnelSteps.id, parsed.excludeStepId))
+      : eq(funnelSteps.routePath, path))
+    .limit(1);
+  return existing
+    ? { available: false, path, reason: "That address is already used by another funnel page." }
+    : { available: true, path, reason: null };
+}
+
+async function assertAvailableFunnelRoutePath(
+  userId: string,
+  path: string | null,
+  excludeStepId?: string
+) {
+  if (!path) return;
+  const availability = await getAdminFunnelPathAvailability({
+    userId,
+    path,
+    excludeStepId
+  });
+  if (!availability.available) throw new Error(availability.reason ?? "That URL path is unavailable.");
 }
 
 export async function listAdminFunnels(userId: string) {
   await requireAdmin(userId);
   const [funnelRows, stepRows] = await Promise.all([
-    db.select().from(funnels).orderBy(asc(funnels.createdAt)),
+    db.select().from(funnels).orderBy(desc(funnels.updatedAt), desc(funnels.createdAt)),
     db.select().from(funnelSteps).orderBy(asc(funnelSteps.displayOrder), asc(funnelSteps.createdAt))
   ]);
   const byFunnel = new Map<string, Array<typeof funnelSteps.$inferSelect>>();
@@ -1009,6 +1637,218 @@ export async function getAdminFunnelOperations(input: {
   };
 }
 
+function contactTags(value: unknown) {
+  return Array.isArray(value)
+    ? Array.from(new Set(value.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)))
+    : [];
+}
+
+export async function listAdminFunnelContacts(input: {
+  userId: string;
+  query?: string | null;
+}) {
+  const parsed = z.object({
+    userId: z.string().uuid(),
+    query: z.string().trim().max(320).optional().nullable()
+  }).parse(input);
+  await requireAdmin(parsed.userId);
+  const [leadRows, saleRows, funnelRows] = await Promise.all([
+    db.select().from(funnelLeads).orderBy(desc(funnelLeads.lastSeenAt)).limit(2000),
+    db.select().from(funnelSales).orderBy(desc(funnelSales.purchasedAt)).limit(4000),
+    db.select({ id: funnels.id, name: funnels.name }).from(funnels)
+  ]);
+  const funnelNames = new Map(funnelRows.map((funnel) => [funnel.id, funnel.name]));
+  const contacts = new Map<string, {
+    id: string;
+    email: string;
+    firstName: string | null;
+    status: "lead" | "customer" | "unsubscribed";
+    tags: Set<string>;
+    funnelNames: Set<string>;
+    firstSeenAt: Date;
+    lastSeenAt: Date;
+    convertedAt: Date | null;
+    purchases: number;
+    revenueByCurrency: Map<string, number>;
+  }>();
+  for (const lead of leadRows) {
+    const email = lead.email.trim().toLowerCase();
+    const existing = contacts.get(email);
+    const current = existing ?? {
+      id: lead.id,
+      email,
+      firstName: lead.firstName,
+      status: lead.status,
+      tags: new Set<string>(),
+      funnelNames: new Set<string>(),
+      firstSeenAt: lead.firstSeenAt,
+      lastSeenAt: lead.lastSeenAt,
+      convertedAt: lead.convertedAt,
+      purchases: 0,
+      revenueByCurrency: new Map<string, number>()
+    };
+    contactTags(lead.tagsJson).forEach((tag) => current.tags.add(tag));
+    const funnelName = funnelNames.get(lead.funnelId);
+    if (funnelName) current.funnelNames.add(funnelName);
+    if (lead.firstSeenAt < current.firstSeenAt) current.firstSeenAt = lead.firstSeenAt;
+    if (lead.lastSeenAt > current.lastSeenAt) {
+      current.lastSeenAt = lead.lastSeenAt;
+      current.id = lead.id;
+      current.firstName = lead.firstName ?? current.firstName;
+    }
+    if (lead.status === "customer") current.status = "customer";
+    else if (lead.status === "unsubscribed" && current.status !== "customer") current.status = "unsubscribed";
+    if (lead.convertedAt && (!current.convertedAt || lead.convertedAt < current.convertedAt)) {
+      current.convertedAt = lead.convertedAt;
+    }
+    contacts.set(email, current);
+  }
+  for (const sale of saleRows) {
+    const email = sale.email?.trim().toLowerCase();
+    if (!email) continue;
+    const current = contacts.get(email);
+    if (!current) continue;
+    current.purchases += 1;
+    current.status = "customer";
+    current.revenueByCurrency.set(
+      sale.currency,
+      (current.revenueByCurrency.get(sale.currency) ?? 0) + sale.amountTotalCents
+    );
+    current.funnelNames.add(sale.funnelName);
+  }
+  const query = parsed.query?.toLowerCase() ?? "";
+  return {
+    contacts: Array.from(contacts.values())
+      .filter((contact) => !query || contact.email.includes(query) || contact.firstName?.toLowerCase().includes(query) || Array.from(contact.tags).some((tag) => tag.toLowerCase().includes(query)))
+      .sort((a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime())
+      .map((contact) => ({
+        ...contact,
+        tags: Array.from(contact.tags).sort(),
+        funnelNames: Array.from(contact.funnelNames).sort(),
+        firstSeenAt: contact.firstSeenAt.toISOString(),
+        lastSeenAt: contact.lastSeenAt.toISOString(),
+        convertedAt: contact.convertedAt?.toISOString() ?? null,
+        revenue: Array.from(contact.revenueByCurrency, ([currency, amountCents]) => ({ currency, amountCents }))
+      }))
+  };
+}
+
+export async function getAdminFunnelContact(input: { userId: string; contactId: string }) {
+  const parsed = z.object({
+    userId: z.string().uuid(),
+    contactId: z.string().uuid()
+  }).parse(input);
+  await requireAdmin(parsed.userId);
+  const [anchor] = await db.select().from(funnelLeads).where(eq(funnelLeads.id, parsed.contactId)).limit(1);
+  if (!anchor) throw new Error("Contact not found.");
+  const email = anchor.email.trim().toLowerCase();
+  const [leadRows, saleRows, funnelRows, stepRows] = await Promise.all([
+    db.select().from(funnelLeads).where(sql`lower(${funnelLeads.email}) = ${email}`).orderBy(desc(funnelLeads.lastSeenAt)),
+    db.select().from(funnelSales).where(sql`lower(${funnelSales.email}) = ${email}`).orderBy(desc(funnelSales.purchasedAt)),
+    db.select({ id: funnels.id, name: funnels.name }).from(funnels),
+    db.select({ id: funnelSteps.id, name: funnelSteps.name }).from(funnelSteps)
+  ]);
+  const funnelNames = new Map(funnelRows.map((funnel) => [funnel.id, funnel.name]));
+  const stepNames = new Map(stepRows.map((step) => [step.id, step.name]));
+  const latest = leadRows[0] ?? anchor;
+  const status = leadRows.some((lead) => lead.status === "customer")
+    ? "customer"
+    : leadRows.some((lead) => lead.status === "unsubscribed") ? "unsubscribed" : "lead";
+  return {
+    contact: {
+      id: latest.id,
+      email,
+      firstName: latest.firstName ?? leadRows.find((lead) => lead.firstName)?.firstName ?? null,
+      status,
+      tags: Array.from(new Set(leadRows.flatMap((lead) => contactTags(lead.tagsJson)))).sort(),
+      firstSeenAt: new Date(Math.min(...leadRows.map((lead) => lead.firstSeenAt.getTime()))).toISOString(),
+      lastSeenAt: new Date(Math.max(...leadRows.map((lead) => lead.lastSeenAt.getTime()))).toISOString(),
+      convertedAt: leadRows.map((lead) => lead.convertedAt).filter((date): date is Date => Boolean(date)).sort((a, b) => a.getTime() - b.getTime())[0]?.toISOString() ?? null,
+      sources: leadRows.map((lead) => ({
+        id: lead.id,
+        funnelName: funnelNames.get(lead.funnelId) ?? "Unknown funnel",
+        firstStepName: lead.firstFunnelStepId ? stepNames.get(lead.firstFunnelStepId) ?? null : null,
+        lastStepName: lead.lastFunnelStepId ? stepNames.get(lead.lastFunnelStepId) ?? null : null,
+        status: lead.status,
+        firstSeenAt: lead.firstSeenAt.toISOString(),
+        lastSeenAt: lead.lastSeenAt.toISOString()
+      })),
+      sales: saleRows.map((sale) => ({
+        id: sale.id,
+        funnelName: sale.funnelName,
+        stepName: sale.funnelStepId ? stepNames.get(sale.funnelStepId) ?? null : null,
+        orderKind: sale.orderKind,
+        amountTotalCents: sale.amountTotalCents,
+        currency: sale.currency,
+        status: sale.status,
+        purchasedAt: sale.purchasedAt.toISOString(),
+        test: sale.metadataJson.test === true
+      }))
+    }
+  };
+}
+
+export async function saveAdminFunnelContact(input: {
+  userId: string;
+  contactId: string;
+  firstName?: string | null;
+  status: "lead" | "customer" | "unsubscribed";
+  tags?: string[];
+}) {
+  const parsed = z.object({
+    userId: z.string().uuid(),
+    contactId: z.string().uuid(),
+    firstName: z.string().trim().max(160).optional().nullable(),
+    status: z.enum(["lead", "customer", "unsubscribed"]),
+    tags: z.array(z.string().trim().min(1).max(80)).max(50).default([])
+  }).parse(input);
+  await requireAdmin(parsed.userId);
+  const [anchor] = await db.select({ email: funnelLeads.email }).from(funnelLeads).where(eq(funnelLeads.id, parsed.contactId)).limit(1);
+  if (!anchor) throw new Error("Contact not found.");
+  const email = anchor.email.trim().toLowerCase();
+  await db.update(funnelLeads).set({
+    firstName: parsed.firstName || null,
+    status: parsed.status,
+    tagsJson: Array.from(new Set(parsed.tags)),
+    updatedAt: new Date()
+  }).where(sql`lower(${funnelLeads.email}) = ${email}`);
+  return { saved: true };
+}
+
+export async function getPublicFunnelOrderForm(input: { path: string }) {
+  const parsed = z.object({ path: z.string().trim().min(1).max(500) }).parse(input);
+  const path = normalizeFunnelRoutePath(parsed.path);
+  if (!path) throw new Error("Order form not found.");
+  const [record] = await db.select({ funnel: funnels, step: funnelSteps })
+    .from(funnelSteps)
+    .innerJoin(funnels, eq(funnels.id, funnelSteps.funnelId))
+    .where(and(
+      or(eq(funnelSteps.routePath, path), eq(funnelSteps.publicPath, path)),
+      eq(funnelSteps.stepType, "order_form"),
+      eq(funnelSteps.status, "active"),
+      eq(funnels.status, "live")
+    ))
+    .limit(1);
+  if (!record) throw new Error("Order form not found.");
+  const rawOrderForm = record.step.settingsJson?.orderForm;
+  const orderForm = rawOrderForm && typeof rawOrderForm === "object"
+    ? rawOrderForm as Record<string, unknown>
+    : {};
+  return {
+    funnel: { id: record.funnel.id, slug: record.funnel.slug, name: record.funnel.name },
+    step: presentStep(record.step),
+    orderForm: {
+      primaryProductId: typeof orderForm.primaryProductId === "string" ? orderForm.primaryProductId : null,
+      orderBumpProductIds: Array.isArray(orderForm.orderBumpProductIds)
+        ? orderForm.orderBumpProductIds.filter((id): id is string => typeof id === "string")
+        : [],
+      submitLabel: typeof orderForm.submitLabel === "string" && orderForm.submitLabel.trim()
+        ? orderForm.submitLabel.trim()
+        : "Continue to secure checkout"
+    }
+  };
+}
+
 export async function saveAdminFunnelAutomation(
   input: z.input<typeof automationRuleSchema>
 ) {
@@ -1111,12 +1951,45 @@ export async function saveAdminFunnel(input: z.input<typeof funnelInputSchema>) 
   return { funnel: presentFunnel(created) };
 }
 
+export async function deleteAdminFunnel(input: {
+  userId: string;
+  funnelId: string;
+}) {
+  const parsed = z.object({
+    userId: z.string().uuid(),
+    funnelId: z.string().uuid()
+  }).parse(input);
+  await requireAdmin(parsed.userId);
+  const funnel = await getFunnelRecord(parsed.funnelId);
+  const [deleted] = await db
+    .delete(funnels)
+    .where(eq(funnels.id, funnel.id))
+    .returning({ id: funnels.id, slug: funnels.slug, name: funnels.name });
+  if (!deleted) throw new Error("Funnel not found.");
+
+  try {
+    await deletePrivateFilesByPrefix(`funnel-assets/${deleted.id}/`);
+  } catch (error) {
+    // The funnel itself is already gone and its database-owned records have
+    // cascaded. Do not make a successful deletion appear to fail because an
+    // orphaned media cleanup needs to be retried operationally.
+    console.error("Could not remove deleted funnel media.", {
+      funnelId: deleted.id,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+
+  return { deleted: true, funnel: deleted };
+}
+
 export async function saveAdminFunnelStep(input: z.input<typeof stepInputSchema>) {
   const parsed = stepInputSchema.parse(input);
   await requireAdmin(parsed.userId);
   await getFunnelRecord(parsed.funnelId);
   const slug = normalizeFunnelSlug(parsed.slug);
   await assertUniqueStepSlug(parsed.funnelId, slug, parsed.id);
+  const routePath = normalizeFunnelRoutePath(parsed.routePath);
+  await assertAvailableFunnelRoutePath(parsed.userId, routePath, parsed.id);
   const values = {
     slug,
     name: parsed.name,
@@ -1125,10 +1998,12 @@ export async function saveAdminFunnelStep(input: z.input<typeof stepInputSchema>
     status: parsed.status as FunnelStepStatus,
     sourceType: parsed.sourceType as FunnelStepSourceType,
     sourceRef: normalizeOptional(parsed.sourceRef),
+    routePath,
     publicPath: normalizeFunnelPath(parsed.publicPath, "Public path"),
     previewPath: normalizeFunnelPath(parsed.previewPath, "Preview path"),
     linkLabel: normalizeOptional(parsed.linkLabel),
     isTopOfFunnel: parsed.isTopOfFunnel,
+    ...(parsed.settings ? { settingsJson: parsed.settings } : {}),
     updatedByUserId: parsed.userId,
     updatedAt: new Date()
   };
@@ -1162,6 +2037,7 @@ export async function saveAdminFunnelStep(input: z.input<typeof stepInputSchema>
       .values({
         ...values,
         funnelId: parsed.funnelId,
+        isTopOfFunnel: highestOrder == null,
         displayOrder: Number(highestOrder ?? 0) + 10,
         createdByUserId: parsed.userId
       })
@@ -1316,11 +2192,20 @@ export async function reorderAdminFunnelSteps(input: {
     throw new Error("The funnel order is out of date. Refresh and try again.");
   }
   await db.transaction(async (tx) => {
+    await tx
+      .update(funnelSteps)
+      .set({
+        isTopOfFunnel: false,
+        updatedByUserId: parsed.userId,
+        updatedAt: new Date()
+      })
+      .where(eq(funnelSteps.funnelId, parsed.funnelId));
     for (const [index, id] of orderedIds.entries()) {
       await tx
         .update(funnelSteps)
         .set({
           displayOrder: (index + 1) * 10,
+          isTopOfFunnel: index === 0,
           updatedByUserId: parsed.userId,
           updatedAt: new Date()
         })
@@ -1382,10 +2267,9 @@ export async function duplicateAdminFunnelStep(input: {
         description: source.description,
         stepType: source.stepType,
         status: "draft",
-        sourceType: source.sourceType === "generated" && !(sourcePage && sourceRevision)
-          ? "code"
-          : source.sourceType,
+        sourceType: source.sourceType,
         sourceRef: source.sourceType === "generated" ? null : source.sourceRef,
+        routePath: null,
         publicPath: null,
         previewPath: source.sourceType === "generated" ? null : source.previewPath,
         linkLabel: source.linkLabel,
@@ -1428,7 +2312,7 @@ export async function duplicateAdminFunnelStep(input: {
         .update(funnelSteps)
         .set({
           sourceType: "generated",
-          sourceRef: duplicatedPage.id,
+          sourceRef: null,
           previewPath,
           updatedByUserId: parsed.userId,
           updatedAt: new Date()
@@ -1532,6 +2416,122 @@ export async function getAdminFunnelPage(input: {
   };
 }
 
+function normalizedFunnelAssetType(contentType: string | null | undefined) {
+  return String(contentType ?? "").split(";", 1)[0]!.trim().toLowerCase();
+}
+
+function funnelAssetParts(objectPath: string) {
+  const match = objectPath.match(
+    /^funnel-assets\/([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36}\.(?:jpg|png|webp))$/i
+  );
+  if (!match) throw new Error("The funnel image upload is invalid.");
+  return { funnelId: match[1]!, stepId: match[2]!, filename: match[3]! };
+}
+
+function funnelAssetUrl(objectPath: string) {
+  const { funnelId, stepId, filename } = funnelAssetParts(objectPath);
+  return `/api/funnels/assets/${funnelId}/${stepId}/${filename}`;
+}
+
+function validFunnelAsset(bytes: Uint8Array, contentType: string) {
+  if (contentType === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (contentType === "image/png") {
+    return bytes.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+      .every((value, index) => bytes[index] === value);
+  }
+  return contentType === "image/webp"
+    && bytes.length >= 12
+    && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF"
+    && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+}
+
+export async function prepareAdminFunnelAssetUpload(input: {
+  userId: string;
+  funnelId: string;
+  stepId: string;
+  contentType: string;
+  sizeBytes: number;
+}) {
+  await requireAdmin(input.userId);
+  const funnel = await getFunnelRecord(input.funnelId);
+  await getStepForFunnel(funnel.id, input.stepId);
+  const contentType = normalizedFunnelAssetType(input.contentType);
+  const extension = FUNNEL_ASSET_TYPES.get(contentType);
+  if (!extension) throw new Error("Choose a JPEG, PNG, or WebP image.");
+  if (!Number.isInteger(input.sizeBytes) || input.sizeBytes <= 0 || input.sizeBytes > FUNNEL_ASSET_MAX_BYTES) {
+    throw new Error("Funnel images may be up to 10 MB.");
+  }
+  const objectPath = `funnel-assets/${funnel.id}/${input.stepId}/${randomUUID()}.${extension}`;
+  return {
+    assetId: randomUUID(),
+    objectPath,
+    contentType,
+    uploadUrl: await getSignedPrivateUploadUrl({ objectPath, contentType, expiresInMinutes: 15 }),
+    publicUrl: funnelAssetUrl(objectPath)
+  };
+}
+
+export async function completeAdminFunnelAssetUpload(input: {
+  userId: string;
+  funnelId: string;
+  stepId: string;
+  objectPath: string;
+  assetId: string;
+}) {
+  await requireAdmin(input.userId);
+  const parts = funnelAssetParts(input.objectPath);
+  if (parts.funnelId !== input.funnelId || parts.stepId !== input.stepId) {
+    throw new Error("The funnel image upload is invalid.");
+  }
+  const metadata = await getPrivateFileMetadata(input.objectPath);
+  const contentType = normalizedFunnelAssetType(metadata.contentType);
+  if (!FUNNEL_ASSET_TYPES.has(contentType) || metadata.size <= 0 || metadata.size > FUNNEL_ASSET_MAX_BYTES) {
+    throw new Error("The uploaded file must be a JPEG, PNG, or WebP image up to 10 MB.");
+  }
+  const bytes = await downloadPrivateFile(input.objectPath);
+  if (!validFunnelAsset(bytes, contentType)) throw new Error("The uploaded file does not appear to be a valid image.");
+  return {
+    assetId: input.assetId,
+    storagePath: input.objectPath,
+    publicUrl: funnelAssetUrl(input.objectPath),
+    alt: "",
+    width: null,
+    height: null,
+    contentType,
+    sizeBytes: metadata.size
+  };
+}
+
+export async function discardAdminFunnelAssetUpload(input: {
+  userId: string;
+  funnelId: string;
+  stepId: string;
+  objectPath: string;
+}) {
+  await requireAdmin(input.userId);
+  const parts = funnelAssetParts(input.objectPath);
+  if (parts.funnelId !== input.funnelId || parts.stepId !== input.stepId) {
+    throw new Error("The funnel image upload is invalid.");
+  }
+  await deletePrivateFile(input.objectPath);
+  return { discarded: true };
+}
+
+export async function getFunnelAsset(input: {
+  funnelId: string;
+  stepId: string;
+  filename: string;
+}) {
+  const objectPath = `funnel-assets/${input.funnelId}/${input.stepId}/${input.filename}`;
+  funnelAssetParts(objectPath);
+  const metadata = await getPrivateFileMetadata(objectPath);
+  const contentType = normalizedFunnelAssetType(metadata.contentType);
+  if (!FUNNEL_ASSET_TYPES.has(contentType)) throw new Error("Funnel image not found.");
+  return { bytes: await downloadPrivateFile(objectPath), contentType };
+}
+
 export async function saveAdminFunnelPageDraft(
   input: z.input<typeof savePageDraftSchema>
 ) {
@@ -1539,17 +2539,7 @@ export async function saveAdminFunnelPageDraft(
   await requireAdmin(parsed.userId);
   const funnel = await getFunnelRecord(parsed.funnelId);
   const step = await getStepForFunnel(funnel.id, parsed.stepId);
-  const content = {
-    ...parsed.content,
-    primaryCtaHref: normalizeFunnelPath(
-      parsed.content.primaryCtaHref,
-      "Primary CTA path"
-    ),
-    secondaryCtaHref: normalizeFunnelPath(
-      parsed.content.secondaryCtaHref,
-      "Secondary CTA path"
-    )
-  };
+  const content = normalizePageDocumentActions(parsed.content);
   const existingPage = parsed.pageId
     ? await getStepPage(step.id, parsed.pageId)
     : await getPrimaryPage(step.id);
@@ -1605,12 +2595,25 @@ export async function saveAdminFunnelPageDraft(
       .where(eq(funnelPages.id, page.id))
       .returning();
     if (page.isPrimary) {
+      const currentSettings = (step.settingsJson ?? {}) as Record<string, unknown>;
+      const importingLegacyPage = parsed.source === "imported" && step.sourceType === "code";
       await tx
         .update(funnelSteps)
         .set({
-          sourceType: "generated",
-          sourceRef: page.id,
+          // An imported draft is a safe editable snapshot of the existing
+          // code-backed page. Keep the live source identity until an admin
+          // actually edits or publishes the managed version.
+          sourceType: importingLegacyPage ? step.sourceType : "generated",
+          sourceRef: importingLegacyPage ? step.sourceRef : null,
           previewPath,
+          settingsJson: {
+            ...currentSettings,
+            documentSchemaVersion: 2,
+            ...(importingLegacyPage && step.sourceRef
+              ? { importedLegacySourceRef: step.sourceRef }
+              : {}),
+            journeyNextAction: pageDocumentHasForwardAction(content) ? "button" : "none"
+          },
           updatedByUserId: parsed.userId,
           updatedAt: new Date()
         })
@@ -1623,8 +2626,12 @@ export async function saveAdminFunnelPageDraft(
           ...step,
           ...(page.isPrimary
             ? {
-                sourceType: "generated" as FunnelStepSourceType,
-                sourceRef: page.id,
+                sourceType: parsed.source === "imported" && step.sourceType === "code"
+                  ? step.sourceType
+                  : "generated" as FunnelStepSourceType,
+                sourceRef: parsed.source === "imported" && step.sourceType === "code"
+                  ? step.sourceRef
+                  : null,
                 previewPath
               }
             : {})
@@ -1654,7 +2661,47 @@ export async function publishAdminFunnelPage(input: {
   if (!page) throw new Error("Save a page draft before publishing.");
   const revision = await getLatestPageRevision(page.id);
   if (!revision) throw new Error("Save a page draft before publishing.");
-  const publicPath = managedPagePath(funnel.slug, step.slug, step.isTopOfFunnel);
+  if (step.stepType === "order_form") {
+    const settings = step.settingsJson && typeof step.settingsJson === "object"
+      ? step.settingsJson as Record<string, unknown>
+      : {};
+    const rawOrderForm = settings.orderForm;
+    const orderForm = rawOrderForm && typeof rawOrderForm === "object"
+      ? rawOrderForm as Record<string, unknown>
+      : {};
+    const primaryProductId = typeof orderForm.primaryProductId === "string"
+      ? orderForm.primaryProductId.trim()
+      : "";
+    if (!primaryProductId) {
+      throw new Error("Choose a primary bookstore product in the order form settings before publishing.");
+    }
+
+    if (!(await isAvailableFunnelProduct(primaryProductId))) {
+      throw new Error("The selected primary product is no longer available. Choose a published bookstore product before publishing.");
+    }
+  }
+  if (step.stepType === "upsell" || step.stepType === "downsell") {
+    const settings = step.settingsJson && typeof step.settingsJson === "object"
+      ? step.settingsJson as Record<string, unknown>
+      : {};
+    const rawOffer = settings.oneClickOffer;
+    const offer = rawOffer && typeof rawOffer === "object"
+      ? rawOffer as Record<string, unknown>
+      : {};
+    const productId = typeof offer.productId === "string" ? offer.productId.trim() : "";
+    if (!productId) {
+      throw new Error("Choose a bookstore product for this one-click offer before publishing.");
+    }
+    if (!(await isAvailableFunnelProduct(productId))) {
+      throw new Error("The selected one-click product is no longer available. Choose a published bookstore product before publishing.");
+    }
+  }
+  const publicPath = managedPagePath(
+    funnel.slug,
+    step.slug,
+    step.isTopOfFunnel,
+    step.routePath
+  );
   const previewPath =
     `/admin/funnels/${encodeURIComponent(funnel.slug)}/preview/${encodeURIComponent(step.id)}` +
     (!page.isPrimary ? `?page=${encodeURIComponent(page.id)}` : "");
@@ -1670,14 +2717,22 @@ export async function publishAdminFunnelPage(input: {
       })
       .where(eq(funnelPages.id, page.id));
     if (page.isPrimary) {
+      const content = funnelPageContentSchema.parse(revision.contentJson);
+      const currentSettings = (step.settingsJson ?? {}) as Record<string, unknown>;
       await tx
         .update(funnelSteps)
         .set({
           status: "active",
           sourceType: "generated",
-          sourceRef: page.id,
+          sourceRef: null,
+          routePath: step.routePath ?? publicPath,
           publicPath,
           previewPath,
+          settingsJson: {
+            ...currentSettings,
+            documentSchemaVersion: 2,
+            journeyNextAction: pageDocumentHasForwardAction(content) ? "button" : "none"
+          },
           updatedByUserId: parsed.userId,
           updatedAt: new Date()
         })
@@ -1931,7 +2986,7 @@ export async function generateAdminFunnelPageDraft(
           parts: [{
             text: [
               "You are a conversion copywriter working inside Treeschool's human-reviewed funnel editor.",
-              "Return a complete structured funnel page as JSON with exactly two top-level keys: content and seo.",
+              "Return a complete structured funnel page document as JSON with exactly two top-level keys: content and seo.",
               `Task mode: ${parsed.mode}.`,
               `Funnel: ${funnel.name}.`,
               `Audience: ${funnel.audience || "homeschool parents"}.`,
@@ -1939,10 +2994,15 @@ export async function generateAdminFunnelPageDraft(
               `Step type: ${step.stepType}. Step name: ${step.name}.`,
               `Editor instructions: ${parsed.prompt}`,
               current ? `Current structured page:\n${JSON.stringify(current)}` : "",
-              "The content object must include template, theme, eyebrow, headline, subheadline, body, bullets, primaryCtaLabel, primaryCtaHref, secondaryCtaLabel, secondaryCtaHref, and reassurance.",
-              `Allowed templates: ${FUNNEL_PAGE_TEMPLATES.join(", ")}.`,
-              `Allowed themes: ${FUNNEL_PAGE_THEMES.join(", ")}.`,
-              "Use null for CTA destinations when the button should continue to the next active funnel step.",
+              "The content object is a versioned visual-editor document. It must have schemaVersion 2, kind funnel_page, a theme, and sections containing rows, columns, and elements.",
+              `Allowed themes: ${FUNNEL_PAGE_THEMES.join(", ")}. Section tones: default, muted, accent, dark. Section widths: narrow, standard, wide.`,
+              "Allowed element types are eyebrow, heading, text, list, image, button, lead_capture, and divider.",
+              "Use this exact nesting shape: content={schemaVersion:2,kind:'funnel_page',theme,sections:[{id,props:{tone,width,background:null},rows:[{id,columns:[{id,span,elements:[]}]}]}]}.",
+              "Exact element props: eyebrow={text,align}; heading={text,level:'h1'|'h2'|'h3',align}; text={text,style:'lead'|'body'|'small',align}; list={items:string[],style:'checks'|'bullets',align}; image={media:{assetId,storagePath,publicUrl,alt,width,height},fit:'contain'|'cover',caption}; button={label,variant:'primary'|'secondary'|'text',align,action}; lead_capture={heading,collectFirstName,firstNameLabel,emailLabel,submitLabel,action}; divider={}.",
+              "Every element needs a unique stable string id. Rows, columns, and sections also need unique stable string ids. Columns use an integer span from 1 through 12.",
+              "Buttons contain label, variant (primary, secondary, or text), align, and a semantic action.",
+              "Use action {\"type\":\"next_step\"} to continue through the funnel. Use {\"type\":\"url\",\"target\":\"...\"} only for a deliberate external or fixed destination.",
+              "Image elements contain a media snapshot with assetId, storagePath, publicUrl, alt, width, and height. Preserve existing media snapshots exactly unless instructed otherwise.",
               "The seo object must include title, description, and noIndex.",
               "Be specific, clear, and persuasive without hype. Never invent testimonials, statistics, scarcity, guarantees, product capabilities, prices, discounts, or research findings.",
               "Preserve factual details from the current page unless the editor explicitly requests a change.",
@@ -2655,5 +3715,33 @@ export async function getPublicFunnelPage(input: {
           variantId: assignment.variant.id
         }
       : null
+  });
+}
+
+export async function getPublicFunnelPageByPath(input: {
+  path: string;
+  visitorId?: string | null;
+}) {
+  const parsed = z.object({
+    path: z.string().trim().min(1).max(240),
+    visitorId: z.string().uuid().optional().nullable()
+  }).parse(input);
+  const routePath = normalizeFunnelRoutePath(parsed.path);
+  if (!routePath) throw new Error("Funnel page not found.");
+  const [match] = await db
+    .select({ funnelSlug: funnels.slug, stepSlug: funnelSteps.slug })
+    .from(funnelSteps)
+    .innerJoin(funnels, eq(funnels.id, funnelSteps.funnelId))
+    .where(and(
+      eq(funnelSteps.routePath, routePath),
+      eq(funnelSteps.status, "active"),
+      eq(funnels.status, "live")
+    ))
+    .limit(1);
+  if (!match) throw new Error("Funnel page not found.");
+  return getPublicFunnelPage({
+    funnelSlug: match.funnelSlug,
+    stepSlug: match.stepSlug,
+    visitorId: parsed.visitorId
   });
 }

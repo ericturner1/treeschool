@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { showGlobalToast } from "../../../lib/toast";
 import {
   completeWorkbookReplacementAction,
   discardWorkbookReplacementAction,
@@ -76,6 +77,7 @@ export function WorkbookPdfReplacement({ workbookId, title }: { workbookId: stri
       setBusy(false);
       setOpen(false);
       setStatus(null);
+      showGlobalToast({ kind: "success", text: "The compatible PDF replacement was accepted and queued for processing." });
       router.refresh();
     } catch (caught) {
       if (prepared) {

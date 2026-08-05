@@ -83,11 +83,6 @@ export default async function ParentAccountPage({ searchParams }: ParentAccountP
         ]}
       >
         <div className="space-y-5">
-          {searchParams?.message ? (
-            <div className="rounded-[20px] border border-[#b8cf9f] bg-[#eef5e4] px-5 py-4 text-sm font-semibold text-[#4d6a39]">
-              {searchParams.message}
-            </div>
-          ) : null}
           {searchParams?.error ? (
             <div role="alert" className="rounded-[20px] border border-[#d9afa2] bg-[#fff1ec] px-5 py-4 text-sm font-semibold text-[#8b3e2f]">
               {searchParams.error}

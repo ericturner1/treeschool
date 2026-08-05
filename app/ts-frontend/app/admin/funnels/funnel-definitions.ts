@@ -3,7 +3,7 @@ export type FunnelStep = {
   description: string;
   href?: string;
   linkLabel?: string;
-  kind?: "landing" | "checkout" | "offer" | "fulfillment";
+  kind?: "landing" | "order_form" | "offer" | "fulfillment";
 };
 
 export type Funnel = {
@@ -28,7 +28,7 @@ export const FUNNELS: Funnel[] = [
     landingLabel: "A/B-tested first-grade curriculum landing page",
     steps: [
       {
-        name: "Live A/B landing page",
+        name: "Sales Page A/B Test",
         description: "Assigns each new visitor persistently to one of two sales-page variants and carries that assignment through checkout.",
         href: "/first-grade-curriculum",
         linkLabel: "Open live experiment",
@@ -56,16 +56,11 @@ export const FUNNELS: Funnel[] = [
         kind: "landing"
       },
       {
-        name: "Purchase choice",
-        description: "An order-bump dialog asks whether the parent wants the curriculum alone or the curriculum with Treeschool planning and records.",
-        href: "/first-grade-curriculum",
-        linkLabel: "Open offer page",
-        kind: "checkout"
-      },
-      {
-        name: "Stripe checkout",
-        description: "Stripe securely completes either the one-time curriculum purchase or the selected membership checkout.",
-        kind: "checkout"
+        name: "Order form",
+        description: "Confirms the curriculum and any optional bookstore additions before sending the parent to Stripe's secure hosted checkout.",
+        href: "/first-grade-curriculum/choose?preview=1",
+        linkLabel: "Open order form",
+        kind: "order_form"
       },
       {
         name: "Beginner Japanese upsell",
@@ -109,12 +104,7 @@ export const FUNNELS: Funnel[] = [
         description: "Compares Single and Standard membership options and explains the introductory first month.",
         href: "/pricing",
         linkLabel: "Open plans",
-        kind: "checkout"
-      },
-      {
-        name: "Stripe checkout",
-        description: "Collects payment details and creates the selected recurring membership.",
-        kind: "checkout"
+        kind: "order_form"
       },
       {
         name: "Account setup",
@@ -144,12 +134,7 @@ export const FUNNELS: Funnel[] = [
         description: "Lets the parent compare the student and teacher limits of the available memberships.",
         href: "/pricing",
         linkLabel: "Open plans",
-        kind: "checkout"
-      },
-      {
-        name: "Stripe checkout",
-        description: "Completes the selected membership purchase securely.",
-        kind: "checkout"
+        kind: "order_form"
       },
       {
         name: "Move the school year",
@@ -179,17 +164,12 @@ export const FUNNELS: Funnel[] = [
         description: "Lets the parent browse available grades, subjects, individual workbooks, and bundles.",
         href: "/bookstore",
         linkLabel: "Open bookstore",
-        kind: "checkout"
+        kind: "landing"
       },
       {
         name: "Product detail",
         description: "Explains the workbook or bundle, previews its pages, and collects the delivery email.",
-        kind: "checkout"
-      },
-      {
-        name: "Stripe checkout",
-        description: "Completes the one-time purchase without creating a recurring charge.",
-        kind: "checkout"
+        kind: "order_form"
       },
       {
         name: "Email delivery",

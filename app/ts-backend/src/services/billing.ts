@@ -49,6 +49,7 @@ import { reportMetaCheckoutPurchase } from "./meta-conversions";
 import {
   funnelCheckoutMetadata,
   recordStripeFunnelSale,
+  resolvePublicFunnelOneClickOffer,
   type FunnelCheckoutAttribution
 } from "./funnels";
 
@@ -1750,6 +1751,183 @@ async function resolveVerifiedFirstGradeCheckout(sourceCheckoutSessionId: string
   };
 }
 
+async function resolveVerifiedCompletedCheckout(sourceCheckoutSessionId: string) {
+  const stripe = getStripe();
+  const session = await stripe.checkout.sessions.retrieve(sourceCheckoutSessionId);
+  if (
+    session.status !== "complete" ||
+    !["paid", "no_payment_required"].includes(session.payment_status)
+  ) {
+    throw new Error("The original checkout has not been completed.");
+  }
+  const email = (
+    session.customer_details?.email ??
+    session.customer_email ??
+    session.metadata?.deliveryEmail ??
+    ""
+  ).trim().toLowerCase();
+  if (!email) throw new Error("The completed checkout has no customer email.");
+  const accountId = session.metadata?.accountId ?? session.client_reference_id ?? null;
+  const customerId = stripeObjectId(session.customer);
+  const paymentMethodId = await resolvePostCheckoutPaymentMethod(session, customerId);
+  return { session, email, accountId, customerId, paymentMethodId };
+}
+
+function appendSourceCheckoutSession(path: string, sourceCheckoutSessionId: string) {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}source_session_id=${encodeURIComponent(sourceCheckoutSessionId)}`;
+}
+
+export async function decideFunnelOneClickOffer(input: {
+  sourceCheckoutSessionId: string;
+  funnelStepId: string;
+  appBaseUrl: string;
+  cancelPath: string;
+}) {
+  const offer = await resolvePublicFunnelOneClickOffer({ stepId: input.funnelStepId });
+  const source = await resolveVerifiedCompletedCheckout(input.sourceCheckoutSessionId);
+  const [selection] = await resolveNativeWorkbookCheckoutSelections({
+    ids: [offer.productId],
+    userId: null
+  });
+  if (!selection) throw new Error("This offer is no longer available.");
+
+  const offerKey = `funnel-step:${offer.stepId}`;
+  const [record] = await db.insert(postCheckoutOffers).values({
+    sourceCheckoutSessionId: input.sourceCheckoutSessionId,
+    sourceCheckoutKind: source.session.metadata?.checkoutKind ?? "funnel_order",
+    offerKey,
+    accountId: source.accountId,
+    email: source.email,
+    stripeCustomerId: source.customerId,
+    stripePaymentMethodId: source.paymentMethodId,
+    state: "shown",
+    updatedAt: new Date()
+  }).onConflictDoUpdate({
+    target: [postCheckoutOffers.sourceCheckoutSessionId, postCheckoutOffers.offerKey],
+    set: {
+      accountId: source.accountId,
+      email: source.email,
+      stripeCustomerId: source.customerId,
+      stripePaymentMethodId: source.paymentMethodId,
+      updatedAt: new Date()
+    }
+  }).returning({
+    state: postCheckoutOffers.state,
+    stripeCheckoutSessionId: postCheckoutOffers.stripeCheckoutSessionId
+  });
+
+  const nextPath = offer.nextHref
+    ? appendSourceCheckoutSession(offer.nextHref, input.sourceCheckoutSessionId)
+    : `/bookstore/success?session_id=${encodeURIComponent(input.sourceCheckoutSessionId)}`;
+  if (record.state === "accepted") {
+    return { status: "complete" as const, nextPath };
+  }
+
+  const metadata = {
+    checkoutKind: "native_workbook_cart",
+    checkoutSource: "funnel_one_click_offer",
+    sourceCheckoutSessionId: input.sourceCheckoutSessionId,
+    funnelId: offer.funnelId,
+    funnelSlug: offer.funnelSlug,
+    funnelStepId: offer.stepId,
+    postCheckoutOfferKey: offerKey,
+    itemCount: "1",
+    deliveryEmail: source.email,
+    ...(source.accountId ? { accountId: source.accountId } : {}),
+    kind0: selection.catalogKind,
+    item0: selection.id,
+    ...(selection.catalogKind === "workbook"
+      ? { version0: selection.activeVersionId ?? "" }
+      : { versions0: selection.memberVersionIds.join("|") }),
+    amount0: String(selection.priceInCents)
+  };
+
+  if (source.customerId && source.paymentMethodId) {
+    try {
+      const paymentIntent = await getStripe().paymentIntents.create({
+        amount: selection.priceInCents,
+        currency: selection.currencyCode.toLowerCase(),
+        customer: source.customerId,
+        payment_method: source.paymentMethodId,
+        confirm: true,
+        off_session: true,
+        description: `Treeschool ${selection.title}`,
+        metadata
+      }, { idempotencyKey: `funnel-one-click:${input.sourceCheckoutSessionId}:${offer.stepId}:${selection.id}` });
+      if (paymentIntent.status === "succeeded" || paymentIntent.status === "processing") {
+        if (paymentIntent.status === "succeeded") {
+          await fulfillNativeWorkbookPaymentIntent(paymentIntent);
+        }
+        await db.update(postCheckoutOffers).set({
+          state: "accepted",
+          selectedVariant: selection.id,
+          stripePaymentIntentId: paymentIntent.id,
+          stripeCheckoutSessionId: null,
+          lastError: null,
+          updatedAt: new Date()
+        }).where(and(
+          eq(postCheckoutOffers.sourceCheckoutSessionId, input.sourceCheckoutSessionId),
+          eq(postCheckoutOffers.offerKey, offerKey)
+        ));
+        return { status: "complete" as const, nextPath };
+      }
+      if (["requires_payment_method", "requires_confirmation", "requires_action"].includes(paymentIntent.status)) {
+        await getStripe().paymentIntents.cancel(paymentIntent.id).catch(() => undefined);
+      }
+    } catch (error) {
+      await db.update(postCheckoutOffers).set({
+        lastError: error instanceof Error ? error.message.slice(0, 1000) : "Saved payment method could not be charged.",
+        updatedAt: new Date()
+      }).where(and(
+        eq(postCheckoutOffers.sourceCheckoutSessionId, input.sourceCheckoutSessionId),
+        eq(postCheckoutOffers.offerKey, offerKey)
+      ));
+    }
+  }
+
+  if (record.state === "checkout_required" && record.stripeCheckoutSessionId) {
+    const existing = await getStripe().checkout.sessions.retrieve(record.stripeCheckoutSessionId).catch(() => null);
+    if (existing?.status === "open" && existing.url) {
+      return { status: "redirect" as const, url: existing.url };
+    }
+  }
+  const successUrl = `${input.appBaseUrl}${nextPath}`;
+  const cancelPath = input.cancelPath.startsWith("/") ? input.cancelPath : "/";
+  const session = await getStripe().checkout.sessions.create(withTreeschoolCheckoutBranding({
+    mode: "payment",
+    customer: source.customerId ?? undefined,
+    customer_email: source.customerId ? undefined : source.email,
+    client_reference_id: source.accountId ?? undefined,
+    success_url: successUrl,
+    cancel_url: `${input.appBaseUrl}${appendSourceCheckoutSession(cancelPath, input.sourceCheckoutSessionId)}`,
+    line_items: [{
+      quantity: 1,
+      price_data: {
+        currency: selection.currencyCode.toLowerCase(),
+        unit_amount: selection.priceInCents,
+        product_data: {
+          name: selection.title,
+          description: selection.description.slice(0, 500)
+        }
+      }
+    }],
+    metadata,
+    payment_intent_data: { metadata }
+  }), { idempotencyKey: `funnel-one-click-fallback:${input.sourceCheckoutSessionId}:${offer.stepId}:${selection.id}` });
+  await db.update(postCheckoutOffers).set({
+    state: "checkout_required",
+    selectedVariant: selection.id,
+    stripeCheckoutSessionId: session.id,
+    lastError: null,
+    updatedAt: new Date()
+  }).where(and(
+    eq(postCheckoutOffers.sourceCheckoutSessionId, input.sourceCheckoutSessionId),
+    eq(postCheckoutOffers.offerKey, offerKey)
+  ));
+  return { status: "redirect" as const, url: session.url };
+}
+
 export async function getFirstGradePostCheckoutOffer(sourceCheckoutSessionId: string) {
   const source = await resolveVerifiedFirstGradeCheckout(sourceCheckoutSessionId);
   const offer = await resolveJapanesePostCheckoutWorkbookOffer({
@@ -2058,12 +2236,18 @@ export async function handleStripeWebhook(input: {
     }
     await fulfillAdditionalStudentCheckout(event.data.object);
     await fulfillNativeWorkbookCheckout(event.data.object);
-    if (event.data.object.metadata?.checkoutSource === "post_checkout_offer") {
+    if (
+      event.data.object.metadata?.checkoutSource === "post_checkout_offer" ||
+      event.data.object.metadata?.checkoutSource === "funnel_one_click_offer"
+    ) {
+      const isManagedFunnelOffer = event.data.object.metadata.checkoutSource === "funnel_one_click_offer";
       await db.update(postCheckoutOffers).set({
-        state: event.data.object.metadata.postCheckoutVariant === "starter"
+        state: !isManagedFunnelOffer && event.data.object.metadata.postCheckoutVariant === "starter"
           ? "downsell_accepted"
           : "accepted",
-        selectedVariant: event.data.object.metadata.postCheckoutVariant ?? null,
+        selectedVariant: isManagedFunnelOffer
+          ? event.data.object.metadata.item0 ?? null
+          : event.data.object.metadata.postCheckoutVariant ?? null,
         stripePaymentIntentId: stripeObjectId(event.data.object.payment_intent),
         stripeCheckoutSessionId: null,
         lastError: null,
@@ -2073,7 +2257,12 @@ export async function handleStripeWebhook(input: {
           postCheckoutOffers.sourceCheckoutSessionId,
           event.data.object.metadata.sourceCheckoutSessionId ?? ""
         ),
-        eq(postCheckoutOffers.offerKey, FIRST_GRADE_JAPANESE_OFFER_KEY)
+        eq(
+          postCheckoutOffers.offerKey,
+          isManagedFunnelOffer
+            ? event.data.object.metadata.postCheckoutOfferKey ?? ""
+            : FIRST_GRADE_JAPANESE_OFFER_KEY
+        )
       ));
     }
     await reportMetaCheckoutPurchase(

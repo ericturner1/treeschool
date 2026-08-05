@@ -23,7 +23,6 @@ function decodeParam(value?: string) {
 
 export default async function GeneratorFunnelPage({ searchParams }: GeneratorFunnelPageProps) {
   const error = decodeParam(searchParams?.error);
-  const message = decodeParam(searchParams?.message);
   const currentUser = await getCurrentUser();
   const [preferences, billing, catalogResult, pricing] = await Promise.all([
     currentUser?.id
@@ -76,9 +75,6 @@ export default async function GeneratorFunnelPage({ searchParams }: GeneratorFun
             <div className="mb-6 rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] px-5 py-4 text-sm font-semibold text-earth">
               Checkout was canceled. Your setup has not been charged.
             </div>
-          ) : null}
-          {message ? (
-            <div className="mb-6 rounded-[22px] border border-[#b8cf9f] bg-[#eef5e4] px-5 py-4 text-sm font-semibold text-[#4d6a39]">{message}</div>
           ) : null}
           {error ? (
             <div className="mb-6 rounded-[22px] border border-[#d9afa2] bg-[#fff1ec] px-5 py-4 text-sm font-semibold text-[#8b3e2f]">{error}</div>

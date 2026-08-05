@@ -97,19 +97,9 @@ export default async function ParentBillingPage({ searchParams }: ParentBillingP
         ]}
       >
         <div className="space-y-6">
-          {searchParams?.checkout === "success" ? (
-            <section className="rounded-[24px] border border-[#b8cf9f] bg-[#eef5e4] px-6 py-5 text-sm font-semibold text-[#4d6a39]">
-              Stripe checkout completed. Your access will update as soon as Stripe confirms the subscription.
-            </section>
-          ) : null}
           {searchParams?.error ? (
             <section className="rounded-[24px] border border-[#d9afa2] bg-[#fff1ec] px-6 py-5 text-sm font-semibold text-[#8b3e2f]">
               {searchParams.error}
-            </section>
-          ) : null}
-          {searchParams?.planChanged === "1" ? (
-            <section className="rounded-[24px] border border-[#b8cf9f] bg-[#eef5e4] px-6 py-5 text-sm font-semibold text-[#4d6a39]">
-              Your plan change was confirmed. Student capacity will update as soon as Stripe sends its confirmation.
             </section>
           ) : null}
           {billing.accessRestricted ? (

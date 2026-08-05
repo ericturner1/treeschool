@@ -2098,8 +2098,7 @@ export type FunnelStepStatus = "draft" | "active" | "inactive";
 export type FunnelStepType =
   | "landing"
   | "sales"
-  | "checkout"
-  | "order_bump"
+  | "order_form"
   | "upsell"
   | "downsell"
   | "thank_you"
@@ -2169,6 +2168,7 @@ export const funnelSteps = pgTable(
     status: text("status").$type<FunnelStepStatus>().notNull().default("draft"),
     sourceType: text("source_type").$type<FunnelStepSourceType>().notNull().default("code"),
     sourceRef: text("source_ref"),
+    routePath: text("route_path"),
     publicPath: text("public_path"),
     previewPath: text("preview_path"),
     linkLabel: text("link_label"),
@@ -2189,6 +2189,7 @@ export const funnelSteps = pgTable(
   },
   (table) => ({
     funnelSlugUnique: unique("funnel_steps_funnel_slug_unique").on(table.funnelId, table.slug),
+    routePathUnique: unique("funnel_steps_route_path_unique").on(table.routePath),
     funnelOrderIndex: index("funnel_steps_funnel_order_idx").on(table.funnelId, table.displayOrder),
     funnelStatusIndex: index("funnel_steps_funnel_status_idx").on(table.funnelId, table.status)
   })

@@ -453,11 +453,6 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
               Membership preview · {billing.featureAccess.trial.daysRemaining} {billing.featureAccess.trial.daysRemaining === 1 ? "day" : "days"} left to try live planning, grades, attendance, and progress.
             </div>
           ) : null}
-          {searchParams?.message ? (
-            <div className="rounded-[20px] border border-[#b8cf9f] bg-[#eef5e4] px-5 py-4 text-sm font-semibold text-[#4d6a39]">
-              {searchParams.message}
-            </div>
-          ) : null}
           {searchParams?.error ? (
             <div className="rounded-[20px] border border-[#d9afa2] bg-[#fff1ec] px-5 py-4 text-sm font-semibold text-[#8b3e2f]">
               {searchParams.error}
