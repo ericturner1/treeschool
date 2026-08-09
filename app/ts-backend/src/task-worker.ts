@@ -1,6 +1,7 @@
 import { runNextLessonGenerationJob } from "./services/lessons";
 import { runNextPaperDocumentJob, runNextWeeklyPlanJob } from "./services/paper-plans";
 import { runNextNativeWorkbookJob } from "./services/native-workbooks";
+import { runNextWorkbookStudioJob } from "./services/workbook-studio-worker";
 import { client, env } from "./db";
 
 const workerId = process.env.TASK_WORKER_ID ?? `ts-tasks-${crypto.randomUUID().slice(0, 8)}`;
@@ -16,6 +17,20 @@ async function main() {
     Date.now() - startedAt < env.PROCESSOR_MAX_RUNTIME_SECONDS * 1000
   ) {
     try {
+      const workbookStudioResult = await runNextWorkbookStudioJob(workerId);
+
+      if (workbookStudioResult) {
+        console.log(
+          `[${workerId}] processed Workbook Studio ${workbookStudioResult.jobType} job ${workbookStudioResult.jobId}: ${workbookStudioResult.outcome}${
+            "error" in workbookStudioResult && workbookStudioResult.error
+              ? ` (${workbookStudioResult.error})`
+              : ""
+          }`
+        );
+        processedJobs += 1;
+        continue;
+      }
+
       const nativeWorkbookResult = await runNextNativeWorkbookJob(workerId);
 
       if (nativeWorkbookResult) {

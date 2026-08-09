@@ -10,7 +10,8 @@ const ADMIN_NAVIGATION = [
   { href: "/admin/funnels", label: "Funnels" },
   { href: "/admin/blog", label: "Blog" },
   { href: "/admin/faqs", label: "Sales FAQs" },
-  { href: "/admin/workbooks", label: "Workbooks" }
+  { href: "/admin/workbooks", label: "Workbooks" },
+  { href: "/admin/workbook-studio", label: "Workbook Studio" }
 ] as const;
 
 function isFullScreenAdminRoute(pathname: string) {

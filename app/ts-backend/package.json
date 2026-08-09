@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "build": "bun build src/index.ts src/task-worker.ts --target bun --outdir dist && cp ../../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs dist/pdf.worker.mjs",
+    "build": "bun build src/index.ts src/task-worker.ts --target bun --outdir dist --external playwright && cp ../../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs dist/pdf.worker.mjs && cp -R src/workbook-assets dist/workbook-assets",
     "start": "bun run dist/index.js",
     "task-worker": "bun run src/task-worker.ts",
     "task-worker:start": "bun run dist/task-worker.js",
@@ -12,12 +12,17 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource/comic-neue": "5.3.0",
+    "@fontsource/noto-sans-jp": "5.3.0",
+    "@fontsource/nunito": "5.3.0",
     "@google-cloud/storage": "^7.19.0",
     "drizzle-orm": "^0.40.0",
     "fflate": "^0.8.2",
     "nodemailer": "^9.0.3",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "5.7.284",
+    "pagedjs": "0.4.3",
+    "playwright": "1.62.0",
     "postgres": "^3.4.5",
     "qrcode": "^1.5.4",
     "sanitize-html": "^2.17.6",

@@ -22,6 +22,7 @@
     "db:seed:g1commoncore": "bun run scripts/seed-g1-common-core.ts",
     "db:seed:g1texas": "bun run scripts/seed-g1-texas-science-social-studies.ts",
     "db:seed:electives": "bun run scripts/seed-electives.ts",
+    "workbook-studio:import-prompts": "bun --env-file=app/ts-backend/.env run scripts/import-workbook-studio-prompts.ts",
     "stripe:sync:membership": "bun run scripts/stripe/sync-membership-plans.ts",
     "generate:migration": "bun run db:generate",
     "data-migrations:apply": "bun run db:push"

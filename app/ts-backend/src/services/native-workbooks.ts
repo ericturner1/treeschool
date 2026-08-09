@@ -29,7 +29,9 @@ import {
   weeklyPlanDayPdfAssets,
   weeklyPlanItems,
   weeklyPlanPdfAssets,
-  weeklyPlans
+  weeklyPlans,
+  workbookContentRevisions,
+  workbookProjects
 } from "ts-db";
 import { db, env } from "../db";
 import { withTreeschoolCheckoutBranding } from "./stripe-checkout";
@@ -73,6 +75,10 @@ import {
   funnelCheckoutMetadata,
   type FunnelCheckoutAttribution
 } from "./funnels";
+import {
+  parseWorkbookContent,
+  workbookLessonIds
+} from "./workbook-studio-model";
 
 const MAX_NATIVE_WORKBOOK_PAGES = 2_000;
 const MAX_NATIVE_WORKBOOK_JOB_ATTEMPTS = 3;
@@ -168,6 +174,21 @@ type WorkbookReplacementState = {
   restoreActive: boolean;
   requiresCompatibilityCheck?: boolean;
   expectedPageCount?: number;
+  compatibilityMode?: "pdf_structure" | "lesson_ids";
+};
+
+type WorkbookStudioArtifact = {
+  projectId: string;
+  contentRevisionId: string;
+  renderRunId: string;
+  themeVersionId: string;
+  autoPublish?: boolean;
+};
+
+type WorkbookStudioReleaseState = {
+  projectId: string;
+  autoPublish: boolean;
+  requestedByUserId: string;
 };
 
 type WorkbookEditionReleaseState = {
@@ -396,7 +417,23 @@ function readWorkbookReplacementState(analysisJson: unknown): WorkbookReplacemen
         requiresCompatibilityCheck: value.requiresCompatibilityCheck === true,
         expectedPageCount: Number.isInteger(Number(value.expectedPageCount))
           ? Number(value.expectedPageCount)
-          : undefined
+          : undefined,
+        compatibilityMode: value.compatibilityMode === "lesson_ids" ? "lesson_ids" : "pdf_structure"
+      }
+    : null;
+}
+
+function readWorkbookStudioReleaseState(analysisJson: unknown): WorkbookStudioReleaseState | null {
+  if (!analysisJson || typeof analysisJson !== "object") return null;
+  const release = (analysisJson as { studioRelease?: unknown }).studioRelease;
+  if (!release || typeof release !== "object") return null;
+  const value = release as Partial<WorkbookStudioReleaseState>;
+  return typeof value.projectId === "string" && value.projectId
+    && typeof value.requestedByUserId === "string" && value.requestedByUserId
+      ? {
+        projectId: value.projectId,
+        autoPublish: value.autoPublish === true,
+        requestedByUserId: value.requestedByUserId
       }
     : null;
 }
@@ -1900,6 +1937,7 @@ export async function prepareNativeWorkbookUpload(input: {
   editionLabel: string;
   pdfFilename: string;
   pdfMimeType?: string;
+  studioArtifact?: WorkbookStudioArtifact;
 }) {
   await requireAdmin(input.userId);
   const title = normalizeText(input.title, 180);
@@ -1980,6 +2018,7 @@ export async function prepareNativeWorkbookUpload(input: {
       editionNumber: 1,
       editionLabel,
       status: "draft",
+      themeVersionId: input.studioArtifact?.themeVersionId ?? null,
       createdByUserId: input.userId
     });
     await tx.insert(nativeWorkbookVersions).values({
@@ -1996,14 +2035,26 @@ export async function prepareNativeWorkbookUpload(input: {
       sizeBytes: 1,
       pageCount: 0,
       analysisStatus: "awaiting_upload",
-      analysisJson: { descriptionMode },
+      analysisJson: {
+        descriptionMode,
+        ...(input.studioArtifact ? {
+          studioRelease: {
+            projectId: input.studioArtifact.projectId,
+            autoPublish: input.studioArtifact.autoPublish === true,
+            requestedByUserId: input.userId
+          }
+        } : {})
+      },
+      artifactSource: input.studioArtifact ? "workbook_studio" : "uploaded_pdf",
+      workbookContentRevisionId: input.studioArtifact?.contentRevisionId ?? null,
+      workbookRenderRunId: input.studioArtifact?.renderRunId ?? null,
       createdByUserId: input.userId
     });
   });
 
   try {
     const pdfUploadUrl = await getSignedPrivateUploadUrl({ objectPath, contentType: "application/pdf", expiresInMinutes: 30 });
-    return { workbookId, versionId, pdfUploadUrl };
+    return { workbookId, versionId, objectPath, pdfUploadUrl };
   } catch (error) {
     await db.delete(nativeWorkbooks).where(eq(nativeWorkbooks.id, workbookId)).catch(() => undefined);
     throw error;
@@ -2097,6 +2148,7 @@ export async function prepareNativeWorkbookReplacement(input: {
   workbookId: string;
   pdfFilename: string;
   pdfMimeType?: string;
+  studioArtifact?: WorkbookStudioArtifact;
 }) {
   await requireAdmin(input.userId);
   const pdfMimeType = input.pdfMimeType || "application/pdf";
@@ -2136,7 +2188,8 @@ export async function prepareNativeWorkbookReplacement(input: {
       editionLabel: nativeWorkbookVersions.editionLabel,
       pageCount: nativeWorkbookVersions.pageCount,
       analysisStatus: nativeWorkbookVersions.analysisStatus,
-      analysisJson: nativeWorkbookVersions.analysisJson
+      analysisJson: nativeWorkbookVersions.analysisJson,
+      workbookContentRevisionId: nativeWorkbookVersions.workbookContentRevisionId
     }).from(nativeWorkbookVersions)
       .where(eq(nativeWorkbookVersions.id, workbook.activeVersionId))
       .limit(1)
@@ -2171,8 +2224,12 @@ export async function prepareNativeWorkbookReplacement(input: {
     restoreStatus: workbook.status,
     restoreActive: workbook.active,
     requiresCompatibilityCheck: true,
-    expectedPageCount: activeVersion.pageCount
+    expectedPageCount: input.studioArtifact ? undefined : activeVersion.pageCount,
+    compatibilityMode: input.studioArtifact ? "lesson_ids" : "pdf_structure"
   };
+  if (input.studioArtifact && !activeVersion.workbookContentRevisionId) {
+    throw new Error("The published workbook is not a structured Studio release; create a new edition instead.");
+  }
 
   await db.insert(nativeWorkbookVersions).values({
     id: versionId,
@@ -2189,7 +2246,20 @@ export async function prepareNativeWorkbookReplacement(input: {
     sizeBytes: 1,
     pageCount: 0,
     analysisStatus: "awaiting_upload",
-    analysisJson: { descriptionMode, replacement },
+    analysisJson: {
+      descriptionMode,
+      replacement,
+      ...(input.studioArtifact ? {
+        studioRelease: {
+          projectId: input.studioArtifact.projectId,
+          autoPublish: true,
+          requestedByUserId: input.userId
+        }
+      } : {})
+    },
+    artifactSource: input.studioArtifact ? "workbook_studio" : "uploaded_pdf",
+    workbookContentRevisionId: input.studioArtifact?.contentRevisionId ?? null,
+    workbookRenderRunId: input.studioArtifact?.renderRunId ?? null,
     createdByUserId: input.userId
   });
   await db.update(nativeWorkbookVersions).set({ lastError: null })
@@ -2201,7 +2271,7 @@ export async function prepareNativeWorkbookReplacement(input: {
       contentType: "application/pdf",
       expiresInMinutes: 30
     });
-    return { workbookId: workbook.id, versionId, pdfUploadUrl };
+    return { workbookId: workbook.id, versionId, objectPath, pdfUploadUrl };
   } catch (error) {
     await db.delete(nativeWorkbookVersions).where(eq(nativeWorkbookVersions.id, versionId))
       .catch(() => undefined);
@@ -2273,6 +2343,7 @@ export async function prepareNativeWorkbookEdition(input: {
   changeNotes?: string | null;
   pdfFilename: string;
   pdfMimeType?: string;
+  studioArtifact?: WorkbookStudioArtifact;
 }) {
   await requireAdmin(input.userId);
   const editionLabel = normalizeText(input.editionLabel, 80);
@@ -2330,6 +2401,7 @@ export async function prepareNativeWorkbookEdition(input: {
       editionNumber: (latestEdition?.editionNumber ?? 0) + 1,
       editionLabel,
       status: "draft",
+      themeVersionId: input.studioArtifact?.themeVersionId ?? null,
       changeNotes,
       createdByUserId: input.userId
     });
@@ -2354,8 +2426,18 @@ export async function prepareNativeWorkbookEdition(input: {
         editionRelease: {
           previousVersionId: activeVersion.id,
           previousEditionId: activeVersion.editionId
-        } satisfies WorkbookEditionReleaseState
+        } satisfies WorkbookEditionReleaseState,
+        ...(input.studioArtifact ? {
+          studioRelease: {
+            projectId: input.studioArtifact.projectId,
+            autoPublish: input.studioArtifact.autoPublish === true,
+            requestedByUserId: input.userId
+          }
+        } : {})
       },
+      artifactSource: input.studioArtifact ? "workbook_studio" : "uploaded_pdf",
+      workbookContentRevisionId: input.studioArtifact?.contentRevisionId ?? null,
+      workbookRenderRunId: input.studioArtifact?.renderRunId ?? null,
       createdByUserId: input.userId
     });
   });
@@ -2365,7 +2447,7 @@ export async function prepareNativeWorkbookEdition(input: {
       contentType: "application/pdf",
       expiresInMinutes: 30
     });
-    return { workbookId: workbook.id, editionId, versionId, pdfUploadUrl };
+    return { workbookId: workbook.id, editionId, versionId, objectPath, pdfUploadUrl };
   } catch (error) {
     await db.delete(nativeWorkbookVersions).where(eq(nativeWorkbookVersions.id, versionId)).catch(() => undefined);
     await db.delete(nativeWorkbookEditions).where(eq(nativeWorkbookEditions.id, editionId)).catch(() => undefined);
@@ -2957,6 +3039,7 @@ async function promoteCompatibleWorkbookReplacement(input: {
     originalFilename: string;
     mimeType: string;
     analysisJson: Record<string, unknown>;
+    workbookContentRevisionId: string | null;
     title: string;
   };
   replacement: WorkbookReplacementState;
@@ -2974,6 +3057,7 @@ async function promoteCompatibleWorkbookReplacement(input: {
     pageCount: nativeWorkbookVersions.pageCount,
     analysisStatus: nativeWorkbookVersions.analysisStatus,
     analysisJson: nativeWorkbookVersions.analysisJson,
+    workbookContentRevisionId: nativeWorkbookVersions.workbookContentRevisionId,
     curriculumCoverageProfile: nativeWorkbookVersions.curriculumCoverageProfile,
     curriculumCoverageFrameworkVersion: nativeWorkbookVersions.curriculumCoverageFrameworkVersion,
     curriculumCoverageProfiledAt: nativeWorkbookVersions.curriculumCoverageProfiledAt
@@ -2991,18 +3075,51 @@ async function promoteCompatibleWorkbookReplacement(input: {
     );
   }
 
-  const [currentPageTexts, replacementPageTexts] = await Promise.all([
-    downloadPrivateFile(publishedVersion.objectPath).then(extractPdfPageTexts),
-    extractPdfPageTexts(input.bytes)
-  ]);
-  const compatibility = checkWorkbookReplacementCompatibility({
-    currentPageCount: publishedVersion.pageCount,
-    replacementPageCount: input.pageCount,
-    currentAnalysis: publishedVersion.analysisJson,
-    replacementAnalysis: input.candidateAnalysis,
-    currentPageTexts,
-    replacementPageTexts
-  });
+  const compatibility = input.replacement.compatibilityMode === "lesson_ids"
+    ? await (async () => {
+      if (!publishedVersion.workbookContentRevisionId || !input.version.workbookContentRevisionId) {
+        return {
+          compatible: false,
+          currentLessonCount: 0,
+          reasons: ["Structured lesson ids were unavailable for one of the revisions."]
+        };
+      }
+      const revisions = await db.select({
+        id: workbookContentRevisions.id,
+        lessonIdFingerprint: workbookContentRevisions.lessonIdFingerprint,
+        contentJson: workbookContentRevisions.contentJson
+      }).from(workbookContentRevisions).where(inArray(workbookContentRevisions.id, [
+        publishedVersion.workbookContentRevisionId,
+        input.version.workbookContentRevisionId
+      ]));
+      const current = revisions.find((revision) => revision.id === publishedVersion.workbookContentRevisionId);
+      const replacement = revisions.find((revision) => revision.id === input.version.workbookContentRevisionId);
+      const lessonCount = current ? workbookLessonIds(parseWorkbookContent(current.contentJson)).length : 0;
+      const compatible = Boolean(
+        current && replacement && current.lessonIdFingerprint === replacement.lessonIdFingerprint
+      );
+      return {
+        compatible,
+        currentLessonCount: lessonCount,
+        reasons: compatible
+          ? ["Stable lesson ids match. PDF page count is allowed to change."]
+          : ["A lesson was added, removed, or replaced; publish this change as a new edition."]
+      };
+    })()
+    : await (async () => {
+      const [currentPageTexts, replacementPageTexts] = await Promise.all([
+        downloadPrivateFile(publishedVersion.objectPath).then(extractPdfPageTexts),
+        extractPdfPageTexts(input.bytes)
+      ]);
+      return checkWorkbookReplacementCompatibility({
+        currentPageCount: publishedVersion.pageCount,
+        replacementPageCount: input.pageCount,
+        currentAnalysis: publishedVersion.analysisJson,
+        replacementAnalysis: input.candidateAnalysis,
+        currentPageTexts,
+        replacementPageTexts
+      });
+    })();
   if (!compatibility.compatible) {
     throw new WorkbookReplacementCompatibilityError(
       `Replacement rejected: ${compatibility.reasons.join(" ")} The published PDF and all customer data were left unchanged.`
@@ -3019,13 +3136,19 @@ async function promoteCompatibleWorkbookReplacement(input: {
     pageCount: input.pageCount,
     // Keep the established lesson contract. Compatibility checking proved the
     // replacement maps to these same lesson ranges.
-    analysis: publishedVersion.analysisJson
+    analysis: input.replacement.compatibilityMode === "lesson_ids"
+      ? input.candidateAnalysis
+      : publishedVersion.analysisJson
   });
 
-  const currentAnalysis = publishedVersion.analysisJson && typeof publishedVersion.analysisJson === "object"
-    ? publishedVersion.analysisJson
+  const analysisSource = input.replacement.compatibilityMode === "lesson_ids"
+    ? input.candidateAnalysis
+    : publishedVersion.analysisJson;
+  const currentAnalysis = analysisSource && typeof analysisSource === "object"
+    ? analysisSource as Record<string, unknown>
     : {};
   const finalAnalysisJson: Record<string, unknown> = {
+    ...input.version.analysisJson,
     ...currentAnalysis,
     contentFingerprint: input.fingerprint,
     nativeWorkbook: true,
@@ -3224,6 +3347,16 @@ async function promoteCompatibleWorkbookReplacement(input: {
     }
   });
 
+  const studioRelease = readWorkbookStudioReleaseState(input.version.analysisJson);
+  if (studioRelease && input.version.workbookContentRevisionId) {
+    await db.update(workbookProjects).set({
+      nativeWorkbookId: input.version.workbookId,
+      publishedRevisionId: input.version.workbookContentRevisionId,
+      status: "released",
+      updatedAt: new Date()
+    }).where(eq(workbookProjects.id, studioRelease.projectId));
+  }
+
   return {
     jobId: input.job.id,
     versionId: input.version.id,
@@ -3245,6 +3378,7 @@ export async function runNextNativeWorkbookJob(workerId: string) {
       originalFilename: nativeWorkbookVersions.originalFilename,
       mimeType: nativeWorkbookVersions.mimeType,
       analysisJson: nativeWorkbookVersions.analysisJson,
+      workbookContentRevisionId: nativeWorkbookVersions.workbookContentRevisionId,
       title: nativeWorkbooks.title,
       subjectLabel: nativeWorkbooks.subjectLabel,
       curriculumAreaKey: nativeWorkbooks.curriculumAreaKey,
@@ -3427,6 +3561,19 @@ export async function runNextNativeWorkbookJob(workerId: string) {
       })
         .where(eq(nativeWorkbooks.id, version.workbookId));
     });
+    const studioRelease = readWorkbookStudioReleaseState(finalAnalysisJson);
+    if (studioRelease?.autoPublish && !currentReplacement) {
+      await publishNativeWorkbook({
+        userId: studioRelease.requestedByUserId,
+        workbookId: version.workbookId
+      });
+      await db.update(workbookProjects).set({
+        nativeWorkbookId: version.workbookId,
+        publishedRevisionId: version.workbookContentRevisionId,
+        status: "released",
+        updatedAt: new Date()
+      }).where(eq(workbookProjects.id, studioRelease.projectId));
+    }
     return { jobId: job.id, versionId: version.id, outcome: "completed" };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown native workbook indexing error.";

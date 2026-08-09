@@ -1,0 +1,139 @@
+  /* ---------- Staff/tab notation (pasted VexFlow SVG output) ---------- */
+  .staff-figure{
+    display:flex;
+    justify-content:center;
+    margin:16px 0 6px 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .staff-figure-row{
+    display:flex;
+    justify-content:center;
+    align-items:flex-start;
+    gap:28px;
+    margin:16px 0 6px 0;
+    flex-wrap:wrap;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .staff-figure svg{ display:block; }
+  /* Caption stating what the notation shows in plain language -- pair
+     with every staff-figure the same way math's .graph-scale-note pairs
+     with every graph-figure, so the picture is never left to speak for
+     itself with no plain-language anchor. */
+  .notation-caption{
+    font-size: 9.5pt;
+    font-style: italic;
+    color: #8F6544;
+    text-align: center;
+    margin: 0 0 14px 0;
+  }
+
+  /* ---------- Piano keyboard diagram ---------- */
+  .piano-figure{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+    margin:16px 0 18px 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .piano-figure svg{ display:block; }
+  .piano-figure .piano-label{
+    font-family:"Avenir Next","Nunito","Trebuchet MS","Segoe UI",sans-serif;
+    font-size:10.5pt;
+    font-weight:600;
+    color:#8F6544;
+    text-align:center;
+  }
+
+  /* ---------- Guitar chord diagram ---------- */
+  .guitar-chord-row{
+    display:flex;
+    justify-content:center;
+    align-items:flex-start;
+    gap:28px;
+    margin:16px 0 18px 0;
+    flex-wrap:wrap;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .guitar-chord-figure{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+  }
+  .guitar-chord-figure svg{ display:block; }
+  .guitar-chord-figure .chord-label{
+    font-family:"Avenir Next","Nunito","Trebuchet MS","Segoe UI",sans-serif;
+    font-size:11pt;
+    font-weight:700;
+    color:#25201B;
+    text-align:center;
+  }
+
+  /* ---------- Recorder fingering chart ---------- */
+  .recorder-row{
+    display:flex;
+    justify-content:center;
+    align-items:flex-start;
+    gap:24px;
+    margin:16px 0 18px 0;
+    flex-wrap:wrap;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .recorder-figure{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+  }
+  .recorder-figure svg{ display:block; }
+  .recorder-figure .recorder-label{
+    font-family:"Avenir Next","Nunito","Trebuchet MS","Segoe UI",sans-serif;
+    font-size:11pt;
+    font-weight:700;
+    color:#25201B;
+    text-align:center;
+  }
+
+  /* ---------- Pre-notation rhythm boxes (K-1: before staff reading) ----
+     A "Ta"/"ti-ti" style rhythm box row -- width of each box is
+     proportional to its beat value (a half-note box is 2x a quarter-note
+     box's width), so duration is shown spatially without requiring staff
+     notation at all. Use for any lesson teaching steady beat/rhythm
+     before note-reading is introduced. */
+  .rhythm-row{
+    display:flex;
+    align-items:flex-end;
+    gap:4px;
+    margin:16px 0 4px 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .rhythm-box{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:4px;
+  }
+  .rhythm-box .rbox{
+    border:2.5px solid #25201B;
+    border-radius:4px;
+    height:44px;
+    background:none;
+  }
+  .rhythm-box.beat-1 .rbox{ width:44px; }
+  .rhythm-box.beat-2 .rbox{ width:92px; }
+  .rhythm-box.beat-half .rbox{ width:20px; }
+  .rhythm-box .rbox-pair{ display:flex; gap:4px; }
+  .rhythm-box .rbox-pair .rbox{ width:20px; }
+  .rhythm-box .rbox-syllable{
+    font-family:"Avenir Next","Nunito","Trebuchet MS","Segoe UI",sans-serif;
+    font-size:10pt;
+    font-weight:600;
+    color:#8F6544;
+  }

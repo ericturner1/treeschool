@@ -203,6 +203,25 @@ import {
 } from "./services/sales-faqs";
 import { getAdminDashboardMetrics } from "./services/admin-dashboard";
 import {
+  createWorkbookStudioCurriculum,
+  createWorkbookStudioProject,
+  createWorkbookThemeVersion,
+  getAdminWorkbookStudioCurriculum,
+  getAdminWorkbookStudioProject,
+  listAdminWorkbookStudio,
+  publishWorkbookStudioCurriculum,
+  queueWorkbookCurriculumGeneration,
+  queueWorkbookGradeLevelGeneration,
+  queueWorkbookStudioRender,
+  saveWorkbookGenerationPrompt,
+  saveWorkbookGenerationRule,
+  saveWorkbookStudioCurriculumRevision,
+  saveWorkbookStudioRevision,
+  setWorkbookCurriculumTheme,
+  setWorkbookProjectThemeOverride
+} from "./services/workbook-studio";
+import { queueWorkbookStudioRelease } from "./services/workbook-studio-release";
+import {
   capturePublicFunnelLead,
   completeAdminFunnelAssetUpload,
   completeAdminFunnelExperiment,
@@ -323,6 +342,150 @@ const server = Bun.serve({
         return Response.json(await getAdminDashboardMetrics(userId));
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : "Could not load admin metrics." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
+        return Response.json(await listAdminWorkbookStudio(userId));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not load Workbook Studio." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        const projectId = url.searchParams.get("projectId");
+        if (!userId || !projectId) return Response.json({ error: "userId and projectId are required." }, { status: 400 });
+        return Response.json(await getAdminWorkbookStudioProject({ userId, projectId }));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not load the workbook project." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/curriculum" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        const curriculumId = url.searchParams.get("curriculumId");
+        if (!userId || !curriculumId) return Response.json({ error: "userId and curriculumId are required." }, { status: 400 });
+        return Response.json(await getAdminWorkbookStudioCurriculum({ userId, curriculumId }));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not load the curriculum." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/create" && request.method === "POST") {
+      try {
+        return Response.json(await createWorkbookStudioProject(await request.json() as Parameters<typeof createWorkbookStudioProject>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not create the workbook project." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/grade/generate" && request.method === "POST") {
+      try {
+        return Response.json(await queueWorkbookGradeLevelGeneration(await request.json() as Parameters<typeof queueWorkbookGradeLevelGeneration>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not queue grade-level generation." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/save" && request.method === "POST") {
+      try {
+        return Response.json(await saveWorkbookStudioRevision(await request.json() as Parameters<typeof saveWorkbookStudioRevision>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not save the workbook revision." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/render" && request.method === "POST") {
+      try {
+        return Response.json(await queueWorkbookStudioRender(await request.json() as Parameters<typeof queueWorkbookStudioRender>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not queue the workbook render." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/release" && request.method === "POST") {
+      try {
+        return Response.json(await queueWorkbookStudioRelease(await request.json() as Parameters<typeof queueWorkbookStudioRelease>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not queue the workbook release." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/curriculum/create" && request.method === "POST") {
+      try {
+        return Response.json(await createWorkbookStudioCurriculum(await request.json() as Parameters<typeof createWorkbookStudioCurriculum>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not create the curriculum." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/curriculum/save" && request.method === "POST") {
+      try {
+        return Response.json(await saveWorkbookStudioCurriculumRevision(await request.json() as Parameters<typeof saveWorkbookStudioCurriculumRevision>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not save the curriculum." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/curriculum/publish" && request.method === "POST") {
+      try {
+        return Response.json(await publishWorkbookStudioCurriculum(await request.json() as Parameters<typeof publishWorkbookStudioCurriculum>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not publish the curriculum." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/curriculum/generate" && request.method === "POST") {
+      try {
+        return Response.json(await queueWorkbookCurriculumGeneration(await request.json() as Parameters<typeof queueWorkbookCurriculumGeneration>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not generate curriculum workbooks." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/curriculum/theme" && request.method === "POST") {
+      try {
+        return Response.json(await setWorkbookCurriculumTheme(await request.json() as Parameters<typeof setWorkbookCurriculumTheme>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not change the curriculum theme." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/theme" && request.method === "POST") {
+      try {
+        return Response.json(await setWorkbookProjectThemeOverride(await request.json() as Parameters<typeof setWorkbookProjectThemeOverride>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not change the workbook theme." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/prompt/save" && request.method === "POST") {
+      try {
+        return Response.json(await saveWorkbookGenerationPrompt(await request.json() as Parameters<typeof saveWorkbookGenerationPrompt>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not save the generation prompt." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/rule/save" && request.method === "POST") {
+      try {
+        return Response.json(await saveWorkbookGenerationRule(await request.json() as Parameters<typeof saveWorkbookGenerationRule>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not save the generation rule." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/theme/save" && request.method === "POST") {
+      try {
+        return Response.json(await createWorkbookThemeVersion(await request.json() as Parameters<typeof createWorkbookThemeVersion>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not save the workbook theme." }, { status: 400 });
       }
     }
 

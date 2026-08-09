@@ -1,0 +1,122 @@
+  /* ---------- Shared layout for reference-shape figures ---------- */
+  .shape-figure-row{
+    display:flex;
+    justify-content:center;
+    align-items:flex-end;
+    gap:32px;
+    margin:16px 0 18px 0;
+    flex-wrap:wrap;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .shape-figure{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+  }
+  .shape-figure svg{ display:block; }
+  .shape-figure .shape-label{
+    font-family:"Avenir Next","Nunito","Trebuchet MS","Segoe UI",sans-serif;
+    font-size:10.5pt;
+    font-weight:600;
+    color:#8F6544;
+    text-align:center;
+  }
+
+  /* Stacked numeral fraction (e.g. 1/2) -- pair this with EVERY fraction
+     diagram's shape-label, not instead of it. A real shipped bug: Math 1's
+     Chapter 5 fraction diagrams shipped with only word labels ("One Half"),
+     never showing the numeral form -- which is itself part of what
+     "fractions" means at this grade level, not an optional extra. Plain
+     CSS only (flex column + border-bottom as the fraction bar) -- do not
+     reach for LaTeX/MathJax, which is inconsistent with this project's
+     print pipeline. See Pattern B below for usage. */
+  .frac-numeral{
+    display:inline-flex;
+    flex-direction:column;
+    align-items:center;
+    line-height:1;
+    font-family:"Avenir Next","Nunito","Trebuchet MS","Segoe UI",sans-serif;
+    font-weight:700;
+    font-size:15pt;
+    color:#25201B;
+  }
+  .frac-numeral .frac-num{ padding-bottom:1px; }
+  .frac-numeral .frac-line{
+    width:1.1em;
+    border-bottom:2px solid #25201B;
+    margin:1px 0;
+  }
+  .frac-numeral .frac-den{ padding-top:1px; }
+
+  /* Small inline shape icon -- for dropping a shape glyph next to a word
+     inside running text or a matching-table cell, e.g. a small triangle
+     icon right before the word "Triangle" in table.matching. Vertical
+     alignment is tuned to sit on the text baseline. */
+  .shape-icon-inline{
+    display:inline-block;
+    vertical-align:middle;
+    margin-right:8px;
+    position:relative;
+    top:-1px;
+  }
+
+  /* "Compose a shape from smaller shapes" row -- two or more shape
+     figures with a +/= symbol between them, e.g. triangle + triangle =
+     square. Reuses .shape-figure for each shape; the symbol itself is
+     plain large text, not an SVG, since it's typography not geometry. */
+  .compose-row{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:16px;
+    margin:16px 0 18px 0;
+    flex-wrap:wrap;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .compose-row .compose-symbol{
+    font-family:"Comic Sans MS","Comic Sans",cursive;
+    font-weight:bold;
+    font-size:22pt;
+    color:#567B40;
+    line-height:1;
+  }
+
+  /* Hands-on drawing space -- a dashed box the student draws inside,
+     for any lesson whose verb is literally "build" or "draw" a shape
+     (e.g. Common Core 1.G.A.1/1.G.A.2). Not an SVG -- just a bordered
+     box, same visual language as the dashed-border answer-key box
+     already used elsewhere in the base template. */
+  .draw-box{
+    display:inline-flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+    margin:6px 20px 10px 0;
+  }
+  .draw-box .draw-area{
+    border:2px dashed #739E56;
+    border-radius:8px;
+    width:130px;
+    height:100px;
+  }
+  .draw-box .draw-label{
+    font-family:"Avenir Next",sans-serif;
+    font-size:10pt;
+    font-weight:600;
+    color:#8F6544;
+  }
+
+  /* Clock-face and graph figures -- centered block, same spacing rhythm
+     as .shape-figure-row above. break-inside:avoid on .graph-figure
+     keeps a graph from splitting across a page boundary, the same
+     reason .shape-figure-row and .compose-row above have it. */
+  .clock-figure{ display:flex; justify-content:center; margin:16px 0 18px 0; }
+  .graph-figure{ display:flex; justify-content:center; margin:16px 0 18px 0; break-inside: avoid; page-break-inside: avoid; }
+  .graph-figure svg text{ font-family:"Avenir Next",sans-serif; }
+  /* Always pair a graph-figure with a scale note stating what one drawn
+     unit equals -- an unlabeled graph is untestable, see Pattern C's
+     comment below for the shipped bug this prevents. */
+  .graph-scale-note{ font-size: 9.5pt; font-style: italic; color: #8F6544; text-align: center; margin: -8px 0 14px 0; }

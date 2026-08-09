@@ -15,6 +15,15 @@ export type {
   FunnelAutomationTrigger,
   FunnelAutomationAction
 } from "./schema";
+export type {
+  WorkbookStudioRevisionSource,
+  WorkbookStudioProjectStatus,
+  WorkbookThemeVersionStatus,
+  WorkbookGenerationPromptKind,
+  WorkbookGenerationBatchKind,
+  WorkbookStudioJobType,
+  WorkbookStudioJobStatus
+} from "./schema";
 export {
   accountInvitationStatusEnum,
   accountInvitations,
@@ -115,6 +124,22 @@ export {
   teacherActivityEvents,
   uiThemeEnum,
   users,
+  workbookContentRevisions,
+  workbookCurricula,
+  workbookCurriculumRevisions,
+  workbookGenerationBatches,
+  workbookGenerationPrompts,
+  workbookGenerationPromptVersions,
+  workbookGenerationRules,
+  workbookGenerationRuleVersions,
+  workbookGenerationRuns,
+  workbookIllustrationTypes,
+  workbookProjects,
+  workbookRenderRuns,
+  workbookStudioJobs,
+  workbookThemeComponentTokens,
+  workbookThemes,
+  workbookThemeVersions,
   workbookUnitProgressStatusEnum,
   weeklyPlanJobs,
   weeklyPlanDayPdfAssets,

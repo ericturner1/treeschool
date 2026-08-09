@@ -81,6 +81,29 @@ export const lessonGenerationJobStatusEnum = pgEnum("lesson_generation_job_statu
   "completed"
 ]);
 
+export type WorkbookStudioRevisionSource = "manual" | "ai" | "imported";
+export type WorkbookStudioProjectStatus = "draft" | "generating" | "review" | "ready" | "released" | "archived";
+export type WorkbookThemeVersionStatus = "draft" | "published" | "retired";
+export type WorkbookGenerationPromptKind =
+  | "workflow"
+  | "catalog_plan"
+  | "curriculum"
+  | "outline"
+  | "lesson_content"
+  | "subject_overlay"
+  | "layout_profile";
+export type WorkbookGenerationBatchKind = "single_workbook" | "grade_level" | "curriculum" | "theme_cascade";
+export type WorkbookStudioJobType =
+  | "catalog_plan"
+  | "curriculum"
+  | "outline"
+  | "lesson_content"
+  | "validate"
+  | "render"
+  | "theme_cascade"
+  | "release";
+export type WorkbookStudioJobStatus = "queued" | "running" | "retry_wait" | "failed" | "completed" | "cancelled";
+
 export const streakModeEnum = pgEnum("streak_mode", ["daily", "weekly"]);
 export const gradingSchemeEnum = pgEnum("grading_scheme", ["us", "jp"]);
 export const lessonDispositionEnum = pgEnum("lesson_disposition", [
@@ -594,6 +617,7 @@ export const nativeWorkbookEditions = pgTable(
     editionNumber: integer("edition_number").notNull(),
     editionLabel: text("edition_label").notNull(),
     status: text("status").notNull().default("draft"),
+    themeVersionId: uuid("theme_version_id"),
     currentRevisionId: uuid("current_revision_id"),
     changeNotes: text("change_notes"),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, {
@@ -711,6 +735,9 @@ export const nativeWorkbookVersions = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default(sql`'{}'::jsonb`),
+    artifactSource: text("artifact_source").notNull().default("uploaded_pdf"),
+    workbookContentRevisionId: uuid("workbook_content_revision_id"),
+    workbookRenderRunId: uuid("workbook_render_run_id"),
     curriculumCoverageProfile: jsonb("curriculum_coverage_profile")
       .$type<Record<string, unknown>>()
       .notNull()
@@ -759,6 +786,696 @@ export const nativeWorkbookJobs = pgTable(
     versionUnique: unique("native_workbook_jobs_version_unique").on(table.workbookVersionId),
     queueIndex: index("native_workbook_jobs_queue_idx").on(table.status, table.availableAt)
   })
+);
+
+export const workbookThemes = pgTable(
+  "workbook_themes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    status: text("status").notNull().default("active"),
+    publishedVersionId: uuid("published_version_id"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    slugUnique: unique("workbook_themes_slug_unique").on(table.slug),
+    statusIndex: index("workbook_themes_status_idx").on(
+      table.status,
+      table.updatedAt,
+    ),
+  }),
+);
+
+export const workbookThemeVersions = pgTable(
+  "workbook_theme_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    themeId: uuid("theme_id")
+      .notNull()
+      .references(() => workbookThemes.id, { onDelete: "cascade" }),
+    versionNumber: integer("version_number").notNull(),
+    status: text("status")
+      .$type<WorkbookThemeVersionStatus>()
+      .notNull()
+      .default("draft"),
+    colorInk: text("color_ink").notNull(),
+    colorEarth: text("color_earth").notNull(),
+    colorLeaf: text("color_leaf").notNull(),
+    colorLeafDark: text("color_leaf_dark").notNull(),
+    colorCream: text("color_cream").notNull(),
+    colorSand: text("color_sand").notNull(),
+    colorCanvas: text("color_canvas").notNull(),
+    colorCoverAccent: text("color_cover_accent").notNull(),
+    colorCoverAccentSoft: text("color_cover_accent_soft").notNull(),
+    headingFontFamily: text("heading_font_family").notNull(),
+    bodyFontFamily: text("body_font_family").notNull(),
+    pageSize: text("page_size").notNull().default("A4"),
+    pageMarginTopMm: real("page_margin_top_mm").notNull(),
+    pageMarginRightMm: real("page_margin_right_mm").notNull(),
+    pageMarginBottomMm: real("page_margin_bottom_mm").notNull(),
+    pageMarginLeftMm: real("page_margin_left_mm").notNull(),
+    firstPageMarginTopMm: real("first_page_margin_top_mm").notNull(),
+    firstPageMarginRightMm: real("first_page_margin_right_mm").notNull(),
+    firstPageMarginBottomMm: real("first_page_margin_bottom_mm").notNull(),
+    firstPageMarginLeftMm: real("first_page_margin_left_mm").notNull(),
+    bodyFontSizePt: real("body_font_size_pt").notNull(),
+    bodyLineHeight: real("body_line_height").notNull(),
+    rawCssOverride: text("raw_css_override"),
+    compiledCss: text("compiled_css"),
+    compiledAt: timestamp("compiled_at", { withTimezone: true }),
+    sourceJson: jsonb("source_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+  },
+  (table) => ({
+    themeVersionUnique: unique(
+      "workbook_theme_versions_theme_version_unique",
+    ).on(table.themeId, table.versionNumber),
+    themeStatusIndex: index("workbook_theme_versions_theme_status_idx").on(
+      table.themeId,
+      table.status,
+    ),
+  }),
+);
+
+export const workbookThemeComponentTokens = pgTable(
+  "workbook_theme_component_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    themeVersionId: uuid("theme_version_id")
+      .notNull()
+      .references(() => workbookThemeVersions.id, { onDelete: "cascade" }),
+    componentKey: text("component_key").notNull(),
+    tokensJson: jsonb("tokens_json")
+      .$type<Record<string, string | number | boolean>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    versionComponentUnique: unique(
+      "workbook_theme_component_tokens_version_component_unique",
+    ).on(table.themeVersionId, table.componentKey),
+  }),
+);
+
+export const workbookGenerationPrompts = pgTable(
+  "workbook_generation_prompts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    kind: text("kind").$type<WorkbookGenerationPromptKind>().notNull(),
+    status: text("status").notNull().default("active"),
+    publishedVersionId: uuid("published_version_id"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    slugUnique: unique("workbook_generation_prompts_slug_unique").on(
+      table.slug,
+    ),
+    kindStatusIndex: index("workbook_generation_prompts_kind_status_idx").on(
+      table.kind,
+      table.status,
+      table.updatedAt,
+    ),
+  }),
+);
+
+export const workbookGenerationPromptVersions = pgTable(
+  "workbook_generation_prompt_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    promptId: uuid("prompt_id")
+      .notNull()
+      .references(() => workbookGenerationPrompts.id, { onDelete: "cascade" }),
+    versionNumber: integer("version_number").notNull(),
+    status: text("status").notNull().default("draft"),
+    promptText: text("prompt_text").notNull(),
+    configurationJson: jsonb("configuration_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    sourceJson: jsonb("source_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+  },
+  (table) => ({
+    promptVersionUnique: unique(
+      "workbook_generation_prompt_versions_prompt_version_unique",
+    ).on(table.promptId, table.versionNumber),
+  }),
+);
+
+export const workbookGenerationRules = pgTable(
+  "workbook_generation_rules",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    ruleKind: text("rule_kind").notNull(),
+    status: text("status").notNull().default("active"),
+    publishedVersionId: uuid("published_version_id"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    slugUnique: unique("workbook_generation_rules_slug_unique").on(table.slug),
+    kindStatusIndex: index("workbook_generation_rules_kind_status_idx").on(
+      table.ruleKind,
+      table.status,
+    ),
+  }),
+);
+
+export const workbookGenerationRuleVersions = pgTable(
+  "workbook_generation_rule_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ruleId: uuid("rule_id")
+      .notNull()
+      .references(() => workbookGenerationRules.id, { onDelete: "cascade" }),
+    versionNumber: integer("version_number").notNull(),
+    status: text("status").notNull().default("draft"),
+    scopeType: text("scope_type").notNull().default("global"),
+    subjectKey: text("subject_key"),
+    gradeMin: integer("grade_min"),
+    gradeMax: integer("grade_max"),
+    languageCode: text("language_code"),
+    stage: text("stage"),
+    enforcement: text("enforcement").notNull().default("prompt"),
+    instructionText: text("instruction_text"),
+    parametersJson: jsonb("parameters_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+  },
+  (table) => ({
+    ruleVersionUnique: unique(
+      "workbook_generation_rule_versions_rule_version_unique",
+    ).on(table.ruleId, table.versionNumber),
+    applicabilityIndex: index(
+      "workbook_generation_rule_versions_applicability_idx",
+    ).on(
+      table.status,
+      table.subjectKey,
+      table.gradeMin,
+      table.gradeMax,
+      table.stage,
+    ),
+  }),
+);
+
+export const workbookIllustrationTypes = pgTable(
+  "workbook_illustration_types",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    subjectKey: text("subject_key"),
+    status: text("status").notNull().default("active"),
+    rendererKind: text("renderer_kind").notNull().default("parameterized_svg"),
+    parameterSchemaJson: jsonb("parameter_schema_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    svgTemplate: text("svg_template"),
+    tokenBindingsJson: jsonb("token_bindings_json")
+      .$type<Record<string, string>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    keyUnique: unique("workbook_illustration_types_key_unique").on(table.key),
+    subjectStatusIndex: index(
+      "workbook_illustration_types_subject_status_idx",
+    ).on(table.subjectKey, table.status),
+  }),
+);
+
+export const workbookCurricula = pgTable(
+  "workbook_curricula",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    standardCode: text("standard_code"),
+    standardLabel: text("standard_label"),
+    gradeLevel: integer("grade_level").notNull(),
+    languageCode: text("language_code").notNull().default("en"),
+    status: text("status").notNull().default("draft"),
+    defaultThemeVersionId: uuid("default_theme_version_id")
+      .notNull()
+      .references(() => workbookThemeVersions.id, { onDelete: "restrict" }),
+    currentRevisionId: uuid("current_revision_id"),
+    publishedRevisionId: uuid("published_revision_id"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    slugUnique: unique("workbook_curricula_slug_unique").on(table.slug),
+    browseIndex: index("workbook_curricula_browse_idx").on(
+      table.status,
+      table.gradeLevel,
+      table.languageCode,
+    ),
+  }),
+);
+
+export const workbookCurriculumRevisions = pgTable(
+  "workbook_curriculum_revisions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    curriculumId: uuid("curriculum_id")
+      .notNull()
+      .references(() => workbookCurricula.id, { onDelete: "cascade" }),
+    revisionNumber: integer("revision_number").notNull(),
+    source: text("source")
+      .$type<WorkbookStudioRevisionSource>()
+      .notNull()
+      .default("manual"),
+    planJson: jsonb("plan_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    validationJson: jsonb("validation_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    curriculumRevisionUnique: unique(
+      "workbook_curriculum_revisions_curriculum_revision_unique",
+    ).on(table.curriculumId, table.revisionNumber),
+  }),
+);
+
+export const workbookProjects = pgTable(
+  "workbook_projects",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    curriculumId: uuid("curriculum_id").references(() => workbookCurricula.id, {
+      onDelete: "set null",
+    }),
+    nativeWorkbookId: uuid("native_workbook_id").references(
+      () => nativeWorkbooks.id,
+      {
+        onDelete: "set null",
+      },
+    ),
+    catalogPlanKey: text("catalog_plan_key"),
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    subjectKey: text("subject_key").notNull(),
+    subjectLabel: text("subject_label").notNull(),
+    gradeMin: integer("grade_min").notNull(),
+    gradeMax: integer("grade_max").notNull(),
+    languageCode: text("language_code").notNull().default("en"),
+    localeCode: text("locale_code"),
+    layoutProfile: text("layout_profile").notNull().default("standard"),
+    scriptProfile: text("script_profile").notNull().default("latin"),
+    status: text("status")
+      .$type<WorkbookStudioProjectStatus>()
+      .notNull()
+      .default("draft"),
+    themeOverrideVersionId: uuid("theme_override_version_id").references(
+      () => workbookThemeVersions.id,
+      { onDelete: "restrict" },
+    ),
+    generationPromptVersionId: uuid("generation_prompt_version_id").references(
+      () => workbookGenerationPromptVersions.id,
+      { onDelete: "set null" },
+    ),
+    currentRevisionId: uuid("current_revision_id"),
+    publishedRevisionId: uuid("published_revision_id"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    slugUnique: unique("workbook_projects_slug_unique").on(table.slug),
+    nativeWorkbookUnique: unique("workbook_projects_native_workbook_unique").on(
+      table.nativeWorkbookId,
+    ),
+    curriculumCatalogPlanKeyUnique: unique(
+      "workbook_projects_curriculum_catalog_plan_key_unique",
+    ).on(table.curriculumId, table.catalogPlanKey),
+    curriculumStatusIndex: index("workbook_projects_curriculum_status_idx").on(
+      table.curriculumId,
+      table.status,
+      table.updatedAt,
+    ),
+  }),
+);
+
+export const workbookContentRevisions = pgTable(
+  "workbook_content_revisions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => workbookProjects.id, { onDelete: "cascade" }),
+    revisionNumber: integer("revision_number").notNull(),
+    source: text("source")
+      .$type<WorkbookStudioRevisionSource>()
+      .notNull()
+      .default("manual"),
+    contentJson: jsonb("content_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    lessonIdFingerprint: text("lesson_id_fingerprint").notNull(),
+    validationJson: jsonb("validation_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    changeNotes: text("change_notes"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    projectRevisionUnique: unique(
+      "workbook_content_revisions_project_revision_unique",
+    ).on(table.projectId, table.revisionNumber),
+    projectCreatedIndex: index(
+      "workbook_content_revisions_project_created_idx",
+    ).on(table.projectId, table.createdAt),
+  }),
+);
+
+export const workbookGenerationBatches = pgTable(
+  "workbook_generation_batches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    kind: text("kind").$type<WorkbookGenerationBatchKind>().notNull(),
+    status: text("status")
+      .$type<WorkbookStudioJobStatus>()
+      .notNull()
+      .default("queued"),
+    curriculumId: uuid("curriculum_id").references(() => workbookCurricula.id, {
+      onDelete: "set null",
+    }),
+    gradeLevel: integer("grade_level"),
+    languageCode: text("language_code"),
+    targetThemeVersionId: uuid("target_theme_version_id").references(
+      () => workbookThemeVersions.id,
+      { onDelete: "set null" },
+    ),
+    totalJobs: integer("total_jobs").notNull().default(0),
+    completedJobs: integer("completed_jobs").notNull().default(0),
+    failedJobs: integer("failed_jobs").notNull().default(0),
+    inputJson: jsonb("input_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    requestedByUserId: uuid("requested_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => ({
+    queueIndex: index("workbook_generation_batches_queue_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+  }),
+);
+
+export const workbookGenerationRuns = pgTable(
+  "workbook_generation_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    batchId: uuid("batch_id").references(() => workbookGenerationBatches.id, {
+      onDelete: "set null",
+    }),
+    projectId: uuid("project_id").references(() => workbookProjects.id, {
+      onDelete: "set null",
+    }),
+    promptVersionId: uuid("prompt_version_id").references(
+      () => workbookGenerationPromptVersions.id,
+      { onDelete: "set null" },
+    ),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    status: text("status")
+      .$type<WorkbookStudioJobStatus>()
+      .notNull()
+      .default("queued"),
+    currentStage: text("current_stage"),
+    scopeJson: jsonb("scope_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    assembledPrompt: text("assembled_prompt"),
+    appliedRuleVersionIds: uuid("applied_rule_version_ids")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::uuid[]`),
+    providerRequestId: text("provider_request_id"),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    outputRevisionId: uuid("output_revision_id"),
+    errorMessage: text("error_message"),
+    providerUsageJson: jsonb("provider_usage_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    requestedByUserId: uuid("requested_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => ({
+    projectCreatedIndex: index(
+      "workbook_generation_runs_project_created_idx",
+    ).on(table.projectId, table.createdAt),
+    batchIndex: index("workbook_generation_runs_batch_idx").on(table.batchId),
+  }),
+);
+
+export const workbookStudioJobs = pgTable(
+  "workbook_studio_jobs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    batchId: uuid("batch_id").references(() => workbookGenerationBatches.id, {
+      onDelete: "cascade",
+    }),
+    runId: uuid("run_id").references(() => workbookGenerationRuns.id, {
+      onDelete: "cascade",
+    }),
+    projectId: uuid("project_id").references(() => workbookProjects.id, {
+      onDelete: "cascade",
+    }),
+    jobType: text("job_type").$type<WorkbookStudioJobType>().notNull(),
+    status: text("status")
+      .$type<WorkbookStudioJobStatus>()
+      .notNull()
+      .default("queued"),
+    sequenceNumber: integer("sequence_number").notNull().default(0),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    availableAt: timestamp("available_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
+    workerId: text("worker_id"),
+    payloadJson: jsonb("payload_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    resultJson: jsonb("result_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => ({
+    queueIndex: index("workbook_studio_jobs_queue_idx").on(
+      table.status,
+      table.availableAt,
+      table.sequenceNumber,
+    ),
+    batchIndex: index("workbook_studio_jobs_batch_idx").on(
+      table.batchId,
+      table.status,
+    ),
+    projectIndex: index("workbook_studio_jobs_project_idx").on(
+      table.projectId,
+      table.status,
+    ),
+  }),
+);
+
+export const workbookRenderRuns = pgTable(
+  "workbook_render_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => workbookProjects.id, { onDelete: "cascade" }),
+    contentRevisionId: uuid("content_revision_id")
+      .notNull()
+      .references(() => workbookContentRevisions.id, { onDelete: "restrict" }),
+    themeVersionId: uuid("theme_version_id")
+      .notNull()
+      .references(() => workbookThemeVersions.id, { onDelete: "restrict" }),
+    status: text("status")
+      .$type<WorkbookStudioJobStatus>()
+      .notNull()
+      .default("queued"),
+    rendererVersion: text("renderer_version").notNull(),
+    chromiumVersion: text("chromium_version"),
+    pagedJsVersion: text("paged_js_version").notNull(),
+    optionsJson: jsonb("options_json")
+      .$type<{ editionLabelOverride?: string; copyrightYear?: number }>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    fontManifestJson: jsonb("font_manifest_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    htmlObjectPath: text("html_object_path"),
+    pdfObjectPath: text("pdf_object_path"),
+    pageCount: integer("page_count"),
+    validationJson: jsonb("validation_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    lastError: text("last_error"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => ({
+    projectCreatedIndex: index("workbook_render_runs_project_created_idx").on(
+      table.projectId,
+      table.createdAt,
+    ),
+    revisionThemeIndex: index("workbook_render_runs_revision_theme_idx").on(
+      table.contentRevisionId,
+      table.themeVersionId,
+      table.status,
+    ),
+  }),
 );
 
 export const nativeWorkbookPurchases = pgTable(

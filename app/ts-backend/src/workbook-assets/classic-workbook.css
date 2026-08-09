@@ -1,0 +1,568 @@
+  :root{
+    --ink:#25201B;
+    --earth:#8F6544;
+    --leaf:#739E56;
+    --leaf-dark:#567B40;
+    --cream:#FFFAF2;
+    --sand:#F6EDDC;
+    --canvas:#FFFFFF;
+  }
+
+  @page{
+    size: A4;
+    margin: 16mm 14mm 20mm 14mm;
+    @bottom-right{
+      content: counter(page);
+      font-family: "Avenir Next","Nunito","Trebuchet MS","Segoe UI",sans-serif;
+      font-size: 10pt;
+      color: #8F6544;
+    }
+    @bottom-left{
+      content: "Treeschool \2014 {{SUBJECT_NAME}}";
+      font-family: "Avenir Next","Nunito","Trebuchet MS","Segoe UI",sans-serif;
+      font-size: 9pt;
+      color: #8F6544;
+    }
+    /* Two-slot running header: @top-left carries the current CHAPTER
+       (set once per chapter by .chapter-marker, see CHAPTERS below), and
+       @top-right carries the current LESSON (set per-lesson by every
+       .lesson h3.lesson-title, so it updates more often than the chapter
+       slot -- both a lesson's exercises page and its own answer-key page
+       inherit the same lesson value until the next lesson resets it, the
+       same "carries forward until reassigned" mechanism the chapter slot
+       already relies on). On front-matter pages that precede the very
+       first chapter (publisher page, Table of Contents, and a reader's
+       Vocabulary Summary page where applicable) there is no chapter yet,
+       so @top-left is deliberately left with nothing to inherit and
+       renders empty -- those pages instead set only the LESSON string to
+       a plain label ("Front Matter", "Table of Contents"), which is why
+       that context surfaces on the right, not duplicated on the left.
+       Reader workbooks have no chapter concept at all (see the leveled-
+       reader override), so @top-left stays empty for their entire book
+       and @top-right (each story's own title) is the only slot in use --
+       that's expected, not a bug. Both slots get nowrap/ellipsis overflow
+       handling since a lesson title can run considerably longer than a
+       chapter name once it's the specific descriptive title rather than
+       a chapter's own shorter label. */
+    @top-left{
+      content: string(chapter);
+      font-family: "Avenir Next","Nunito","Trebuchet MS","Segoe UI",sans-serif;
+      font-size: 8.5pt;
+      font-weight: bold;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #8F6544;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    @top-right{
+      content: string(lesson);
+      font-family: "Avenir Next","Nunito","Trebuchet MS","Segoe UI",sans-serif;
+      font-size: 8.5pt;
+      font-weight: bold;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #8F6544;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  @page :first{
+    margin: 8mm 7mm 10mm 7mm;
+    @bottom-right{ content: none; }
+    @bottom-left{ content: none; }
+    @top-left{ content: none; }
+    @top-right{ content: none; }
+  }
+
+  *{ box-sizing: border-box; }
+
+  html,body{
+    margin:0;
+    padding:0;
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: "Avenir Next","Nunito","Trebuchet MS","Segoe UI",sans-serif;
+    font-size: 13pt;
+    line-height: 1.5;
+  }
+
+  h1,h2,h3,h4{
+    font-family:"Comic Sans MS","Comic Sans",cursive;
+    font-weight: bold;
+    color: var(--leaf-dark);
+    margin: 0 0 0.4em 0;
+  }
+
+  .logo{
+    font-family:"Comic Sans MS","Comic Sans",cursive;
+    font-weight: 600;
+    letter-spacing: -0.04em;
+    text-transform: lowercase;
+    color: var(--ink);
+    /* Weight compensation for environments substituting an open font
+       (e.g. Comic Neue) for the real, licensed Comic Sans MS, whose Bold
+       cut renders noticeably lighter than genuine Comic Sans MS Bold —
+       font-weight alone can't go past whatever a font actually ships, so
+       a thin matching-color stroke adds real visual heft on top of the
+       boldest weight available. Safe everywhere: where genuine Comic Sans
+       MS is available, this thin an addition just blends into strokes
+       that are already heavier. */
+    -webkit-text-stroke: 0.7px currentColor;
+  }
+
+  /* ---------- Cover ---------- */
+  /* The cover is the one page in the workbook that uses a solid page-fill
+     background (Sand, beige) — every other page stays plain white. */
+  .cover{
+    background: var(--sand);
+    border: 4px solid var(--leaf);
+    border-radius: 24px;
+    padding: 1.13in 40px 0.75in 40px;
+    text-align: center;
+    margin-bottom: 20px;
+    page-break-after: always;
+    height: 261mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover h1{ font-size: 6rem; line-height: 1.1; color: #2F6690; margin-bottom: 10px; -webkit-text-stroke: 1.5px currentColor; position: relative; z-index: 4; }
+  /* Core Curriculum label — only present for core subjects, omitted for electives */
+  .cover .core-label{ display:inline-block; font-size: 1.75rem; color: #2F6690; font-family:"Avenir Next",sans-serif; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; margin: 0 0 10px 0; background: #E3EEF5; padding: 8px 24px; border-radius: 999px; }
+  .cover .cover-note{ font-size: 1.8rem; color: var(--earth); margin-top: 20px; }
+
+  /* Header bar — scoped exception to solid-fill rule. Spans the full
+     cover width, flush to the top edge, holds the logo + wordmark row
+     top-left. Sits at a lower z-index than the grade badge so the
+     badge's blue fill shows on top where the two overlap. */
+  .cover-header-bar{
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 0.93in;
+    background: #2F6690;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    padding-left: 10px;
+    box-shadow: 0 1px 0 rgba(37,32,27,0.08);
+  }
+  /* Shadow strip sandwiched between the header bar and the grade badge —
+     confined to exactly the header bar's own height (not the badge's
+     full height) via top:0/height:100% of this box. An earlier version
+     of this shadow ran the badge's entire height, but the badge is only
+     a straight vertical edge for its upper portion before its bottom-left
+     corner starts curving away — a shadow that kept running straight past
+     that point visibly detached from the curve instead of hugging it.
+     Below the header bar, the badge sits against the Sand background, a
+     different color already, so no separator is needed there at all.
+     Positioned at `right: 253px` — matching the badge's own width — so
+     its right edge sits exactly at the badge's left edge, with z-index
+     naturally sandwiching it below the badge (z-index:2) and above this
+     bar's own fill. A plain box-shadow with a blur radius was tried first
+     and abandoned — it does not render reliably in Chromium's print/PDF
+     pipeline, where the blur collapses to a hard-edged block instead of a
+     soft gradient — this explicit linear-gradient sidesteps that. */
+  .cover-header-bar::after{
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 253px;
+    width: 14px;
+    height: 100%;
+    background: linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,0.32));
+  }
+  .cover-header-bar .cover-logo-art{ margin: 0; padding: 3px; }
+  .cover-header-bar .cover-logo-art img, .cover-header-bar .cover-logo-art svg{ height: 0.864in; width: auto; display:block; }
+  .cover-header-bar .logo{ font-size: 2.4rem; margin: 0 0 0 6px; color: #FFFFFF; }
+
+  /* Edition bar — scoped exception to solid-fill rule. Spans the full
+     cover width, flush to the bottom edge, holds just the edition line,
+     right-aligned. Deliberately quiet — low-contrast fill, small muted
+     text, faint separator — so it reads as a footer detail, not a
+     headline element like the header bar or Core Curriculum badge. */
+  .cover-edition-bar{
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 0.55in;
+    background: #2F6690;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 16px;
+    box-shadow: 0 -1px 0 rgba(37,32,27,0.06);
+  }
+  .cover-edition-bar .edition-label{ font-size: 1.1rem; color: #FFFFFF; font-family:"Avenir Next",sans-serif; font-weight: 600; letter-spacing: 0.02em; margin: 0; }
+  .cover-symbol-wrap{ width: 96%; height: 38.3%; margin: 0 auto 14px auto; display: flex; align-items: center; justify-content: center; position: relative; z-index: 3; }
+  .cover-symbol{ width: 100%; height: 100%; object-fit: contain; display: block; }
+
+  /* Grade corner badge — scoped exception to solid-fill rule.
+     Flush to the top-right corner (no inset margin/gap on those two
+     sides). Only the bottom-left corner (the one facing into the page)
+     gets a large, dramatic sweeping curve; the other three stay square
+     since they sit along the page's own top/right edges. Numeral sized
+     as a poster-scale digit, at least as large as the cover H1. Reader
+     workbooks show the grade here too — the reading level surfaces as
+     a cover subtitle instead (see leveled_reader_step3's override).
+     Box sized 253px wide x 219px tall — a bit wider and a bit shorter
+     than the plain 230px square this started as, tuned through direct
+     visual review: the extra width gives a single digit/letter more
+     breathing room, and the shorter height keeps the badge from reading
+     as taller than it needs to be now that the number itself is set a
+     bit smaller too (see below). */
+  .grade-badge{
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 2;
+    background: #2F6690;
+    color: #FFFFFF;
+    width: 253px;
+    height: 219px;
+    border-radius: 0 0 0 5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: "Comic Sans MS","Comic Sans",cursive;
+    font-weight: bold;
+    font-size: 6.75rem;
+    line-height: 1;
+    white-space: nowrap;
+    /* Same Comic Sans MS weight-compensation technique as .logo/.cover h1
+       above, scaled to this element's font-size. */
+    -webkit-text-stroke: 1.4px currentColor;
+  }
+  /* Multi-character grade values (a range like "1-3" or "K-6") are too wide
+     for the badge at the default single-digit font-size and will wrap onto
+     several lines even with white-space:nowrap forcing an overflow instead —
+     add this modifier class to the badge's own element whenever the
+     {{GRADE}} value has more than one character (fill in the token first,
+     then decide). Single digits/letters ("1", "K") should
+     NOT use this class; they're sized correctly at the default 6.75rem. */
+  .grade-badge.grade-badge--range{
+    font-size: 5.5rem;
+  }
+  .grade-badge .grade-badge-label{
+    font-family:"Avenir Next",sans-serif;
+    font-weight: 400;
+    font-size: 1.52rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-top: 4px;
+    line-height: 1;
+  }
+
+  /* Visually-hidden text node purely to carry a real (non-literal) string-set
+     value into the header's lesson slot on front-matter pages that have no
+     visible heading of their own to anchor to (Paged.js's string-set only
+     supports content()/attr() -- a literal string value like
+     string-set: lesson "Front Matter"; silently fails, rendering nothing
+     (or the literal word "undefined") in the header -- see general_step3
+     prompt's PAGE FURNITURE section for the full writeup). */
+  .header-label{
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* ---------- Publisher / Copyright page ---------- */
+  /* string-set here (and on .toc below) closes a real gap: @top-left
+     shows string(chapter), which is only ever assigned by .chapter-marker
+     on each chapter-divider page (see CHAPTERS below) -- so every page
+     before the very first chapter divider (this page, and the Table of
+     Contents) has no prior chapter value to inherit. That's fine and
+     expected for @top-left (there genuinely is no chapter yet, so it
+     stays empty, same as the reader-workbook override where it's always
+     empty) -- but leaving @top-right blank too would repeat the exact
+     same "accidentally blank corner" bug this section was written to
+     fix. Set only the LESSON string (@top-right) on front-matter pages,
+     to a plain literal label -- @top-left correctly stays unset. */
+  .publisher-page{
+    page-break-after: always;
+    height: 261mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--earth);
+    font-size: 10.5pt;
+    line-height: 1.7;
+  }
+  .publisher-page p{ margin: 0 0 10px 0; max-width: 380px; }
+  .publisher-page .publisher-site{ color: var(--leaf-dark); font-weight: bold; }
+
+  /* ---------- Table of Contents ---------- */
+  .toc{
+    background: none;
+    border: 3px solid rgba(115,158,86,0.2);
+    border-radius: 18px;
+    padding: 24px 32px;
+    margin-bottom: 30px;
+  }
+  .toc h1{ text-align:center; }
+  .toc h3{ color: var(--earth); margin-top: 18px; border-bottom: 2px dotted var(--leaf); padding-bottom: 4px;}
+  .toc ol{ margin: 6px 0 6px 0; padding-left: 22px; }
+  .toc li{ margin-bottom: 3px; }
+  .toc .subject-title{ text-align:center; color: var(--leaf-dark); margin-top: 10px; }
+  .toc li a{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    gap: 10px;
+    color: var(--ink);
+    text-decoration:none;
+    border-bottom: 1px dotted var(--sand);
+    padding-bottom: 2px;
+  }
+  /* Paged.js resolves this to the real printed page number for each lesson */
+  .toc li a::after{
+    content: target-counter(attr(href url), page);
+    color: var(--earth);
+    font-weight:bold;
+    flex: 0 0 auto;
+  }
+
+  /* ---------- Chapter divider page (also drives the running header in the page margin) ---------- */
+  .chapter-page{
+    page-break-before: always;
+    height: 261mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .chapter-marker{
+    /* Sets both header slots on the divider page itself: chapter (for
+       @top-left, and every following page in this chapter) and lesson
+       (for @top-right) to the same chapter text -- purely so this one
+       divider page doesn't show a stale lesson name left over from the
+       previous chapter's last lesson in the corner; the very next page
+       (this chapter's first lesson) immediately overwrites the lesson
+       value with its own title as normal. */
+    string-set: chapter content();
+    color: var(--leaf-dark);
+    font-family:"Comic Sans MS","Comic Sans",cursive;
+    font-size: 24pt;
+    font-weight: bold;
+    letter-spacing: 0.02em;
+    line-height: 1.3;
+    margin: 0;
+    max-width: 80%;
+  }
+
+  /* ---------- Lessons ---------- */
+  .lesson{
+    background: none;
+    border: 2px solid rgba(115,158,86,0.2);
+    border-radius: 16px;
+    padding: 22px 26px;
+    margin: 0 0 26px 0;
+    page-break-before: always;
+  }
+  /* Split-fragment border fix: a lesson (or the TOC, or an answer-key's
+     text box -- any bordered, rounded container long enough to outrun a
+     single page) gets cloned by Paged.js into two DOM fragments when it's
+     too tall to fit on one page: the page-N piece is marked
+     [data-split-to], the page-N+1 continuation is marked
+     [data-split-from]. Paged.js's own stylesheet already resets
+     margin/padding at these artificial edges, but leaves border and
+     border-radius untouched on both fragments -- so without this fix,
+     each fragment renders its own complete rounded box, and a short
+     continuation (e.g. one leftover table row) reads as a small floating
+     card rather than the tail end of the same box the previous page
+     started. Strip the border/radius only at the artificial cut edge, so
+     the genuine start (top of the first fragment) and genuine end
+     (bottom of the last fragment) keep their real corners. */
+  .lesson[data-split-to], .toc[data-split-to], .answer-key-page .answer-key[data-split-to]{
+    border-bottom: none;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .lesson[data-split-from], .toc[data-split-from], .answer-key-page .answer-key[data-split-from]{
+    border-top: none;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+  .lesson h3.lesson-title{
+    /* Drives @top-right's running header (see the @page block above) --
+       carries this lesson's own title across all of its pages (its
+       exercises and its own answer-key page) until the next lesson's
+       title resets it, the same mechanism .chapter-marker already uses
+       for @top-left. */
+    font-size: 17pt;
+    color: var(--leaf-dark);
+    border-bottom: 3px solid var(--leaf);
+    padding-bottom: 6px;
+    margin-bottom: 14px;
+  }
+  .part-label{
+    display:inline-block;
+    font-family:"Comic Sans MS","Comic Sans",cursive;
+    font-weight:bold;
+    background: none;
+    color: var(--leaf-dark);
+    border-bottom: 2px solid var(--leaf);
+    padding: 2px 2px 2px 0;
+    font-size: 11pt;
+    margin: 18px 0 10px 0;
+  }
+  .intro p{ margin: 0 0 10px 0; }
+  .exercises ol{ padding-left: 20px; }
+  .exercises li{ margin-bottom: 14px; break-inside: avoid; page-break-inside: avoid; }
+  .options{ list-style: none; padding-left: 4px; margin: 6px 0 0 0; }
+  .options li{ margin-bottom: 4px; }
+  .blank{ display:inline-block; border-bottom: 2px solid var(--ink); min-width: 120px; }
+  /* Multi-line writing space -- for any exercise that asks the student to
+     compose their own sentence(s), a paragraph, or a short story, as
+     opposed to filling in one missing word inside an already-printed
+     sentence. The inline .blank above is the right tool for the latter
+     (a short ~120px underline sized for a single word), but it is much
+     too short for a student to actually write out a full sentence, and
+     reusing it for that purpose -- stacking several of them with plain
+     <br> tags -- has shipped as a real bug: the cramped line looks
+     wrong, and because the stacked blanks had no page-break protection
+     of their own, a single exercise item could even split across a
+     page boundary mid-answer. Use one <div class="write-line"></div>
+     per line of ruled writing space the student needs, but "one line
+     per sentence expected" is a floor, not the actual rule -- size the
+     block to the expected ANSWER, not just the sentence count. A single
+     one-word or one-short-sentence prompt still gets a minimum of two
+     lines (early-elementary handwriting is large and uneven, and a
+     student who needs to cross out and retry a word needs room to do
+     that without the line looking cramped or illegible); a prompt asking
+     for two discrete short items (e.g. "write one word with X and one
+     word with Y") needs either two lines or two separately labeled
+     blanks, never one shared line; a "why" / reasoning / explain-in-your-
+     own-words prompt needs at least two to three lines even if the
+     expected answer could technically fit in one, since a real answer to
+     "why" is rarely a single word; and a short paragraph or story gets
+     three to five, matching the length actually asked for. A real
+     shipped bug from using the one-line floor as if it were the whole
+     rule: a "write one word with the ar sound and one word with the or
+     sound" prompt got a single shared blank sized for one word, and a
+     "can you think of why..." reasoning prompt got a single line with no
+     room for an actual explanation. The 0.4in line height is
+     sized for early-elementary handwriting, not adult cursive. The
+     block's own break-inside:avoid is redundant with .exercises li's
+     rule above but is kept here too as a second line of defense, since
+     a writing block is exactly the kind of tall content most likely to
+     straddle a page break if either rule were ever removed. */
+  .write-space{ margin: 10px 0 4px 0; break-inside: avoid; page-break-inside: avoid; }
+  .write-space .write-line{ border-bottom: 1.5px solid var(--ink); height: 0.4in; }
+  /* Matching-grid table -- the exercise instruction text itself must always
+     say "Draw a line connecting..." (or equivalent), never just "Match X to
+     Y" -- a bare "match" doesn't tell the student HOW (draw a line? write a
+     letter?). Data-row borders are deliberately faint/absent (not the bold
+     2px grid used elsewhere) since a heavy grid visually competes with a
+     hand-drawn connecting line crossing between the two columns -- a solid
+     border directly under the pencil line reads as clutter, not structure.
+     Only the header row keeps a strong divider. */
+  table.matching{
+    border-collapse: collapse;
+    width: 100%;
+    margin: 8px 0;
+    background: none;
+  }
+  table.matching th{
+    border-bottom: 3px solid var(--leaf);
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 12pt;
+    background: none;
+    color: var(--leaf-dark);
+  }
+  table.matching td{
+    border: none;
+    border-bottom: 1px solid rgba(115,158,86,0.1);
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 12pt;
+  }
+  table.matching tr{
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  table.matching tr:first-child{
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+
+  /* ---------- Dedicated answer-key page (follows each lesson) ---------- */
+  .answer-key-page{
+    page-break-before: always;
+    padding-top: 10px;
+  }
+  .answer-key-page .ak-banner{
+    text-align:center;
+    background: none;
+    color: var(--earth);
+    border: 2px solid rgba(143,101,68,0.2);
+    border-radius: 16px;
+    padding: 8px 20px;
+    margin-bottom: 20px;
+    font-family:"Comic Sans MS","Comic Sans",cursive;
+    font-weight: bold;
+    font-size: 13pt;
+    letter-spacing: 0.03em;
+  }
+  .answer-key-page h3{ text-align:center; color: var(--leaf-dark); margin-bottom: 16px; }
+  .answer-key-page .answer-key{
+    max-width: 520px;
+    margin: 0 auto;
+    background: none;
+    border: 2px dashed rgba(143,101,68,0.2);
+    border-radius: 12px;
+    padding: 16px 24px;
+  }
+  .answer-key-page .answer-key p{ margin: 0 0 8px 0; }
+
+  @media print{
+    body{ background: white; }
+    .lesson, .toc{ box-shadow:none; }
+  }
+
+  /* ---------- Consolidated running-header "lesson" string-set selector ----------
+     Paged.js's StringSets handler keeps only the LAST-declared selector for
+     a given string-set identifier in the whole stylesheet -- confirmed via
+     direct isolated testing -- silently ignoring every earlier rule that
+     also declares string-set for that same identifier on a different
+     selector, even though each individual rule looks correct on its own.
+     This is why, before this fix, the running header's lesson slot worked
+     fine on every lesson page (whichever selector happened to be declared
+     last in the file "won") but silently rendered blank on every
+     front-matter page (publisher page, Table of Contents, Vocabulary
+     Summary) even though each of those had its own seemingly-correct
+     string-set: lesson content(); rule.
+     The fix: every element that needs to set the header's lesson slot is
+     listed together in ONE combined selector, in this one rule, instead of
+     each declaring string-set individually near its own other properties.
+     If you add a new front-matter page (or any other element that should
+     drive this header slot), add its selector to this list -- declaring
+     string-set: lesson ...; on it elsewhere will be silently ignored. */
+  .lesson h3.lesson-title,
+  .chapter-marker,
+  .toc h1,
+  .publisher-page .header-label,
+  .vocab-summary h1 {
+    string-set: lesson content();
+  }

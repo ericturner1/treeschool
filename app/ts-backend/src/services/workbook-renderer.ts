@@ -1,0 +1,694 @@
+import { readFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { and, eq } from "drizzle-orm";
+import { PDFDocument } from "pdf-lib";
+import { chromium } from "playwright";
+import {
+  workbookContentRevisions,
+  workbookIllustrationTypes,
+  workbookProjects,
+  workbookRenderRuns,
+  workbookThemeVersions,
+} from "ts-db";
+import { db } from "../db";
+import { uploadPrivateFile } from "./media";
+import {
+  parseWorkbookContent,
+  type WorkbookContent,
+} from "./workbook-studio-model";
+import { validateWorkbookForScope } from "./workbook-studio-validation";
+import {
+  compileWorkbookThemeCss,
+  resolveSvgThemeTokens,
+  validateCompiledThemeMechanics,
+  workbookThemeTokensSchema,
+  type WorkbookThemeTokens,
+} from "./workbook-theme-compiler";
+
+const PAGED_JS_VERSION = "0.4.3";
+const RENDERER_VERSION = "workbook-studio-v1";
+const FONT_MANIFEST = {
+  source: "fontsource",
+  packageVersion: "5.3.0",
+  families: {
+    Nunito: [400, 700],
+    "Comic Neue": [400, 700],
+    "Noto Sans JP": [400, 700],
+  },
+} as const;
+
+type IllustrationDefinition = {
+  key: string;
+  rendererKind: string;
+  svgTemplate: string | null;
+  tokenBindingsJson: Record<string, string>;
+};
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function safeInlineScript(value: string) {
+  return value.replaceAll("</script", "<\\/script");
+}
+
+function escapeCssStringContent(value: string) {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replaceAll('"', '\\"')
+    .replaceAll(/\r?\n/g, " ");
+}
+
+async function firstReadable(paths: string[]) {
+  let lastError: unknown;
+  for (const path of paths) {
+    try {
+      return await readFile(path);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Could not read ${paths[0]}.`);
+}
+
+function serviceDirectory() {
+  return dirname(fileURLToPath(import.meta.url));
+}
+
+async function loadWorkbookAsset(filename: string) {
+  const serviceDir = serviceDirectory();
+  const bytes = await firstReadable([
+    join(serviceDir, "../workbook-assets", filename),
+    join(serviceDir, "workbook-assets", filename),
+    join(process.cwd(), "app/ts-backend/src/workbook-assets", filename),
+    join(process.cwd(), "app/ts-backend/dist/workbook-assets", filename),
+  ]);
+  return new TextDecoder().decode(bytes);
+}
+
+async function resolvePackageFile(relativePath: string) {
+  const candidates = [
+    join(process.cwd(), "node_modules", relativePath),
+    join(process.cwd(), "../../node_modules", relativePath),
+    join(serviceDirectory(), "../../../node_modules", relativePath),
+    join(serviceDirectory(), "../../../../node_modules", relativePath),
+  ];
+  return firstReadable(candidates);
+}
+
+async function inlineFontsourceCss(packageName: string, cssFile: string) {
+  const packageRoot = `@fontsource/${packageName}`;
+  let css = new TextDecoder().decode(
+    await resolvePackageFile(`${packageRoot}/${cssFile}`),
+  );
+  const matches = Array.from(
+    css.matchAll(/url\((?:"|')?\.\/files\/([^)'\"]+)(?:"|')?\)/g),
+  );
+  const replacements = new Map<string, string>();
+  for (const match of matches) {
+    const filename = match[1];
+    if (replacements.has(filename)) continue;
+    const bytes = await resolvePackageFile(`${packageRoot}/files/${filename}`);
+    const mime = filename.endsWith(".woff2") ? "font/woff2" : "font/woff";
+    replacements.set(
+      filename,
+      `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`,
+    );
+  }
+  for (const [filename, dataUrl] of replacements) {
+    css = css
+      .replaceAll(`url(./files/${filename})`, `url(${dataUrl})`)
+      .replaceAll(`url("./files/${filename}")`, `url("${dataUrl}")`)
+      .replaceAll(`url('./files/${filename}')`, `url('${dataUrl}')`);
+  }
+  return css;
+}
+
+async function pinnedFontCss() {
+  return (
+    await Promise.all([
+      inlineFontsourceCss("nunito", "400.css"),
+      inlineFontsourceCss("nunito", "700.css"),
+      inlineFontsourceCss("comic-neue", "400.css"),
+      inlineFontsourceCss("comic-neue", "700.css"),
+      inlineFontsourceCss("noto-sans-jp", "400.css"),
+      inlineFontsourceCss("noto-sans-jp", "700.css"),
+    ])
+  ).join("\n");
+}
+
+function replaceCanonicalThemeColors(css: string, theme: WorkbookThemeTokens) {
+  const colors: Array<[string, string]> = [
+    ["#25201B", theme.colorInk],
+    ["#8F6544", theme.colorEarth],
+    ["#739E56", theme.colorLeaf],
+    ["#567B40", theme.colorLeafDark],
+    ["#FFFAF2", theme.colorCream],
+    ["#F6EDDC", theme.colorSand],
+    ["#FFFFFF", theme.colorCanvas],
+    ["#2F6690", theme.colorCoverAccent],
+    ["#E3EEF5", theme.colorCoverAccentSoft],
+  ];
+  const themedColors = colors.reduce(
+    (result, [source, target]) =>
+      result.replace(new RegExp(source, "gi"), target),
+    css,
+  );
+  return themedColors
+    .replaceAll(
+      '"Comic Sans MS","Comic Sans",cursive',
+      theme.headingFontFamily,
+    )
+    .replaceAll(
+      '"Avenir Next","Nunito","Trebuchet MS","Segoe UI",sans-serif',
+      theme.bodyFontFamily,
+    )
+    .replaceAll('"Avenir Next",sans-serif', theme.bodyFontFamily);
+}
+
+async function subjectOverlayCss(
+  subjectKey: string,
+  layoutProfile: string,
+  scriptProfile: string,
+) {
+  const normalized = subjectKey.toLocaleLowerCase("en-US");
+  const assets = new Set<string>();
+  if (normalized.includes("math")) assets.add("math-overlay.css");
+  if (normalized.includes("music")) assets.add("music-overlay.css");
+  if (
+    normalized.includes("japanese") ||
+    normalized.includes("kokugo") ||
+    scriptProfile === "japanese"
+  )
+    assets.add("japanese-overlay.css");
+
+  const overlays = await Promise.all([...assets].map(loadWorkbookAsset));
+  if (layoutProfile === "reader") {
+    overlays.push(
+      `
+.reader-vocabulary { page-break-after: always; }
+.reader-passage { font-size: 15pt; line-height: 1.8; }
+.reader-passage .lesson-title { font-size: 20pt; }
+`.trim(),
+    );
+  }
+  return overlays.join("\n");
+}
+
+function replaceSvgParameters(
+  template: string,
+  parameters: Record<string, unknown>,
+) {
+  return template.replace(
+    /\{\{param:([a-zA-Z][a-zA-Z0-9]*)\}\}/g,
+    (_match, key: string) => {
+      if (!(key in parameters))
+        throw new Error(`Missing illustration parameter: ${key}`);
+      return escapeHtml(parameters[key]);
+    },
+  );
+}
+
+function renderIllustration(
+  block: Extract<
+    WorkbookContent["chapters"][number]["lessons"][number]["learnBlocks"][number],
+    { type: "illustration" }
+  >,
+  definitions: Map<string, IllustrationDefinition>,
+  theme: WorkbookThemeTokens,
+) {
+  const definition = definitions.get(block.illustrationType);
+  if (!definition)
+    throw new Error(`Unknown illustration type: ${block.illustrationType}`);
+  if (!definition.svgTemplate)
+    throw new Error(
+      `Illustration ${block.illustrationType} has no SVG template.`,
+    );
+  const tokenBindings = Object.fromEntries(
+    Object.entries(definition.tokenBindingsJson).map(([binding, token]) => [
+      binding,
+      token,
+    ]),
+  ) as Parameters<typeof resolveSvgThemeTokens>[1];
+  const themed = resolveSvgThemeTokens(
+    definition.svgTemplate,
+    tokenBindings,
+    theme,
+  );
+  const svg = replaceSvgParameters(themed, block.parameters);
+  return `<figure class="workbook-illustration" role="img" aria-label="${escapeHtml(block.altText)}">${svg}${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ""}</figure>`;
+}
+
+function renderLearnBlock(
+  block: WorkbookContent["chapters"][number]["lessons"][number]["learnBlocks"][number],
+  definitions: Map<string, IllustrationDefinition>,
+  theme: WorkbookThemeTokens,
+) {
+  if (block.type === "paragraph") return `<p>${escapeHtml(block.text)}</p>`;
+  if (block.type === "illustration")
+    return renderIllustration(block, definitions, theme);
+  if (block.type === "callout") {
+    return `<aside class="lesson-callout lesson-callout--${block.tone}">${block.label ? `<strong>${escapeHtml(block.label)}</strong> ` : ""}${escapeHtml(block.text)}</aside>`;
+  }
+  if (block.type === "image_asset") {
+    return `<div class="image-asset-placeholder"><strong>Illustration brief</strong><p>${escapeHtml(block.description)}</p></div>`;
+  }
+  if (block.type === "vocabulary_list") {
+    return `<section class="reader-vocabulary"><h4>${escapeHtml(block.title ?? "Vocabulary")}</h4><dl>${block.entries.map((entry) => `<div><dt>${escapeHtml(entry.term)}${entry.pronunciation ? ` <span>${escapeHtml(entry.pronunciation)}</span>` : ""}</dt><dd>${escapeHtml(entry.definition)}</dd></div>`).join("")}</dl></section>`;
+  }
+  if (block.type === "reading_passage") {
+    return `<article class="reader-passage">${block.title ? `<h4>${escapeHtml(block.title)}</h4>` : ""}${block.paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")}${block.attribution ? `<p class="passage-attribution">${escapeHtml(block.attribution)}</p>` : ""}</article>`;
+  }
+  return `<section class="character-practice"><div class="character-model">${escapeHtml(block.character)}</div><p>${[block.pronunciation, block.meaning].filter(Boolean).map(escapeHtml).join(" · ")}</p>${Array.from({ length: block.traceRows }, () => `<div class="character-trace-row"><span>${escapeHtml(block.character)}</span><span></span><span></span><span></span></div>`).join("")}</section>`;
+}
+
+function exerciseAnswer(
+  exercise: WorkbookContent["chapters"][number]["lessons"][number]["exercises"][number],
+) {
+  if (exercise.type === "matching") {
+    return exercise.pairs
+      .map((pair) => `${pair.left} — ${pair.right}`)
+      .join("; ");
+  }
+  if (exercise.type === "write" || exercise.type === "draw_box")
+    return exercise.sampleAnswer;
+  return Array.isArray(exercise.correctAnswer)
+    ? exercise.correctAnswer.join(" / ")
+    : exercise.correctAnswer;
+}
+
+function renderExercise(
+  exercise: WorkbookContent["chapters"][number]["lessons"][number]["exercises"][number],
+) {
+  if (
+    exercise.type === "circle_choice" ||
+    exercise.type === "multiple_choice"
+  ) {
+    return `${escapeHtml(exercise.prompt)}<ul class="options">${exercise.options.map((option, index) => `<li>(${String.fromCharCode(97 + index)}) ${escapeHtml(option)}</li>`).join("")}</ul>`;
+  }
+  if (exercise.type === "matching") {
+    const rightById = new Map(
+      exercise.pairs.map((pair) => [pair.id, pair.right]),
+    );
+    return `${escapeHtml(exercise.prompt)}<table class="matching"><thead><tr><th>Item</th><th>Match</th></tr></thead><tbody>${exercise.pairs.map((pair, index) => `<tr><td>${index + 1}. ${escapeHtml(pair.left)}</td><td>${String.fromCharCode(65 + index)}. ${escapeHtml(rightById.get(exercise.rightOrder[index]) ?? "")}</td></tr>`).join("")}</tbody></table>`;
+  }
+  if (exercise.type === "fill_in_blank") {
+    return `${escapeHtml(exercise.prompt)} <span class="blank">&nbsp;</span>`;
+  }
+  if (exercise.type === "draw_box") {
+    return `${escapeHtml(exercise.prompt)}<div class="draw-box" style="height:${exercise.boxHeightMm}mm"></div>`;
+  }
+  const lines = exercise.writingLines;
+  return `${escapeHtml(exercise.prompt)}<div class="write-space">${Array.from({ length: lines }, () => '<div class="write-line"></div>').join("")}</div>`;
+}
+
+function gradeBadge(content: WorkbookContent) {
+  const label = content.gradeLabel
+    .replace(/^Grades?\s+/i, "")
+    .replace(/^Kindergarten$/i, "K");
+  return {
+    value: label,
+    noun: label.length > 1 ? "Grades" : "Grade",
+    className:
+      label.length > 1 ? "grade-badge grade-badge--range" : "grade-badge",
+  };
+}
+
+function renderWorkbookBody(
+  content: WorkbookContent,
+  definitions: Map<string, IllustrationDefinition>,
+  theme: WorkbookThemeTokens,
+  logoDataUrl: string,
+  copyrightYear: number,
+  layoutProfile: string,
+) {
+  const badge = gradeBadge(content);
+  const toc = content.chapters
+    .map(
+      (chapter, chapterIndex) => `
+    <h3>Chapter ${chapterIndex + 1}: ${escapeHtml(chapter.title)}</h3>
+    <ol>${chapter.lessons.map((lesson, lessonIndex) => `<li><a href="#${escapeHtml(lesson.id)}">Lesson ${chapterIndex + 1}.${lessonIndex + 1} — ${escapeHtml(lesson.title)}</a></li>`).join("")}</ol>
+  `,
+    )
+    .join("");
+  const chapters = content.chapters
+    .map(
+      (chapter, chapterIndex) => `
+    ${layoutProfile === "reader" ? "" : `<div class="chapter-page"><p class="chapter-marker">Chapter ${chapterIndex + 1}: ${escapeHtml(chapter.title)}</p></div>`}
+    ${chapter.lessons
+      .map((lesson, lessonIndex) => {
+        const lessonNumber = `${chapterIndex + 1}.${lessonIndex + 1}`;
+        return `
+        <div class="lesson" id="${escapeHtml(lesson.id)}">
+          <h3 class="lesson-title">Lesson ${lessonNumber} — ${escapeHtml(lesson.title)}</h3>
+          <span class="part-label">Part 1: Learn</span>
+          <div class="intro">${lesson.learnBlocks.map((block) => renderLearnBlock(block, definitions, theme)).join("")}</div>
+          <span class="part-label">Part 2: Practice</span>
+          <div class="exercises"><ol>${lesson.exercises.map((exercise) => `<li data-exercise-id="${escapeHtml(exercise.id)}">${renderExercise(exercise)}</li>`).join("")}</ol></div>
+        </div>
+        <div class="answer-key-page">
+          <div class="ak-banner">FOR PARENTS ONLY — ANSWER KEY</div>
+          <h3>Lesson ${lessonNumber} — ${escapeHtml(lesson.title)}</h3>
+          <div class="answer-key">${lesson.exercises.map((exercise, index) => `<p><strong>${index + 1}.</strong> ${escapeHtml(exerciseAnswer(exercise))}</p>`).join("")}</div>
+        </div>
+      `;
+      })
+      .join("")}
+  `,
+    )
+    .join("");
+  return `
+    <div class="cover">
+      <div class="cover-header-bar"><div class="cover-logo-art"><img src="${logoDataUrl}" alt="Treeschool tree logo"></div><div class="logo">treeschool</div></div>
+      <div class="${badge.className}">${escapeHtml(badge.value)}<div class="grade-badge-label">${badge.noun}</div></div>
+      <h1>${escapeHtml(content.subjectLabel)}</h1>
+      ${content.isCore ? '<p class="core-label">Core Curriculum</p>' : ""}
+      <p class="cover-note">${escapeHtml(content.subtitle ?? "A complete, print-ready homeschool workbook.")}</p>
+      <div class="cover-edition-bar"><p class="edition-label">${escapeHtml(content.editionLabel)}</p></div>
+    </div>
+    <div class="publisher-page"><span class="header-label">Front Matter</span><p>Copyright &copy; ${copyrightYear} Treeschool. All rights reserved.</p><p>No part of this workbook may be reproduced, distributed, or transmitted in any form without prior written permission from Treeschool, except for personal or single-classroom use by the purchaser.</p><p class="publisher-site">www.treeschool.com</p></div>
+    ${content.introduction.length ? `<div class="intro-page"><h1>Introduction</h1>${content.introduction.map((block) => renderLearnBlock(block, definitions, theme)).join("")}</div>` : ""}
+    <div class="toc"><h1>Table of Contents</h1>${toc}</div>
+    ${chapters}
+  `;
+}
+
+async function logoDataUrl() {
+  const bytes = await firstReadable([
+    join(process.cwd(), "app/ts-frontend/public/tree-icon.png"),
+    join(process.cwd(), "../ts-frontend/public/tree-icon.png"),
+    join(serviceDirectory(), "../../../ts-frontend/public/tree-icon.png"),
+  ]);
+  return `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`;
+}
+
+export async function buildWorkbookHtml(input: {
+  content: WorkbookContent;
+  theme: WorkbookThemeTokens;
+  subjectKey: string;
+  languageCode?: string;
+  layoutProfile: string;
+  scriptProfile: string;
+  illustrationDefinitions?: IllustrationDefinition[];
+  editionLabelOverride?: string | null;
+  copyrightYear?: number;
+}) {
+  const [canonicalCss, overlayCss, fontCss, pagedJs, logo] = await Promise.all([
+    loadWorkbookAsset("classic-workbook.css"),
+    subjectOverlayCss(
+      input.subjectKey,
+      input.layoutProfile,
+      input.scriptProfile,
+    ),
+    pinnedFontCss(),
+    resolvePackageFile("pagedjs/dist/paged.polyfill.js").then((bytes) =>
+      new TextDecoder().decode(bytes),
+    ),
+    logoDataUrl(),
+  ]);
+  const themedCanonicalCss = replaceCanonicalThemeColors(
+    canonicalCss,
+    input.theme,
+  ).replaceAll(
+    "{{SUBJECT_NAME}}",
+    escapeCssStringContent(input.content.subjectLabel),
+  );
+  const tokenCss = compileWorkbookThemeCss(input.theme);
+  const mechanicsIssues = validateCompiledThemeMechanics(themedCanonicalCss);
+  if (mechanicsIssues.length) {
+    throw new Error(
+      `Workbook theme failed print-mechanics validation: ${mechanicsIssues.join(" ")}`,
+    );
+  }
+  const definitions = new Map(
+    (input.illustrationDefinitions ?? []).map((definition) => [
+      definition.key,
+      definition,
+    ]),
+  );
+  const renderedContent = input.editionLabelOverride
+    ? { ...input.content, editionLabel: input.editionLabelOverride }
+    : input.content;
+  const body = renderWorkbookBody(
+    renderedContent,
+    definitions,
+    input.theme,
+    logo,
+    input.copyrightYear ?? 2026,
+    input.layoutProfile,
+  );
+  return `<!doctype html>
+<html lang="${escapeHtml(input.languageCode ?? "en")}">
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(input.content.title)}</title>
+<style data-pagedjs-ignore>${fontCss}</style>
+<style>${themedCanonicalCss}\n${overlayCss}\n${tokenCss}\n
+.workbook-illustration { margin: 12px auto; break-inside: avoid; page-break-inside: avoid; text-align: center; }
+.workbook-illustration svg { max-width: 100%; height: auto; }
+.workbook-illustration figcaption { margin-top: 4px; color: var(--earth); font-size: 10pt; }
+.lesson-callout, .image-asset-placeholder { margin: 10px 0; padding: 10px 14px; border: 2px solid var(--leaf); border-radius: 12px; break-inside: avoid; }
+.draw-box { margin-top: 10px; border: 2px solid var(--ink); break-inside: avoid; }
+.reader-vocabulary, .reader-passage, .character-practice { margin: 12px 0; break-inside: avoid; page-break-inside: avoid; }
+.reader-vocabulary dl > div { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--sand); }
+.reader-vocabulary dt { font-weight: 700; color: var(--leaf-dark); }
+.reader-vocabulary dd { margin: 0; }
+.passage-attribution { color: var(--earth); font-size: 10pt; text-align: right; }
+.character-model { font-family: "Noto Sans JP", sans-serif; font-size: 42pt; color: var(--leaf-dark); text-align: center; }
+.character-trace-row { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 6px; }
+.character-trace-row span { display: grid; min-height: 22mm; place-items: center; border: 1px dashed var(--earth); font-family: "Noto Sans JP", sans-serif; font-size: 28pt; }
+.character-trace-row span:first-child { color: color-mix(in srgb, var(--earth) 35%, transparent); }
+</style>
+<script>window.PagedConfig={auto:false};</script>
+<script>${safeInlineScript(pagedJs)}</script>
+</head>
+<body>${body}<script>
+(async()=>{try{await document.fonts.ready;await window.PagedPolyfill.preview();window.__WORKBOOK_PAGED_DONE__=true;}catch(error){window.__WORKBOOK_PAGED_ERROR__=String(error&&error.stack||error);}})();
+</script></body>
+</html>`;
+}
+
+export async function renderWorkbookPdf(html: string) {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({
+      viewport: { width: 1280, height: 960 },
+    });
+    await page.setContent(html, { waitUntil: "load", timeout: 120_000 });
+    await page.waitForFunction(
+      () =>
+        Boolean(
+          (globalThis as unknown as { __WORKBOOK_PAGED_DONE__?: boolean })
+            .__WORKBOOK_PAGED_DONE__,
+        ) ||
+        Boolean(
+          (globalThis as unknown as { __WORKBOOK_PAGED_ERROR__?: string })
+            .__WORKBOOK_PAGED_ERROR__,
+        ),
+      undefined,
+      { timeout: 120_000 },
+    );
+    const pagedError = await page.evaluate(
+      () =>
+        (globalThis as unknown as { __WORKBOOK_PAGED_ERROR__?: string })
+          .__WORKBOOK_PAGED_ERROR__,
+    );
+    if (pagedError) throw new Error(`Paged.js failed: ${pagedError}`);
+    const coverDiagnostics = await page
+      .locator(".pagedjs_page .cover")
+      .first()
+      .evaluate((element) => {
+        const view = globalThis as unknown as {
+          getComputedStyle(target: unknown): {
+            backgroundColor: string;
+            borderWidth: string;
+            height: string;
+          };
+        };
+        const style = view.getComputedStyle(element);
+        const image = element.querySelector("img");
+        return {
+          backgroundColor: style.backgroundColor,
+          borderWidth: style.borderWidth,
+          height: style.height,
+          imageHeight: image ? view.getComputedStyle(image).height : null,
+        };
+      });
+    const pdf = await page.pdf({
+      width: "210mm",
+      height: "297mm",
+      printBackground: true,
+      preferCSSPageSize: false,
+      margin: { top: "0", right: "0", bottom: "0", left: "0" },
+    });
+    const document = await PDFDocument.load(pdf);
+    const pageSize = document.getPage(0).getSize();
+    return {
+      pdf: new Uint8Array(pdf),
+      pageCount: document.getPageCount(),
+      pageWidthPoints: pageSize.width,
+      pageHeightPoints: pageSize.height,
+      coverDiagnostics,
+      chromiumVersion: browser.version(),
+    };
+  } finally {
+    await browser.close();
+  }
+}
+
+function themeTokensFromRow(
+  row: typeof workbookThemeVersions.$inferSelect,
+): WorkbookThemeTokens {
+  return workbookThemeTokensSchema.parse({
+    colorInk: row.colorInk,
+    colorEarth: row.colorEarth,
+    colorLeaf: row.colorLeaf,
+    colorLeafDark: row.colorLeafDark,
+    colorCream: row.colorCream,
+    colorSand: row.colorSand,
+    colorCanvas: row.colorCanvas,
+    colorCoverAccent: row.colorCoverAccent,
+    colorCoverAccentSoft: row.colorCoverAccentSoft,
+    headingFontFamily: row.headingFontFamily,
+    bodyFontFamily: row.bodyFontFamily,
+    pageSize: row.pageSize,
+    pageMarginTopMm: row.pageMarginTopMm,
+    pageMarginRightMm: row.pageMarginRightMm,
+    pageMarginBottomMm: row.pageMarginBottomMm,
+    pageMarginLeftMm: row.pageMarginLeftMm,
+    firstPageMarginTopMm: row.firstPageMarginTopMm,
+    firstPageMarginRightMm: row.firstPageMarginRightMm,
+    firstPageMarginBottomMm: row.firstPageMarginBottomMm,
+    firstPageMarginLeftMm: row.firstPageMarginLeftMm,
+    bodyFontSizePt: row.bodyFontSizePt,
+    bodyLineHeight: row.bodyLineHeight,
+  });
+}
+
+export async function executeWorkbookRenderRun(renderRunId: string) {
+  const [row] = await db
+    .select({
+      run: workbookRenderRuns,
+      project: workbookProjects,
+      revision: workbookContentRevisions,
+      theme: workbookThemeVersions,
+    })
+    .from(workbookRenderRuns)
+    .innerJoin(
+      workbookProjects,
+      eq(workbookProjects.id, workbookRenderRuns.projectId),
+    )
+    .innerJoin(
+      workbookContentRevisions,
+      eq(workbookContentRevisions.id, workbookRenderRuns.contentRevisionId),
+    )
+    .innerJoin(
+      workbookThemeVersions,
+      eq(workbookThemeVersions.id, workbookRenderRuns.themeVersionId),
+    )
+    .where(eq(workbookRenderRuns.id, renderRunId))
+    .limit(1);
+  if (!row) throw new Error("Workbook render run not found.");
+  if (row.theme.status !== "published")
+    throw new Error(
+      "Only a published theme version can render a release artifact.",
+    );
+  const content = parseWorkbookContent(row.revision.contentJson);
+  const validationIssues = await validateWorkbookForScope(content, row.project);
+  const blockingIssues = validationIssues.filter(
+    (issue) => issue.severity === "error",
+  );
+  if (blockingIssues.length)
+    throw new Error(blockingIssues.map((issue) => issue.message).join(" "));
+
+  const illustrations = await db
+    .select({
+      key: workbookIllustrationTypes.key,
+      rendererKind: workbookIllustrationTypes.rendererKind,
+      svgTemplate: workbookIllustrationTypes.svgTemplate,
+      tokenBindingsJson: workbookIllustrationTypes.tokenBindingsJson,
+    })
+    .from(workbookIllustrationTypes)
+    .where(eq(workbookIllustrationTypes.status, "active"));
+  await db
+    .update(workbookRenderRuns)
+    .set({ status: "running", lastError: null })
+    .where(eq(workbookRenderRuns.id, renderRunId));
+  try {
+    const html = await buildWorkbookHtml({
+      content,
+      theme: themeTokensFromRow(row.theme),
+      subjectKey: row.project.subjectKey,
+      languageCode: row.project.languageCode,
+      layoutProfile: row.project.layoutProfile,
+      scriptProfile: row.project.scriptProfile,
+      illustrationDefinitions: illustrations,
+      editionLabelOverride: row.run.optionsJson.editionLabelOverride ?? null,
+      copyrightYear: row.run.optionsJson.copyrightYear ?? 2026,
+    });
+    const rendered = await renderWorkbookPdf(html);
+    const prefix = `workbook-studio/${row.project.id}/renders/${row.run.id}`;
+    const htmlObjectPath = `${prefix}/${basename(row.project.slug)}.html`;
+    const pdfObjectPath = `${prefix}/${basename(row.project.slug)}.pdf`;
+    await Promise.all([
+      uploadPrivateFile({
+        objectPath: htmlObjectPath,
+        contentType: "text/html; charset=utf-8",
+        data: new TextEncoder().encode(html),
+      }),
+      uploadPrivateFile({
+        objectPath: pdfObjectPath,
+        contentType: "application/pdf",
+        data: rendered.pdf,
+      }),
+    ]);
+    await db
+      .update(workbookRenderRuns)
+      .set({
+        status: "completed",
+        rendererVersion: RENDERER_VERSION,
+        chromiumVersion: rendered.chromiumVersion,
+        pagedJsVersion: PAGED_JS_VERSION,
+        fontManifestJson: FONT_MANIFEST,
+        htmlObjectPath,
+        pdfObjectPath,
+        pageCount: rendered.pageCount,
+        validationJson: { issues: validationIssues },
+        completedAt: new Date(),
+        lastError: null,
+      })
+      .where(
+        and(
+          eq(workbookRenderRuns.id, renderRunId),
+          eq(workbookRenderRuns.status, "running"),
+        ),
+      );
+    return { ...rendered, htmlObjectPath, pdfObjectPath, validationIssues };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Workbook render failed.";
+    await db
+      .update(workbookRenderRuns)
+      .set({
+        status: "failed",
+        lastError: message,
+        completedAt: new Date(),
+      })
+      .where(eq(workbookRenderRuns.id, renderRunId));
+    throw error;
+  }
+}
+
+export const workbookRendererManifest = {
+  rendererVersion: RENDERER_VERSION,
+  pagedJsVersion: PAGED_JS_VERSION,
+  fonts: FONT_MANIFEST,
+};

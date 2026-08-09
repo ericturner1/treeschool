@@ -1,0 +1,366 @@
+  /* ---------- Kana/character writing-practice grid ----------
+     Look / Trace It / fold-col (dashed divider) / Copy It (blank,
+     post-fold, blind-write). table-layout:fixed and break-inside:avoid
+     on <tr> are both load-bearing -- see general_step3_workbook_
+     generation_prompt.md's OUTPUT FORMAT section for why: without
+     table-layout:fixed, a table fragmented across a page boundary by
+     Paged.js recalculates column widths from content and the empty
+     kg-write cell collapses to near-zero width; without break-inside:
+     avoid on <tr>, a row can split mid-cell across a page boundary.
+
+     IMPORTANT, discovered shipping kokugo Book A: table-layout:fixed and
+     a percentage (or even fixed-mm) <colgroup> are NOT enough by
+     themselves to survive a mid-table page break. When Paged.js has to
+     split a table across two pages, the CONTINUATION fragment on the
+     second page can still fail to honor the original colgroup/fixed
+     layout -- it was observed reverting to auto/content-based column
+     sizing on the split-off page only, while the first page's fragment
+     rendered correctly. The symptom: columns before the write-practice
+     column balloon wider than specified, shoving the write column's
+     content past the table's right border -- but ONLY on a page where
+     the table is a continuation of a previous page, never on the page
+     where the table (or a chunk of it) starts fresh. This reproduces in
+     a real browser under Paged.js; it did NOT reproduce when the same
+     HTML was rendered with WeasyPrint (this project's non-Chromium
+     fallback renderer), so always verify any change near a table split
+     in an actual Paged.js/Chromium render, not just a WeasyPrint one.
+
+     THE FIX: never let Paged.js auto-split one of these tables mid-body.
+     Instead, cap every kana-grid/char-grid table at a small, fixed
+     number of data rows (6 is the number proven safe for char-grid's
+     17mm rows -- see Pattern F below) and add break-inside:avoid /
+     page-break-inside:avoid to the TABLE element itself (not just its
+     <tr>s, which is also still needed). When a lesson's row list is
+     longer than the per-table cap, emit MULTIPLE separate <table
+     class="char-grid">/<table class="kana-grid ...">  elements back to
+     back, each with its own full <colgroup> and its own header row
+     wrapped in <thead> (with the data rows in <tbody> -- this is also
+     required; a bare header <tr> with no <thead>/<tbody> sectioning was
+     tried first and did NOT fix the bug on its own). Because each chunk
+     is then a complete, self-contained table under the row cap,
+     break-inside:avoid always succeeds in pushing the WHOLE chunk to the
+     next page when it doesn't fit -- Paged.js never has to clone/split a
+     table mid-body, so the column-collapse bug has no path to occur.
+     This does cost a little vertical whitespace on some pages (a chunk
+     that doesn't quite fill the remaining page gets pushed down whole)
+     -- accept that trade; it is far preferable to a silently broken
+     layout. Re-declaring the header per chunk is also a genuine
+     improvement, not just a workaround: the reference text stays visible
+     next to every row instead of only at the very top of a multi-page
+     table. */
+  table.kana-grid{
+    border-collapse: collapse;
+    table-layout: fixed;
+    width: 100%;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin: 8px 0 4px 0;
+  }
+  table.kana-grid th{
+    font-family: "Comic Sans MS","Comic Sans",cursive;
+    color: var(--leaf-dark);
+    font-size: 10pt;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 3px solid var(--leaf);
+    padding: 6px 6px;
+    text-align: center;
+  }
+  table.kana-grid td{
+    border: 1px solid var(--leaf);
+    padding: 4px 8px;
+    vertical-align: middle;
+  }
+  table.kana-grid tr{
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  /* The header row additionally must never be separated from the data row
+     that follows it -- break-inside:avoid above only stops the header row
+     itself from splitting internally, it does nothing to stop Paged.js
+     from placing a page break between the header and row 1, which leaves
+     a lone "Look / Trace It / Copy It" banner stranded at the bottom of a
+     page with all the actual rows pushed to the next one. See general_
+     step3_workbook_generation_prompt.md's OUTPUT FORMAT section for the
+     general version of this rule -- it applies to every custom table in
+     this project, not just kana-grid. */
+  table.kana-grid tr:first-child{
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  table.kana-grid .kg-look, table.kana-grid .kg-trace{
+    font-family: "Hiragino Sans","Hiragino Kaku Gothic Pro","Yu Gothic","Meiryo","Noto Sans JP",sans-serif;
+    text-align: center;
+    letter-spacing: 0.03em;
+  }
+  /* kg-look is solid ink (full opacity), not faded -- it's meant to be
+     READ, not traced, so it should look exactly like normal body text.
+     kg-trace is the one column meant to be traced with a pencil, so it
+     alone is faded (15% opacity) as a tracing guide. Do not soften
+     kg-look "to match" kg-trace, and do not use any opacity value for
+     kg-look other than fully solid -- a partially-faded "Look" column
+     (this was shipped once, by mistake, at 65% opacity in an early
+     Japanese D draft) reads as visually ambiguous: neither clearly solid
+     text meant to be read, nor clearly faded text meant to be traced. If
+     a column is for reading only, it must be full ink; if it's for
+     tracing, it must be visibly faded AND the instruction text above the
+     table must say "trace" explicitly -- never leave a reader guessing
+     which one a given column is by its shade alone. */
+  table.kana-grid .kg-look{ color: var(--ink); font-weight: 500; }
+  table.kana-grid .kg-trace{ color: rgba(37,32,27,0.15); font-weight: 500; }
+  table.kana-grid .kg-caption{
+    display: block;
+    font-family: "Avenir Next",sans-serif;
+    font-size: 9pt;
+    font-weight: 600;
+    color: var(--earth);
+    letter-spacing: 0.02em;
+    margin-top: 2px;
+  }
+  /* Three row-height/font-size presets, tuned for single characters,
+     multi-character words, and full sentences respectively. Pick the
+     modifier that matches what's actually in the row -- don't reuse
+     --kana sizing for a five-character word, it will not fit. */
+  table.kana-grid.kana-grid--kana td{ height: 21mm; }
+  table.kana-grid.kana-grid--kana .kg-look, table.kana-grid.kana-grid--kana .kg-trace{ font-size: 30pt; }
+  table.kana-grid.kana-grid--word td{ height: 17mm; }
+  table.kana-grid.kana-grid--word .kg-look, table.kana-grid.kana-grid--word .kg-trace{ font-size: 19pt; }
+  table.kana-grid.kana-grid--sentence td{ height: 15mm; }
+  table.kana-grid.kana-grid--sentence .kg-look, table.kana-grid.kana-grid--sentence .kg-trace{ font-size: 14pt; letter-spacing: 0.06em; }
+  /* Full sentences read more naturally ragged-left than centered (unlike
+     a single character or short word, where centering looks balanced) --
+     override just kg-look's alignment for this one size preset. kg-trace
+     stays centered (inherited from the combined rule above); it's a short
+     pencil-tracing target, not a paragraph, so centering still reads fine
+     there and keeps it visually distinct from the reading column next to
+     it rather than both columns lining up identically down the left edge. */
+  table.kana-grid.kana-grid--sentence .kg-look{ text-align: left; }
+
+  table.kana-grid td.fold-col{
+    border-left: 2px dashed var(--earth);
+    border-right: 2px dashed var(--earth);
+    border-top: none;
+    border-bottom: none;
+    width: 14px;
+    padding: 0;
+    text-align: center;
+  }
+  table.kana-grid th.fold-col{
+    border: none;
+    padding: 0;
+    width: 14px;
+  }
+  table.kana-grid .fold-label{
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-size: 7pt;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+    color: var(--earth);
+    text-transform: uppercase;
+    display: inline-block;
+  }
+  table.kana-grid td.kg-write{
+    padding: 4px 8px;
+  }
+
+  .fold-instruction{
+    font-size: 10.5pt;
+    color: var(--earth);
+    font-style: italic;
+    margin: 0 0 10px 0;
+  }
+
+  /* ---------- Single-character practice grid (3-column: Character | Trace It | Write It) ----------
+     v2 -- use this for single-character introduction lessons: one row per
+     new character (hiragana, katakana, OR kanji -- the layout is the same
+     regardless of script), its reading, and its meaning (Japanese C's 80
+     Grade-1 kanji, one lesson per kanji set, is the reference case, but
+     a hiragana- or katakana-introduction lesson uses exactly the same
+     table).
+
+     DECIDING BETWEEN THIS AND kana-grid ABOVE: the deciding factor is
+     single character vs. multi-character content, not script identity --
+     it is never about whether the character happens to be hiragana,
+     katakana, or kanji. Pick kana-grid (kana-grid--word / --sentence)
+     whenever the content being practiced is a multi-character string
+     meant to be read and copied as a whole -- a word or a full sentence.
+     Pick char-grid whenever a lesson is introducing single characters one
+     at a time in a list, whatever script they belong to. A single book
+     routinely uses both -- e.g. a kanji-focused book still reuses
+     kana-grid--sentence for grammar and reading-passage practice
+     (Patterns C/D/E) even while using char-grid for its
+     single-character-introduction lessons (Pattern F below).
+
+     v2 replaced an earlier 2-column version (Character | Write It Twice,
+     no tracing at all) that wasted the ample vertical/horizontal room a
+     5-8-row table leaves on an otherwise-empty page, and skipped tracing
+     entirely. This version adds a Trace It column (a ghosted copy of the
+     character, same faded-ink technique as kana-grid's kg-trace) and
+     widens the write area from 2 boxes to 4. Do NOT increase the row
+     height to make room for the trace column -- 17mm already fits a
+     single centered trace glyph comfortably (it has no caption stacked
+     under it, unlike the Character column), and bumping the height was
+     tried and reverted: it pushed an 8-row table (Japanese C's Lesson
+     3.2, "Water and Plants") past a page boundary, orphaning its last row
+     alone onto a nearly-empty page -- the same class of bug documented in
+     general_step3_workbook_generation_prompt.md's header-orphan fix.
+     There is still no physical fold column here, unlike kana-grid -- the
+     fold-instruction paragraph above the table tells the student to
+     cover the Character and Trace It columns with a hand before writing
+     from memory, and a physical fold adds complexity without real
+     benefit across 3 columns instead of 2 at this glyph size.
+
+     cg-glyph (the Character/look column) must stay full solid ink,
+     exactly like kg-look above and for the identical reason: a
+     partially-faded character with no accompanying "trace it" instruction
+     is ambiguous. Only cg-trace-char (the new middle column) gets the
+     faded treatment, paired with instruction text that says "trace"
+     explicitly -- see Pattern F's fold-instruction text below for the
+     exact wording. (An earlier version of this table shipped cg-glyph
+     itself at 20% opacity by mistake, with no trace instruction anywhere
+     nearby -- don't reintroduce that.)
+
+     PAGE-BREAK SAFETY -- see the longer explanation above table.kana-grid
+     near the top of this file ("IMPORTANT, discovered shipping kokugo
+     Book A"). Never emit one long char-grid table and let Paged.js
+     auto-split it across pages -- cap each <table class="char-grid"> at
+     6 data rows and start a fresh table (own <colgroup>, own <thead>) for
+     the rest, exactly as Pattern F below does. break-inside:avoid on the
+     table rule two lines down is what makes that cap actually hold. */
+  table.char-grid{
+    border-collapse: collapse;
+    table-layout: fixed;
+    width: 100%;
+    margin: 6px 0 4px 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  table.char-grid th{
+    font-family: "Comic Sans MS","Comic Sans",cursive;
+    color: var(--leaf-dark);
+    font-size: 10pt;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 3px solid var(--leaf);
+    padding: 5px 6px;
+    text-align: center;
+  }
+  table.char-grid td{
+    border: 1px solid var(--leaf);
+    padding: 3px 6px;
+    vertical-align: middle;
+  }
+  table.char-grid tr{
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  table.char-grid tr:first-child{
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  table.char-grid td.cg-char{
+    text-align: center;
+    height: 17mm;
+  }
+  table.char-grid .cg-glyph{
+    display: block;
+    font-family: "Klee One","Hiragino Sans","Hiragino Kaku Gothic Pro","Yu Gothic","Meiryo","Noto Sans JP",sans-serif;
+    font-size: 26pt;
+    font-weight: 500;
+    color: var(--ink);
+    line-height: 1;
+  }
+  table.char-grid .cg-caption{
+    display: block;
+    font-family: "Avenir Next",sans-serif;
+    font-size: 9pt;
+    font-weight: 600;
+    color: var(--earth);
+    letter-spacing: 0.01em;
+    margin-top: 3px;
+  }
+  /* Trace It column: a ghosted copy of the kanji to trace before writing
+     it from memory in the boxes to the right -- same faded-ink technique
+     as kana-grid's .kg-trace, sized for kanji's larger glyphs. */
+  table.char-grid td.cg-trace{
+    text-align: center;
+    height: 17mm;
+  }
+  table.char-grid .cg-trace-char{
+    display: block;
+    font-family: "Klee One","Hiragino Sans","Hiragino Kaku Gothic Pro","Yu Gothic","Meiryo","Noto Sans JP",sans-serif;
+    font-size: 28pt;
+    font-weight: 500;
+    color: rgba(37,32,27,0.15);
+    line-height: 1;
+  }
+  table.char-grid td.cg-write{
+    padding: 0;
+  }
+  table.char-grid table.cg-write-boxes{
+    width: 100%;
+    height: 17mm;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  table.char-grid table.cg-write-boxes td.box{
+    border: none;
+    padding: 0;
+  }
+  table.char-grid table.cg-write-boxes td.box + td.box{
+    border-left: 2px dashed var(--earth);
+  }
+
+  /* ---------- Stroke-order reference diagrams ----------
+     For the ONE small "teach the rule once" lesson only -- see this
+     folder's foreign_language_workbook_orchestration_prompt.md Addendum
+     Section E before reusing this pattern anywhere else. Diagrams are
+     sized for a standalone reference layout (~28mm), not for embedding
+     inside a kana-grid practice row -- that was tried and reverted; the
+     numbered markers are illegible at practice-grid scale (~9-20mm), and
+     the line art visually clashes with the print typeface sitting next
+     to it in a grid cell. */
+  .stroke-rules{
+    margin: 6px 0 10px 0;
+    padding-left: 20px;
+  }
+  .stroke-rules li{ margin: 3px 0; }
+  .stroke-examples{
+    display: flex;
+    gap: 12px;
+    margin: 8px 0 4px 0;
+  }
+  .stroke-example{
+    flex: 1;
+    border: 1px solid var(--leaf);
+    border-radius: 8px;
+    padding: 8px 6px 10px 6px;
+    text-align: center;
+  }
+  .stroke-diagram{
+    display: block;
+    width: 28mm;
+    height: 28mm;
+    margin: 0 auto 4px auto;
+  }
+  .stroke-caption{
+    display: block;
+    font-family: "Avenir Next",sans-serif;
+    font-size: 9pt;
+    font-weight: 600;
+    color: var(--earth);
+    margin-bottom: 8px;
+  }
+  .stroke-write{
+    border-top: 1px dashed var(--leaf);
+    height: 30mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* Applied to a second, unnumbered copy of the same diagram SVG inside
+     .stroke-write, as a faint same-style tracing guide -- deliberately
+     NOT the print typeface, so the reference diagram and the tracing
+     guide stay visually consistent with each other. */
+  .stroke-ghost{ opacity: 0.10; }

@@ -15,9 +15,10 @@ RUN bun run --filter ts-backend build
 FROM oven/bun:1.2.9 AS runtime
 WORKDIR /workspace
 ENV NODE_ENV=production
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Poppler renders the complete PDF MediaBox for publisher files that pdf-lib
-# cannot safely copy. Packet generation fails closed if it is unavailable.
+# Poppler supports uploaded publisher PDFs. Workbook Studio uses the exact
+# Chromium revision paired with the pinned Playwright package below.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends poppler-utils \
   && rm -rf /var/lib/apt/lists/*
@@ -27,6 +28,8 @@ COPY app/ts-backend/package.json app/ts-backend/package.json
 COPY app/ts-frontend/package.json app/ts-frontend/package.json
 COPY packages/ts-db/package.json packages/ts-db/package.json
 RUN bun install --frozen-lockfile --production
+RUN bunx playwright@1.62.0 install --with-deps chromium \
+  && chmod -R a+rX /ms-playwright
 
 COPY --from=build /workspace/app/ts-backend/dist app/ts-backend/dist
 COPY --from=build /workspace/packages/ts-db packages/ts-db
