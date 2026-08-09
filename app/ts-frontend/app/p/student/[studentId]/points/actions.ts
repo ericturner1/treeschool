@@ -6,11 +6,13 @@ import { getCurrentUser } from "../../../../../lib/auth/server";
 import {
   awardStudentPoints,
   completeStudentPointIconUpload,
+  depositStudentPointsToBank,
   discardStudentPointIconUpload,
   prepareStudentPointIconUpload,
   redeemStudentPoints,
   type StudentPointIconKey,
-  updateStudentPointSettings
+  updateStudentPointSettings,
+  withdrawStudentPointsFromBank
 } from "../../../../../lib/points/server";
 
 function field(formData: FormData, name: string) {
@@ -84,6 +86,40 @@ export async function redeemStudentPointsAction(formData: FormData) {
   }));
 }
 
+export async function depositStudentPointsToBankAction(formData: FormData) {
+  const returnPath = safeReturnPath(formData);
+  let error: string | null = null;
+  try {
+    await depositStudentPointsToBank({
+      parentUserId: await currentUserId(),
+      profileId: field(formData, "profileId"),
+      amount: Number(field(formData, "amount"))
+    });
+  } catch (caught) {
+    error = caught instanceof Error ? caught.message : "Could not deposit points.";
+  }
+  if (error) redirect(withMessage(returnPath, "error", error));
+  revalidatePath(returnPath);
+  redirect(withMessage(returnPath, "message", "Points deposited into the bank."));
+}
+
+export async function withdrawStudentPointsFromBankAction(formData: FormData) {
+  const returnPath = safeReturnPath(formData);
+  let error: string | null = null;
+  try {
+    await withdrawStudentPointsFromBank({
+      parentUserId: await currentUserId(),
+      profileId: field(formData, "profileId"),
+      amount: Number(field(formData, "amount"))
+    });
+  } catch (caught) {
+    error = caught instanceof Error ? caught.message : "Could not withdraw points.";
+  }
+  if (error) redirect(withMessage(returnPath, "error", error));
+  revalidatePath(returnPath);
+  redirect(withMessage(returnPath, "message", "Points withdrawn from the bank."));
+}
+
 export async function updateStudentPointSettingsAction(formData: FormData) {
   const returnPath = safeReturnPath(formData);
   let error: string | null = null;
@@ -116,7 +152,9 @@ export async function updateStudentPointSettingsAction(formData: FormData) {
       singularName: field(formData, "singularName"),
       pluralName: field(formData, "pluralName"),
       iconKey: (hasCustomIcon ? "star" : field(formData, "iconKey")) as StudentPointIconKey,
-      autoAwardLessonCompletion: formData.get("autoAwardLessonCompletion") === "on"
+      autoAwardLessonCompletion: formData.get("autoAwardLessonCompletion") === "on",
+      bankInterestRatePercent: Number(field(formData, "bankInterestRatePercent")),
+      bankCompoundingInterval: field(formData, "bankCompoundingInterval") as "daily" | "weekly" | "monthly"
     });
     if (stagedIcon) {
       await completeStudentPointIconUpload(stagedIcon);

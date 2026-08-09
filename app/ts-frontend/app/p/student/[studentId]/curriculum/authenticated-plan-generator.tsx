@@ -213,6 +213,7 @@ export function AuthenticatedPlanGenerator({
   planningButtonLabel = "Plan the year",
   showPlanningAction = true,
   planningProgress,
+  planBuildActive = false,
   planningFailed = false,
   qualityControlFailed = false,
   nativeWorkbooks = [],
@@ -245,6 +246,7 @@ export function AuthenticatedPlanGenerator({
   planningButtonLabel?: string;
   showPlanningAction?: boolean;
   planningProgress?: PlanCreationProgressValue | null;
+  planBuildActive?: boolean;
   planningFailed?: boolean;
   qualityControlFailed?: boolean;
   nativeWorkbooks?: NativeWorkbookCatalogItem[];
@@ -302,10 +304,11 @@ export function AuthenticatedPlanGenerator({
   const indexingActive = existingDocuments.some((document) =>
     document.statusKind === "queued" || document.statusKind === "processing"
   );
+  const planDetailsLocked = indexingActive || planBuildActive;
 
   useEffect(() => {
-    if (indexingActive) setEditingPlanDetails(false);
-  }, [indexingActive]);
+    if (planDetailsLocked) setEditingPlanDetails(false);
+  }, [planDetailsLocked]);
 
   useEffect(() => {
     let cancelled = false;
@@ -956,15 +959,17 @@ export function AuthenticatedPlanGenerator({
                 {52 - holidayWeeks} teaching weeks · {teachingDaysPerWeek} days/week · {compactSchoolYearPeriod(schoolYearStartDate, schoolYearEndDate)} · {compactPrintPageSizeLabel(preferredPrintPageSize || null)}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setEditingPlanDetails((current) => !current)}
-              disabled={indexingActive}
-              title={indexingActive ? "Plan preferences can be edited after indexing finishes." : undefined}
-              className="text-sm font-semibold text-earth underline underline-offset-4 disabled:cursor-not-allowed disabled:text-ink/35 disabled:no-underline"
-            >
-              {indexingActive ? "Available after indexing" : editingPlanDetails ? "Close" : "Edit plan details"}
-            </button>
+            {planBuildActive ? null : (
+              <button
+                type="button"
+                onClick={() => setEditingPlanDetails((current) => !current)}
+                disabled={indexingActive}
+                title={indexingActive ? "Plan preferences can be edited after indexing finishes." : undefined}
+                className="text-sm font-semibold text-earth underline underline-offset-4 disabled:cursor-not-allowed disabled:text-ink/35 disabled:no-underline"
+              >
+                {indexingActive ? "Available after indexing" : editingPlanDetails ? "Close" : "Edit plan details"}
+              </button>
+            )}
           </div>
           {editingPlanDetails ? (
             <div className="mt-4 border-t border-[#eadbc2] pt-4">

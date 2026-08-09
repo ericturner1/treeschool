@@ -11,10 +11,13 @@ import { getParentStudentPageData, studentRoutePath } from "../student-page-data
 import { StudentShell } from "../student-shell";
 import {
   awardStudentPointsAction,
+  depositStudentPointsToBankAction,
   redeemStudentPointsAction,
-  updateStudentPointSettingsAction
+  updateStudentPointSettingsAction,
+  withdrawStudentPointsFromBankAction
 } from "./actions";
 import { PointAwardSuccessSound } from "./point-award-success-sound";
+import { PointsBalanceChart } from "./points-balance-chart";
 import { PointsSubmitButton } from "./points-submit-button";
 
 type Props = {
@@ -31,6 +34,11 @@ type Props = {
 
 function unitName(amount: number, singularName: string, pluralName: string) {
   return Math.abs(amount) === 1 ? singularName : pluralName;
+}
+
+function formatInterestDate(value: string) {
+  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" })
+    .format(new Date(`${value}T00:00:00.000Z`));
 }
 
 export default async function StudentPointsPage({ params, searchParams }: Props) {
@@ -81,24 +89,37 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
             playKey={searchParams?.resetForm === "award" ? searchParams.resetToken ?? null : null}
           />
           <section className="overflow-hidden rounded-[30px] border border-[#b7ce9f] bg-[#eef5e4] shadow-[0_8px_0_#cadbb9]">
-            <div className="grid gap-6 px-6 py-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+            <div className="grid gap-6 px-6 py-7 sm:px-8 xl:grid-cols-[minmax(190px,0.7fr)_minmax(300px,1.4fr)_minmax(290px,1fr)] xl:items-center">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.14em] text-[#587443]">Current balance</p>
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-[#587443]">Total balance</p>
                 <div className="mt-3 flex items-center gap-4">
                   <span className="grid h-16 w-16 place-items-center rounded-[20px] bg-[#6f9852] text-white shadow-[0_5px_0_#4d7137]">
                     <PointIcon iconKey={iconKey} customIconUrl={customIconUrl} className="text-[34px]" />
                   </span>
                   <div>
                     <p className="text-[52px] font-semibold leading-none tracking-[-0.065em] text-ink">
-                      {points.summary.balance}
+                      {points.summary.totalBalance}
                     </p>
                     <p className="mt-1 text-lg font-semibold text-[#587443]">
-                      {unitName(points.summary.balance, singularName, pluralName)}
+                      {unitName(points.summary.totalBalance, singularName, pluralName)}
                     </p>
                   </div>
                 </div>
               </div>
+              <PointsBalanceChart
+                timeline={points.balanceTimeline}
+                timeZone={streakSettings.timeZone}
+                pluralName={pluralName}
+              />
               <div className="grid grid-cols-2 gap-3">
+                <div className="min-w-32 rounded-[20px] bg-white/75 px-5 py-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">Available</p>
+                  <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.availableBalance}</p>
+                </div>
+                <div className="min-w-32 rounded-[20px] bg-white/75 px-5 py-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">In the bank</p>
+                  <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.bankBalance}</p>
+                </div>
                 <div className="min-w-36 rounded-[20px] bg-white/75 px-5 py-4">
                   <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">Lifetime earned</p>
                   <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.lifetimeEarned}</p>
@@ -191,13 +212,89 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
             </section>
           ) : null}
 
+          {points.canManage ? (
+            <section className="site-panel rounded-[28px] px-6 py-7">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.13em] text-[#587443]">Points bank</p>
+                  <h2 className="mt-2 text-[30px] font-semibold tracking-[-0.05em] text-ink">Save and grow {pluralName.toLowerCase()}</h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/60">
+                    Banked {pluralName.toLowerCase()} earn {points.settings.bank.interestRatePercent}% interest with {points.settings.bank.compoundingInterval} compounding. Transfers never change the total balance.
+                  </p>
+                </div>
+                <div className="rounded-[18px] border border-[#c7d9b5] bg-[#f1f7e9] px-5 py-4 sm:text-right">
+                  <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">Bank balance</p>
+                  <p className="mt-1 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.bankBalance}</p>
+                  <p className="mt-1 text-xs font-semibold text-[#587443]">+{points.summary.bankInterestEarned} earned in interest</p>
+                </div>
+              </div>
+              <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                <form action={depositStudentPointsToBankAction} className="rounded-[20px] border border-[#c7d9b5] bg-[#f6faef] px-5 py-5">
+                  <input type="hidden" name="profileId" value={student.id} />
+                  <input type="hidden" name="returnPath" value={returnPath} />
+                  <h3 className="text-lg font-semibold text-ink">Deposit</h3>
+                  <p className="mt-1 text-xs leading-5 text-ink/52">Move available {pluralName.toLowerCase()} into the interest-earning bank.</p>
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <label className="flex-1 text-sm font-semibold text-ink">
+                      Amount
+                      <input
+                        name="amount"
+                        type="number"
+                        min="1"
+                        max={Math.max(1, points.summary.availableBalance)}
+                        step="1"
+                        defaultValue="1"
+                        required
+                        disabled={points.summary.availableBalance < 1}
+                        className="mt-2 min-h-12 w-full rounded-[14px] border border-[#c7d9b5] bg-white px-4 text-base outline-none focus:border-[#6f9852] disabled:bg-[#eee9e0]"
+                      />
+                    </label>
+                    <PointsSubmitButton
+                      idleLabel="Deposit"
+                      pendingLabel="Depositing…"
+                      disabled={points.summary.availableBalance < 1}
+                    />
+                  </div>
+                </form>
+                <form action={withdrawStudentPointsFromBankAction} className="rounded-[20px] border border-[#dfc9aa] bg-[#fffaf2] px-5 py-5">
+                  <input type="hidden" name="profileId" value={student.id} />
+                  <input type="hidden" name="returnPath" value={returnPath} />
+                  <h3 className="text-lg font-semibold text-ink">Withdraw</h3>
+                  <p className="mt-1 text-xs leading-5 text-ink/52">Move banked {pluralName.toLowerCase()} back into the available balance.</p>
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <label className="flex-1 text-sm font-semibold text-ink">
+                      Amount
+                      <input
+                        name="amount"
+                        type="number"
+                        min="1"
+                        max={Math.max(1, points.summary.bankBalance)}
+                        step="1"
+                        defaultValue="1"
+                        required
+                        disabled={points.summary.bankBalance < 1}
+                        className="mt-2 min-h-12 w-full rounded-[14px] border border-[#dfc9aa] bg-white px-4 text-base outline-none focus:border-[#8f6544] disabled:bg-[#eee9e0]"
+                      />
+                    </label>
+                    <PointsSubmitButton
+                      idleLabel="Withdraw"
+                      pendingLabel="Withdrawing…"
+                      disabled={points.summary.bankBalance < 1}
+                      tone="outline"
+                    />
+                  </div>
+                </form>
+              </div>
+            </section>
+          ) : null}
+
           <section className="site-panel rounded-[28px] px-6 py-7">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.13em] text-earth">Ledger</p>
                 <h2 className="mt-2 text-[30px] font-semibold tracking-[-0.05em] text-ink">{pluralName} history</h2>
               </div>
-              <p className="text-sm text-ink/52">Every award and use remains recorded.</p>
+              <p className="text-sm text-ink/52">Awards, spending, bank transfers, and interest remain recorded.</p>
             </div>
             <div className="mt-6 space-y-3">
               {points.transactions.length === 0 ? (
@@ -218,6 +315,7 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
                         value={transaction.createdAt}
                         timeZone={streakSettings.timeZone}
                       />
+                      {transaction.interestDate ? ` · Interest period ending ${formatInterestDate(transaction.interestDate)}` : ""}
                       {transaction.reversed ? " · Completion undone" : ""}
                     </p>
                   </div>
@@ -232,7 +330,10 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
                       {transaction.amount > 0 ? "+" : ""}{transaction.amount} {unitName(transaction.amount, singularName, pluralName)}
                     </p>
                     <p className="mt-1 text-xs font-semibold text-ink/48">
-                      Balance after: {transaction.balanceAfter} {unitName(transaction.balanceAfter, singularName, pluralName)}
+                      {transaction.balanceKind === "bank" ? "Bank balance" : "Available"} after: {transaction.balanceAfter} {unitName(transaction.balanceAfter, singularName, pluralName)}
+                      {transaction.balanceKind === "available" && transaction.bankBalanceAfter != null
+                        ? ` · Bank: ${transaction.bankBalanceAfter} ${unitName(transaction.bankBalanceAfter, singularName, pluralName)}`
+                        : ""}
                     </p>
                   </div>
                 </article>
@@ -287,6 +388,42 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
                   <span className="mt-1 block text-sm leading-6 text-ink/58">Repeated clicks do not create duplicates, and undoing the lesson reverses its automatic award.</span>
                 </span>
               </label>
+              <fieldset className="mt-6 rounded-[20px] border border-[#c7d9b5] bg-[#f6faef] px-5 py-5">
+                <legend className="px-2 text-sm font-semibold text-ink">Bank interest</legend>
+                <p className="max-w-3xl text-sm leading-6 text-ink/58">
+                  The rate applies once per selected compounding period. Fractional interest carries forward until it becomes a whole {singularName}, so small balances still receive their full interest over time.
+                </p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <label className="text-sm font-semibold text-ink">
+                    Interest rate per period
+                    <div className="relative mt-2">
+                      <input
+                        name="bankInterestRatePercent"
+                        type="number"
+                        min="0.01"
+                        max="10"
+                        step="0.01"
+                        required
+                        defaultValue={points.settings.bank.interestRatePercent}
+                        className="min-h-14 w-full rounded-[16px] border border-[#c7d9b5] bg-white px-4 pr-10 text-base outline-none focus:border-[#6f9852]"
+                      />
+                      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 font-semibold text-ink/45">%</span>
+                    </div>
+                  </label>
+                  <label className="text-sm font-semibold text-ink">
+                    Compound interest
+                    <select
+                      name="bankCompoundingInterval"
+                      defaultValue={points.settings.bank.compoundingInterval}
+                      className="mt-2 min-h-14 w-full rounded-[16px] border border-[#c7d9b5] bg-white px-4 text-base outline-none focus:border-[#6f9852]"
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </label>
+                </div>
+              </fieldset>
               <div className="mt-6">
                 <PointsSubmitButton idleLabel="Save point settings" pendingLabel="Saving…" />
               </div>

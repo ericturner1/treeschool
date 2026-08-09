@@ -1,5 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import {
+  academicStandardLanguages,
+  academicStandards,
   profiles,
   workbookContentRevisions,
   workbookCurricula,
@@ -76,14 +78,9 @@ const projectInputSchema = z
 
 const gradeLevelBatchInputSchema = z.object({
   userId: uuidSchema,
-  curriculumName: z.string().trim().min(1).max(180),
-  standardCode: z.string().trim().max(80).nullable().default(null),
-  standardLabel: z.string().trim().max(180).nullable().default(null),
-  gradeLevel: z.number().int().min(-2).max(20),
-  languageCode: z.string().trim().min(2).max(20).default("en"),
+  curriculumId: uuidSchema,
   catalogPromptVersionId: uuidSchema,
   workbookPromptVersionId: uuidSchema,
-  defaultThemeVersionId: uuidSchema.nullable().default(null),
 });
 
 const themeVersionSelection = {
@@ -168,6 +165,41 @@ async function classicThemeVersionId() {
   return theme.versionId;
 }
 
+async function assertWorkbookCurriculumStandard(input: {
+  academicStandardKey: string;
+  languageCode: string;
+}) {
+  const academicStandardKey = input.academicStandardKey.trim().toLowerCase();
+  const languageCode = input.languageCode.trim().toLowerCase();
+  const [row] = await db
+    .select({ key: academicStandards.key })
+    .from(academicStandards)
+    .innerJoin(
+      academicStandardLanguages,
+      and(
+        eq(
+          academicStandardLanguages.academicStandardKey,
+          academicStandards.key,
+        ),
+        eq(academicStandardLanguages.languageCode, languageCode),
+        eq(academicStandardLanguages.active, true),
+      ),
+    )
+    .where(
+      and(
+        eq(academicStandards.key, academicStandardKey),
+        eq(academicStandards.active, true),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    throw new Error(
+      "Choose a language available under the selected academic standard.",
+    );
+  }
+  return { academicStandardKey, languageCode };
+}
+
 export async function resolveEffectiveWorkbookThemeVersionId(input: {
   themeOverrideVersionId: string | null;
   curriculumId: string | null;
@@ -194,6 +226,8 @@ export async function listAdminWorkbookStudio(userId: string) {
     rules,
     illustrationTypes,
     activeBatches,
+    standardRows,
+    standardLanguageRows,
   ] = await Promise.all([
     db
       .select()
@@ -312,6 +346,27 @@ export async function listAdminWorkbookStudio(userId: string) {
         ]),
       )
       .orderBy(desc(workbookGenerationBatches.createdAt)),
+    db
+      .select({
+        key: academicStandards.key,
+        label: academicStandards.label,
+        defaultLanguageCode: academicStandards.defaultLanguageCode,
+      })
+      .from(academicStandards)
+      .where(eq(academicStandards.active, true))
+      .orderBy(asc(academicStandards.displayOrder), asc(academicStandards.label)),
+    db
+      .select({
+        academicStandardKey: academicStandardLanguages.academicStandardKey,
+        code: academicStandardLanguages.languageCode,
+        label: academicStandardLanguages.label,
+      })
+      .from(academicStandardLanguages)
+      .where(eq(academicStandardLanguages.active, true))
+      .orderBy(
+        asc(academicStandardLanguages.displayOrder),
+        asc(academicStandardLanguages.label),
+      ),
   ]);
 
   return {
@@ -322,6 +377,14 @@ export async function listAdminWorkbookStudio(userId: string) {
     rules,
     illustrationTypes,
     activeBatches,
+    academicStandards: standardRows.map((standard) => ({
+      ...standard,
+      languages: standardLanguageRows
+        .filter(
+          (language) => language.academicStandardKey === standard.key,
+        )
+        .map(({ code, label }) => ({ code, label })),
+    })),
   };
 }
 
@@ -623,6 +686,7 @@ export async function saveWorkbookStudioRevision(input: {
 export async function createWorkbookStudioCurriculum(input: {
   userId: string;
   name: string;
+  academicStandardKey: string;
   standardCode?: string | null;
   standardLabel?: string | null;
   gradeLevel: number;
@@ -631,6 +695,10 @@ export async function createWorkbookStudioCurriculum(input: {
 }) {
   await requireAdmin(input.userId);
   const name = z.string().trim().min(1).max(180).parse(input.name);
+  const taxonomy = await assertWorkbookCurriculumStandard({
+    academicStandardKey: input.academicStandardKey,
+    languageCode: input.languageCode,
+  });
   const baseSlug = slugify(`${name}-${input.gradeLevel}-${input.languageCode}`);
   const themeVersionId = await classicThemeVersionId();
   return db.transaction(async (tx) => {
@@ -639,16 +707,11 @@ export async function createWorkbookStudioCurriculum(input: {
       .values({
         slug: `${baseSlug}-${crypto.randomUUID().slice(0, 6)}`,
         name,
+        academicStandardKey: taxonomy.academicStandardKey,
         standardCode: input.standardCode?.trim() || null,
         standardLabel: input.standardLabel?.trim() || null,
         gradeLevel: z.number().int().min(-2).max(20).parse(input.gradeLevel),
-        languageCode: z
-          .string()
-          .trim()
-          .min(2)
-          .max(20)
-          .parse(input.languageCode)
-          .toLowerCase(),
+        languageCode: taxonomy.languageCode,
         defaultThemeVersionId: themeVersionId,
         createdByUserId: input.userId,
         updatedByUserId: input.userId,
@@ -678,105 +741,106 @@ export async function queueWorkbookGradeLevelGeneration(
 ) {
   const input = gradeLevelBatchInputSchema.parse(rawInput);
   await requireAdmin(input.userId);
-  const [catalogPrompt, workbookPrompt] = await Promise.all([
-    db
-      .select({
-        id: workbookGenerationPromptVersions.id,
-        kind: workbookGenerationPrompts.kind,
-      })
-      .from(workbookGenerationPromptVersions)
-      .innerJoin(
-        workbookGenerationPrompts,
-        eq(
-          workbookGenerationPrompts.id,
-          workbookGenerationPromptVersions.promptId,
-        ),
-      )
-      .where(
-        and(
-          eq(workbookGenerationPromptVersions.id, input.catalogPromptVersionId),
-          eq(workbookGenerationPromptVersions.status, "published"),
-        ),
-      )
-      .limit(1),
-    db
-      .select({
-        id: workbookGenerationPromptVersions.id,
-        kind: workbookGenerationPrompts.kind,
-      })
-      .from(workbookGenerationPromptVersions)
-      .innerJoin(
-        workbookGenerationPrompts,
-        eq(
-          workbookGenerationPrompts.id,
-          workbookGenerationPromptVersions.promptId,
-        ),
-      )
-      .where(
-        and(
+  const [curriculum, catalogPrompt, workbookPrompt, activeBatch] =
+    await Promise.all([
+      db
+        .select()
+        .from(workbookCurricula)
+        .where(eq(workbookCurricula.id, input.curriculumId))
+        .limit(1),
+      db
+        .select({
+          id: workbookGenerationPromptVersions.id,
+          kind: workbookGenerationPrompts.kind,
+        })
+        .from(workbookGenerationPromptVersions)
+        .innerJoin(
+          workbookGenerationPrompts,
           eq(
-            workbookGenerationPromptVersions.id,
-            input.workbookPromptVersionId,
+            workbookGenerationPrompts.id,
+            workbookGenerationPromptVersions.promptId,
           ),
-          eq(workbookGenerationPromptVersions.status, "published"),
-        ),
-      )
-      .limit(1),
-  ]);
+        )
+        .where(
+          and(
+            eq(
+              workbookGenerationPromptVersions.id,
+              input.catalogPromptVersionId,
+            ),
+            eq(workbookGenerationPromptVersions.status, "published"),
+          ),
+        )
+        .limit(1),
+      db
+        .select({
+          id: workbookGenerationPromptVersions.id,
+          kind: workbookGenerationPrompts.kind,
+        })
+        .from(workbookGenerationPromptVersions)
+        .innerJoin(
+          workbookGenerationPrompts,
+          eq(
+            workbookGenerationPrompts.id,
+            workbookGenerationPromptVersions.promptId,
+          ),
+        )
+        .where(
+          and(
+            eq(
+              workbookGenerationPromptVersions.id,
+              input.workbookPromptVersionId,
+            ),
+            eq(workbookGenerationPromptVersions.status, "published"),
+          ),
+        )
+        .limit(1),
+      db
+        .select({ id: workbookGenerationBatches.id })
+        .from(workbookGenerationBatches)
+        .where(
+          and(
+            eq(workbookGenerationBatches.curriculumId, input.curriculumId),
+            inArray(workbookGenerationBatches.status, [
+              "queued",
+              "running",
+              "retry_wait",
+            ]),
+          ),
+        )
+        .limit(1),
+    ]);
+  const selectedCurriculum = curriculum[0];
+  if (!selectedCurriculum)
+    throw new Error("Choose an existing workbook curriculum.");
+  if (selectedCurriculum.status === "archived")
+    throw new Error("An archived curriculum cannot be regenerated.");
+  if (activeBatch.length)
+    throw new Error(
+      "Wait for the curriculum's current generation batch to finish.",
+    );
   if (catalogPrompt[0]?.kind !== "catalog_plan") {
     throw new Error("Choose a published grade catalog planning prompt.");
   }
   if (workbookPrompt[0]?.kind !== "workflow") {
     throw new Error("Choose a published single-workbook workflow prompt.");
   }
-  const themeVersionId =
-    input.defaultThemeVersionId ?? (await classicThemeVersionId());
+  const themeVersionId = selectedCurriculum.defaultThemeVersionId;
   await assertPublishedThemeVersion(themeVersionId);
 
   return db.transaction(async (tx) => {
-    const [curriculum] = await tx
-      .insert(workbookCurricula)
-      .values({
-        slug: `${slugify(`${input.curriculumName}-${input.gradeLevel}-${input.languageCode}`)}-${crypto.randomUUID().slice(0, 6)}`,
-        name: input.curriculumName,
-        standardCode: input.standardCode,
-        standardLabel: input.standardLabel,
-        gradeLevel: input.gradeLevel,
-        languageCode: input.languageCode.toLowerCase(),
-        defaultThemeVersionId: themeVersionId,
-        createdByUserId: input.userId,
-        updatedByUserId: input.userId,
-      })
-      .returning();
-    const [revision] = await tx
-      .insert(workbookCurriculumRevisions)
-      .values({
-        curriculumId: curriculum.id,
-        revisionNumber: 1,
-        source: "manual",
-        planJson: { schemaVersion: 1, status: "planning", workbooks: [] },
-        validationJson: {},
-        createdByUserId: input.userId,
-      })
-      .returning();
-    await tx
-      .update(workbookCurricula)
-      .set({ currentRevisionId: revision.id })
-      .where(eq(workbookCurricula.id, curriculum.id));
     const [batch] = await tx
       .insert(workbookGenerationBatches)
       .values({
         kind: "grade_level",
         status: "queued",
-        curriculumId: curriculum.id,
-        gradeLevel: input.gradeLevel,
-        languageCode: input.languageCode.toLowerCase(),
+        curriculumId: selectedCurriculum.id,
+        gradeLevel: selectedCurriculum.gradeLevel,
+        languageCode: selectedCurriculum.languageCode,
         targetThemeVersionId: themeVersionId,
         totalJobs: 1,
         inputJson: {
-          curriculumName: input.curriculumName,
-          standardCode: input.standardCode,
-          standardLabel: input.standardLabel,
+          curriculumId: selectedCurriculum.id,
+          previousCurriculumRevisionId: selectedCurriculum.currentRevisionId,
           catalogPromptVersionId: input.catalogPromptVersionId,
           workbookPromptVersionId: input.workbookPromptVersionId,
         },
@@ -793,11 +857,12 @@ export async function queueWorkbookGradeLevelGeneration(
         status: "queued",
         currentStage: "catalog_plan",
         scopeJson: {
-          curriculumName: input.curriculumName,
-          standardCode: input.standardCode,
-          standardLabel: input.standardLabel,
-          gradeLevel: input.gradeLevel,
-          languageCode: input.languageCode.toLowerCase(),
+          curriculumName: selectedCurriculum.name,
+          academicStandardKey: selectedCurriculum.academicStandardKey,
+          standardCode: selectedCurriculum.standardCode,
+          standardLabel: selectedCurriculum.standardLabel,
+          gradeLevel: selectedCurriculum.gradeLevel,
+          languageCode: selectedCurriculum.languageCode,
           workbookPromptVersionId: input.workbookPromptVersionId,
         },
         requestedByUserId: input.userId,
@@ -811,12 +876,12 @@ export async function queueWorkbookGradeLevelGeneration(
         jobType: "catalog_plan",
         sequenceNumber: 10,
         payloadJson: {
-          curriculumId: curriculum.id,
+          curriculumId: selectedCurriculum.id,
           workbookPromptVersionId: input.workbookPromptVersionId,
         },
       })
       .returning();
-    return { curriculum, batch, run, job };
+    return { curriculum: selectedCurriculum, batch, run, job };
   });
 }
 
@@ -972,6 +1037,26 @@ export async function queueWorkbookCurriculumGeneration(input: {
     .limit(1);
   if (!row)
     throw new Error("Save a curriculum plan before generating workbooks.");
+  if (row.curriculum.status === "archived")
+    throw new Error("An archived curriculum cannot generate workbooks.");
+  const [activeBatch] = await db
+    .select({ id: workbookGenerationBatches.id })
+    .from(workbookGenerationBatches)
+    .where(
+      and(
+        eq(workbookGenerationBatches.curriculumId, curriculumId),
+        inArray(workbookGenerationBatches.status, [
+          "queued",
+          "running",
+          "retry_wait",
+        ]),
+      ),
+    )
+    .limit(1);
+  if (activeBatch)
+    throw new Error(
+      "Wait for the curriculum's current generation batch to finish.",
+    );
   const plan = parseWorkbookCatalogPlan(row.planJson);
   const storedPromptVersionId =
     typeof row.planJson.workbookPromptVersionId === "string"

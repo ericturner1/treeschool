@@ -126,11 +126,13 @@ import {
 import {
   awardStudentPoints,
   completeStudentPointIconUpload,
+  depositStudentPointsToBank,
   discardStudentPointIconUpload,
   getStudentPoints,
   prepareStudentPointIconUpload,
   redeemStudentPoints,
-  updateStudentPointSettings
+  updateStudentPointSettings,
+  withdrawStudentPointsFromBank
 } from "./services/student-points";
 import {
   getConsumerSafeWordWhitelist,
@@ -3158,13 +3160,15 @@ const server = Bun.serve({
       const body = (await request.json()) as {
         parentUserId?: string;
         profileId?: string;
-        action?: "award" | "redeem" | "settings";
+        action?: "award" | "redeem" | "bank_deposit" | "bank_withdrawal" | "settings";
         amount?: number;
         reason?: string;
         singularName?: string;
         pluralName?: string;
         iconKey?: string;
         autoAwardLessonCompletion?: boolean;
+        bankInterestRatePercent?: number;
+        bankCompoundingInterval?: string;
       };
       if (!body.parentUserId || !body.profileId || !body.action) {
         return Response.json(
@@ -3189,13 +3193,29 @@ const server = Bun.serve({
             reason: body.reason ?? ""
           }), { status: 201 });
         }
+        if (body.action === "bank_deposit") {
+          return Response.json(await depositStudentPointsToBank({
+            parentUserId: body.parentUserId,
+            profileId: body.profileId,
+            amount: Number(body.amount)
+          }), { status: 201 });
+        }
+        if (body.action === "bank_withdrawal") {
+          return Response.json(await withdrawStudentPointsFromBank({
+            parentUserId: body.parentUserId,
+            profileId: body.profileId,
+            amount: Number(body.amount)
+          }), { status: 201 });
+        }
         return Response.json(await updateStudentPointSettings({
           parentUserId: body.parentUserId,
           profileId: body.profileId,
           singularName: body.singularName ?? "point",
           pluralName: body.pluralName ?? "points",
           iconKey: body.iconKey ?? "star",
-          autoAwardLessonCompletion: body.autoAwardLessonCompletion === true
+          autoAwardLessonCompletion: body.autoAwardLessonCompletion === true,
+          bankInterestRatePercent: Number(body.bankInterestRatePercent ?? 1),
+          bankCompoundingInterval: body.bankCompoundingInterval ?? "daily"
         }));
       } catch (error) {
         return Response.json(

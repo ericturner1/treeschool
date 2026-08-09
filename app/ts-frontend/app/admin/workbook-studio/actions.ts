@@ -28,14 +28,9 @@ async function requireUserId() {
 }
 
 export async function queueWorkbookGradeLevelGenerationAction(input: {
-  curriculumName: string;
-  standardCode: string | null;
-  standardLabel: string | null;
-  gradeLevel: number;
-  languageCode: string;
+  curriculumId: string;
   catalogPromptVersionId: string;
   workbookPromptVersionId: string;
-  defaultThemeVersionId: string | null;
 }) {
   try {
     const result = await queueWorkbookGradeLevelGeneration({
@@ -43,6 +38,9 @@ export async function queueWorkbookGradeLevelGenerationAction(input: {
       userId: await requireUserId(),
     });
     revalidatePath("/admin/workbook-studio");
+    revalidatePath(
+      `/admin/workbook-studio/curricula/${input.curriculumId}`,
+    );
     return { ok: true as const, ...result };
   } catch (error) {
     return {
@@ -57,6 +55,7 @@ export async function queueWorkbookGradeLevelGenerationAction(input: {
 
 export async function createWorkbookStudioCurriculumAction(input: {
   name: string;
+  academicStandardKey: string;
   standardCode: string | null;
   standardLabel: string | null;
   gradeLevel: number;

@@ -52,6 +52,7 @@ import {
   summarizeModelUsage,
   type ModelUsageContext
 } from "./model-usage";
+import { drawPdfText } from "./pdf-text-fonts";
 import { recordTeacherGradeActivity } from "./teacher-activity";
 import { normalizePlanSubjectLabel, planSubjectKey } from "./plan-subject-key";
 import {
@@ -99,8 +100,8 @@ const MAX_DOCUMENT_JOB_ATTEMPTS = 3;
 const MAX_WEEKLY_PLAN_JOB_ATTEMPTS = 3;
 const METADATA_QUALITY_ALGORITHM_VERSION = 2;
 const PDF_QUALITY_REPORT_VERSION = 1;
-const WEEKLY_PACKET_TEMPLATE_VERSION = 5;
-const DAY_PACKET_TEMPLATE_VERSION = 4;
+const WEEKLY_PACKET_TEMPLATE_VERSION = 6;
+const DAY_PACKET_TEMPLATE_VERSION = 5;
 const MIN_RENDERED_PAGE_DARK_PIXEL_RATIO = 0.00075;
 const OVERSIZED_WEEK_SOURCE_PAGE_THRESHOLD = 20;
 const ALLOWED_ROLES = new Set(["student", "teacher", "answer_key", "mixed"]);
@@ -8758,16 +8759,6 @@ function loadTreeschoolLogoBytes() {
   return treeschoolLogoBytesPromise;
 }
 
-function fitPdfText(text: string, font: PDFFont, size: number, maxWidth: number) {
-  if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
-  const suffix = "...";
-  let fitted = text;
-  while (fitted.length > 1 && font.widthOfTextAtSize(`${fitted}${suffix}`, size) > maxWidth) {
-    fitted = fitted.slice(0, -1).trimEnd();
-  }
-  return `${fitted}${suffix}`;
-}
-
 function weeklyCoverDaySummaries(items: WeeklyPacketItem[]) {
   const hasNumberedDays = items.some(({ item }) => item.dayNumber != null);
   const grouped = new Map<number, string[]>();
@@ -8869,12 +8860,16 @@ async function drawWeeklyPacketCover(input: {
     font: input.bold,
     color: white
   });
-  cover.drawText(fitPdfText(input.yearTitle, input.font, 14, width - margin * 2 - 32), {
+  await drawPdfText({
+    document: input.packet,
+    page: cover,
+    text: input.yearTitle,
     x: margin + 16,
     y: heroY + 27,
     size: 14,
     font: input.font,
-    color: white
+    color: white,
+    maxWidth: width - margin * 2 - 32,
   });
 
   cover.drawText("This week", {
@@ -8890,12 +8885,16 @@ async function drawWeeklyPacketCover(input: {
   ).slice(0, 3);
   let summaryY = heroY - 57;
   for (const line of summaryLines) {
-    cover.drawText(fitPdfText(line, input.font, 10.5, width - margin * 2), {
+    await drawPdfText({
+      document: input.packet,
+      page: cover,
+      text: line,
       x: margin,
       y: summaryY,
       size: 10.5,
       font: input.font,
-      color: mutedInk
+      color: mutedInk,
+      maxWidth: width - margin * 2,
     });
     summaryY -= 15;
   }
@@ -8965,7 +8964,7 @@ async function drawWeeklyPacketCover(input: {
   const listTop = glanceHeadingY - 20;
   const listBottom = 78;
   const rowHeight = Math.min(43, (listTop - listBottom) / Math.max(1, daySummaries.length));
-  daySummaries.forEach((day, index) => {
+  for (const [index, day] of daySummaries.entries()) {
     const rowTop = listTop - index * rowHeight;
     const rowBottom = rowTop - rowHeight + 4;
     cover.drawRectangle({
@@ -8982,15 +8981,18 @@ async function drawWeeklyPacketCover(input: {
       font: input.bold,
       color: leafDark
     });
-    const subjects = fitPdfText(day.subjects.join(", "), input.font, 9.5, width - margin * 2 - 88);
-    cover.drawText(subjects, {
+    await drawPdfText({
+      document: input.packet,
+      page: cover,
+      text: day.subjects.join(", "),
       x: margin + 76,
       y: rowBottom + (rowHeight - 4) / 2 - 3.5,
       size: 9.5,
       font: input.font,
-      color: ink
+      color: ink,
+      maxWidth: width - margin * 2 - 88,
     });
-  });
+  }
 
   cover.drawLine({
     start: { x: margin, y: 55 },
@@ -9077,7 +9079,7 @@ async function addTeachingDaySummaryPages(input: {
   const logoBytes = await loadTreeschoolLogoBytes();
   const logoImage = logoBytes ? await input.packet.embedPng(logoBytes) : null;
 
-  chunks.forEach((chunk, pageIndex) => {
+  for (const [pageIndex, chunk] of chunks.entries()) {
     const page = input.packet.addPage([input.pageSize[0], input.pageSize[1]]);
     const { width, height } = page.getSize();
     page.drawRectangle({ x: 0, y: 0, width, height, color: rgb(0.99, 0.97, 0.92) });
@@ -9093,12 +9095,16 @@ async function addTeachingDaySummaryPages(input: {
       pageIndex === 0 ? "School-day summary" : "School-day summary (continued)",
       { x: 44, y: height - 104, size: 15, font: input.font, color: rgb(1, 1, 1) }
     );
-    page.drawText(`${input.yearTitle} - Week ${input.weekNumber}`, {
+    await drawPdfText({
+      document: input.packet,
+      page,
+      text: `${input.yearTitle} - Week ${input.weekNumber}`,
       x: 44,
       y: height - 130,
       size: 10.5,
       font: input.font,
-      color: rgb(0.93, 0.98, 0.9)
+      color: rgb(0.93, 0.98, 0.9),
+      maxWidth: width - 230,
     });
 
     const qrSize = 68;
@@ -9137,12 +9143,17 @@ async function addTeachingDaySummaryPages(input: {
     for (const line of chunk) {
       if (line.kind === "subject") {
         if (y < height - 210) y -= 8;
-        page.drawText(line.text, {
+        await drawPdfText({
+          document: input.packet,
+          page,
+          text: line.text,
           x: 44,
           y,
           size: 14,
           font: input.bold,
-          color: rgb(0.25, 0.36, 0.18)
+          color: rgb(0.25, 0.36, 0.18),
+          bold: true,
+          maxWidth: width - 88,
         });
         y -= 24;
       } else if (line.kind === "item" || line.kind === "itemContinuation") {
@@ -9157,25 +9168,33 @@ async function addTeachingDaySummaryPages(input: {
             color: rgb(1, 1, 1)
           });
         }
-        page.drawText(line.text, {
+        await drawPdfText({
+          document: input.packet,
+          page,
+          text: line.text,
           x: 66,
           y,
           size: 10.5,
           font: input.font,
-          color: rgb(0.18, 0.2, 0.16)
+          color: rgb(0.18, 0.2, 0.16),
+          maxWidth: width - 110,
         });
         y -= 18;
       } else {
-        page.drawText(line.text, {
+        await drawPdfText({
+          document: input.packet,
+          page,
+          text: line.text,
           x: 44,
           y,
           size: 12,
           font: input.font,
-          color: rgb(0.35, 0.36, 0.32)
+          color: rgb(0.35, 0.36, 0.32),
+          maxWidth: width - 88,
         });
       }
     }
-  });
+  }
 
   return chunks.length;
 }

@@ -566,9 +566,10 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
                     retryPlanningAction={retryFailedPaperPlanPlanningAction}
                     completenessAction={evaluatePaperPlanCompletenessAction}
                     canStartPlanning={canStartPlanning}
-                    planningButtonLabel={plan.weeks.length > 0 ? "Continue Building Your Lesson Plan" : "Review & Approve Curriculum"}
+                    planningButtonLabel={plan.weeks.length > 0 ? "Review and Approve Plan" : "Review & Approve Curriculum"}
                     showPlanningAction={!planningActive && !planningFailed && activeDocumentCount === 0 && (plan.weeks.length === 0 || plan.materialsChanged)}
                     planningProgress={planningProgress}
+                    planBuildActive={planningActive}
                     planningFailed={planningFailed}
                     qualityControlFailed={plan.planning.qualityControlFailed}
                     nativeWorkbooks={nativeCatalog.workbooks}

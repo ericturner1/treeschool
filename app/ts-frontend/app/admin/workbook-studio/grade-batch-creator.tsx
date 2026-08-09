@@ -3,25 +3,23 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkbookStudioSummary } from "../../../lib/workbook-studio/server";
-import { queueWorkbookGradeLevelGenerationAction } from "./actions";
+import { generateWorkbookStudioCurriculumAction } from "./actions";
 
 export function GradeBatchCreator({
+  curricula,
   prompts,
-  themes,
 }: {
+  curricula: WorkbookStudioSummary["curricula"];
   prompts: WorkbookStudioSummary["prompts"];
-  themes: WorkbookStudioSummary["themes"];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
-  const catalogPrompts = prompts.filter(
-    (prompt) => prompt.kind === "catalog_plan" && prompt.publishedVersionId,
-  );
   const workbookPrompts = prompts.filter(
     (prompt) => prompt.kind === "workflow" && prompt.publishedVersionId,
   );
+
   return (
     <>
       <button
@@ -42,26 +40,21 @@ export function GradeBatchCreator({
             className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[26px] border border-[#d8c8ae] bg-[#fffaf2] p-6 shadow-2xl sm:p-8"
             action={(formData) => {
               setError("");
+              const curriculumId = String(
+                formData.get("curriculumId") ?? "",
+              );
               startTransition(async () => {
-                const result = await queueWorkbookGradeLevelGenerationAction({
-                  curriculumName: String(formData.get("curriculumName") ?? ""),
-                  standardCode:
-                    String(formData.get("standardCode") ?? "").trim() || null,
-                  standardLabel:
-                    String(formData.get("standardLabel") ?? "").trim() || null,
-                  gradeLevel: Number(formData.get("gradeLevel")),
-                  languageCode: String(formData.get("languageCode") ?? "en"),
-                  catalogPromptVersionId: String(
-                    formData.get("catalogPromptVersionId") ?? "",
-                  ),
+                const result = await generateWorkbookStudioCurriculumAction({
+                  curriculumId,
                   workbookPromptVersionId: String(
                     formData.get("workbookPromptVersionId") ?? "",
                   ),
-                  defaultThemeVersionId:
-                    String(formData.get("defaultThemeVersionId") ?? "") || null,
                 });
                 if (!result.ok) return setError(result.error);
                 setOpen(false);
+                router.push(
+                  `/admin/workbook-studio/curricula/${curriculumId}`,
+                );
                 router.refresh();
               });
             }}
@@ -87,74 +80,28 @@ export function GradeBatchCreator({
               </button>
             </div>
             <p className="mt-3 text-sm leading-6 text-ink/55">
-              The catalog planner proposes subjects and locale variants as a
-              versioned curriculum plan. Review or edit that plan first; then
-              generate its workbooks through the normal curriculum → outline →
-              content → validation → PDF workflow.
+              Choose an existing curriculum and generate the workbooks in its
+              current saved plan. Grade, academic standard, language, and
+              theme come from the curriculum automatically.
             </p>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-bold sm:col-span-2">
-                Curriculum name
-                <input
-                  name="curriculumName"
-                  required
-                  placeholder="US Common Core · Grade 2"
-                  className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
-                />
-              </label>
+            <div className="mt-6 grid gap-4">
               <label className="grid gap-1.5 text-sm font-bold">
-                Grade
-                <input
-                  name="gradeLevel"
-                  type="number"
-                  min="0"
-                  max="20"
-                  defaultValue="1"
-                  required
-                  className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
-                />
-              </label>
-              <label className="grid gap-1.5 text-sm font-bold">
-                Language
-                <input
-                  name="languageCode"
-                  defaultValue="en"
-                  required
-                  className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
-                />
-              </label>
-              <label className="grid gap-1.5 text-sm font-bold">
-                Standard code
-                <input
-                  name="standardCode"
-                  placeholder="CCSS"
-                  className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
-                />
-              </label>
-              <label className="grid gap-1.5 text-sm font-bold">
-                Standard name
-                <input
-                  name="standardLabel"
-                  placeholder="US Common Core"
-                  className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
-                />
-              </label>
-              <label className="grid gap-1.5 text-sm font-bold sm:col-span-2">
-                Catalog planning prompt
+                Curriculum
                 <select
-                  name="catalogPromptVersionId"
+                  name="curriculumId"
                   required
                   className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
                 >
-                  <option value="">Choose a published catalog prompt</option>
-                  {catalogPrompts.map((prompt) => (
-                    <option key={prompt.id} value={prompt.publishedVersionId!}>
-                      {prompt.name} · v{prompt.versionNumber}
+                  <option value="">Choose a curriculum</option>
+                  {curricula.map((curriculum) => (
+                    <option key={curriculum.id} value={curriculum.id}>
+                      {curriculum.name} · Grade {curriculum.gradeLevel} ·{" "}
+                      {curriculum.languageCode.toUpperCase()}
                     </option>
                   ))}
                 </select>
               </label>
-              <label className="grid gap-1.5 text-sm font-bold sm:col-span-2">
+              <label className="grid gap-1.5 text-sm font-bold">
                 Workbook workflow
                 <select
                   name="workbookPromptVersionId"
@@ -169,30 +116,16 @@ export function GradeBatchCreator({
                   ))}
                 </select>
               </label>
-              <label className="grid gap-1.5 text-sm font-bold sm:col-span-2">
-                Default theme
-                <select
-                  name="defaultThemeVersionId"
-                  className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
-                >
-                  <option value="">Classic</option>
-                  {themes
-                    .filter(
-                      (theme) =>
-                        theme.publishedVersionId && theme.slug !== "classic",
-                    )
-                    .map((theme) => (
-                      <option key={theme.id} value={theme.publishedVersionId!}>
-                        {theme.name} · v{theme.versionNumber}
-                      </option>
-                    ))}
-                </select>
-              </label>
             </div>
-            {!catalogPrompts.length || !workbookPrompts.length ? (
+            {!curricula.length ? (
               <p className="mt-4 rounded-[12px] bg-[#fff0cf] px-4 py-3 text-sm text-[#76571f]">
-                Import or create both a published catalog-plan prompt and a
-                published workbook workflow before starting a grade batch.
+                Create or import a curriculum before generating a grade.
+              </p>
+            ) : null}
+            {!workbookPrompts.length ? (
+              <p className="mt-4 rounded-[12px] bg-[#fff0cf] px-4 py-3 text-sm text-[#76571f]">
+                Import or create a published workbook workflow before starting
+                grade generation.
               </p>
             ) : null}
             {error ? (
@@ -202,14 +135,14 @@ export function GradeBatchCreator({
             ) : null}
             <button
               disabled={
-                pending || !catalogPrompts.length || !workbookPrompts.length
+                pending || !curricula.length || !workbookPrompts.length
               }
               className="cta-button cta-button--dark mt-6 inline-flex w-full items-center justify-center gap-2 disabled:opacity-55"
             >
               {pending ? (
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white" />
               ) : null}
-              {pending ? "Queueing…" : "Generate catalog plan"}
+              {pending ? "Queueing…" : "Generate planned workbooks"}
             </button>
           </form>
         </div>

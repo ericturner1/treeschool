@@ -22,6 +22,7 @@ Create these Secret Manager secrets before deployment:
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `INTERNAL_API_SECRET`
+- `ANTHROPIC_API_KEY` (required for Workbook Studio AI generation)
 
 Optional:
 

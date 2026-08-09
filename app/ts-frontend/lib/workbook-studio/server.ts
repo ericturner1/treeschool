@@ -164,11 +164,21 @@ export type WorkbookStudioSummary = {
     id: string;
     slug: string;
     name: string;
+    academicStandardKey: string;
     gradeLevel: number;
     languageCode: string;
     status: string;
     defaultThemeVersionId: string;
     updatedAt: string;
+  }>;
+  academicStandards: Array<{
+    key: string;
+    label: string;
+    defaultLanguageCode: string;
+    languages: Array<{
+      code: string;
+      label: string;
+    }>;
   }>;
   themes: Array<{
     id: string;

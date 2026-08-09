@@ -11,6 +11,7 @@ import type {
 import {
   generateWorkbookStudioCurriculumAction,
   publishWorkbookStudioCurriculumAction,
+  queueWorkbookGradeLevelGenerationAction,
   saveWorkbookStudioCurriculumAction,
 } from "../../actions";
 
@@ -47,12 +48,16 @@ export function CurriculumEditor({
       ? detail.currentRevision.planJson.workbookPromptVersionId
       : "";
   const [promptVersionId, setPromptVersionId] = useState(storedPrompt);
+  const [catalogPromptVersionId, setCatalogPromptVersionId] = useState("");
   const [dirty, setDirty] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const workflows = prompts.filter(
     (prompt) => prompt.kind === "workflow" && prompt.publishedVersionId,
+  );
+  const catalogPrompts = prompts.filter(
+    (prompt) => prompt.kind === "catalog_plan" && prompt.publishedVersionId,
   );
   const generatedKeys = useMemo(
     () =>
@@ -118,6 +123,34 @@ export function CurriculumEditor({
       if (!result.ok) return setError(result.error);
       setNotice(
         `${result.createdProjectIds.length} workbook generation run${result.createdProjectIds.length === 1 ? "" : "s"} queued. ${result.existingProjectIds.length ? `${result.existingProjectIds.length} existing workbook keys were left unchanged.` : ""}`,
+      );
+      router.refresh();
+    });
+  }
+
+  function generatePlan() {
+    if (dirty)
+      return setError(
+        "Save or discard your curriculum edits before generating a new plan.",
+      );
+    if (!catalogPromptVersionId)
+      return setError("Choose a published catalog-planning prompt.");
+    if (!promptVersionId)
+      return setError("Choose a published single-workbook workflow.");
+    const confirmed = window.confirm(
+      "Claude will create a new curriculum-plan revision. The current revision will remain in history, but the generated revision will become current when the job finishes. Continue?",
+    );
+    if (!confirmed) return;
+    setError("");
+    startTransition(async () => {
+      const result = await queueWorkbookGradeLevelGenerationAction({
+        curriculumId: detail.curriculum.id,
+        catalogPromptVersionId,
+        workbookPromptVersionId: promptVersionId,
+      });
+      if (!result.ok) return setError(result.error);
+      setNotice(
+        "AI curriculum planning queued. The current plan stays active until the new revision is ready.",
       );
       router.refresh();
     });
@@ -333,13 +366,27 @@ export function CurriculumEditor({
         <div className="rounded-[20px] border border-[#d8c8ae] bg-[#fffaf2] p-4">
           <h2 className="font-semibold">Workflow</h2>
           <label className="mt-3 grid gap-1 text-xs font-bold">
+            Catalog-planning prompt
+            <select
+              value={catalogPromptVersionId}
+              onChange={(event) =>
+                setCatalogPromptVersionId(event.target.value)
+              }
+              className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"
+            >
+              <option value="">Choose catalog planner</option>
+              {catalogPrompts.map((prompt) => (
+                <option key={prompt.id} value={prompt.publishedVersionId!}>
+                  {prompt.name} · v{prompt.versionNumber}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="mt-3 grid gap-1 text-xs font-bold">
             Single-workbook prompt
             <select
               value={promptVersionId}
-              onChange={(event) => {
-                setPromptVersionId(event.target.value);
-                setDirty(true);
-              }}
+              onChange={(event) => setPromptVersionId(event.target.value)}
               className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"
             >
               <option value="">Choose workflow</option>
@@ -351,6 +398,19 @@ export function CurriculumEditor({
             </select>
           </label>
           <div className="mt-4 grid gap-2">
+            <button
+              type="button"
+              onClick={generatePlan}
+              disabled={
+                pending ||
+                dirty ||
+                !catalogPromptVersionId ||
+                !promptVersionId
+              }
+              className="cta-button cta-button--light cta-button--small disabled:opacity-45"
+            >
+              Generate new plan with AI
+            </button>
             <button
               type="button"
               onClick={save}
@@ -382,8 +442,9 @@ export function CurriculumEditor({
             </button>
           </div>
           <p className="mt-3 text-xs leading-5 text-ink/45">
-            Generation skips stable keys that already have projects. It never
-            overwrites an existing workbook.
+            AI planning creates a new immutable curriculum revision after
+            confirmation. Workbook generation skips stable keys that already
+            have projects and never overwrites an existing workbook.
           </p>
         </div>
         <div className="rounded-[20px] border border-[#d8c8ae] bg-white/70 p-4">

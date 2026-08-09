@@ -45,10 +45,10 @@ export default async function WorkbookStudioPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <CurriculumCreator />
+            <CurriculumCreator academicStandards={studio.academicStandards} />
             <GradeBatchCreator
+              curricula={studio.curricula}
               prompts={studio.prompts}
-              themes={studio.themes}
             />
             <StudioProjectCreator
               curricula={studio.curricula}

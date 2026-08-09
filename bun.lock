@@ -14,10 +14,12 @@
     "app/ts-backend": {
       "name": "ts-backend",
       "dependencies": {
+        "@expo-google-fonts/noto-sans-jp": "0.4.3",
         "@fontsource/comic-neue": "5.3.0",
         "@fontsource/noto-sans-jp": "5.3.0",
         "@fontsource/nunito": "5.3.0",
         "@google-cloud/storage": "^7.19.0",
+        "@napi-rs/canvas": "0.1.100",
         "drizzle-orm": "^0.40.0",
         "fflate": "^0.8.2",
         "nodemailer": "^9.0.3",
@@ -149,6 +151,8 @@
     "@eslint/eslintrc": ["@eslint/eslintrc@2.1.4", "", { "dependencies": { "ajv": "^6.12.4", "debug": "^4.3.2", "espree": "^9.6.0", "globals": "^13.19.0", "ignore": "^5.2.0", "import-fresh": "^3.2.1", "js-yaml": "^4.1.0", "minimatch": "^3.1.2", "strip-json-comments": "^3.1.1" } }, "sha512-269Z39MS6wVJtsoUl10L60WdkhJVdPG24Q4eZTH3nnF6lpvSShEK3wQjDX9JRWAUPvPh7COouPpU9IrqaZFvtQ=="],
 
     "@eslint/js": ["@eslint/js@8.57.1", "", {}, "sha512-d9zaMRSTIKDLhctzH12MtXvJKSSUhaHcjV+2Z+GK+EEY7XKpP5yR4x+N3TAcHTcu963nIr+TMcCb4DBCYX1z6Q=="],
+
+    "@expo-google-fonts/noto-sans-jp": ["@expo-google-fonts/noto-sans-jp@0.4.3", "", {}, "sha512-Fl+Z6vtD24HFAYsvzB0S9Nery1ly16B9PesdY0wBd+wEHAvkNglnkTUspU0HqGOubkmoa8zusJrKv6vDx1o70A=="],
 
     "@fontsource/comic-neue": ["@fontsource/comic-neue@5.3.0", "", {}, "sha512-uZsyUTExw8tCySNhL65dN6rEUhASMPGintSS5Kw/ZkrQTK1vcAgramzOLT/mZKtZ+EXr03MHj0s5osVVJITCow=="],
 

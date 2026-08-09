@@ -2,6 +2,7 @@ import { runNextLessonGenerationJob } from "./services/lessons";
 import { runNextPaperDocumentJob, runNextWeeklyPlanJob } from "./services/paper-plans";
 import { runNextNativeWorkbookJob } from "./services/native-workbooks";
 import { runNextWorkbookStudioJob } from "./services/workbook-studio-worker";
+import { accrueDueStudentPointBankInterest } from "./services/student-points";
 import { client, env } from "./db";
 
 const workerId = process.env.TASK_WORKER_ID ?? `ts-tasks-${crypto.randomUUID().slice(0, 8)}`;
@@ -11,6 +12,13 @@ async function main() {
   const startedAt = Date.now();
   let processedJobs = 0;
   console.log(`ts-tasks drain worker ${workerId} starting`);
+
+  const bankInterest = await accrueDueStudentPointBankInterest();
+  if (bankInterest.processedPeriods > 0 || bankInterest.failedProfiles > 0) {
+    console.log(
+      `[${workerId}] point-bank interest: ${bankInterest.processedPeriods} period(s), ${bankInterest.awardedPoints} point(s), ${bankInterest.failedProfiles} failure(s)`
+    );
+  }
 
   while (
     processedJobs < env.PROCESSOR_MAX_JOBS &&

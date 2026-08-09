@@ -421,6 +421,11 @@ export const studentPointSettings = pgTable("student_point_settings", {
   iconKey: text("icon_key").notNull().default("star"),
   customIconPath: text("custom_icon_path"),
   autoAwardLessonCompletion: boolean("auto_award_lesson_completion").notNull().default(false),
+  bankInterestRateBasisPoints: integer("bank_interest_rate_basis_points").notNull().default(100),
+  bankCompoundingInterval: text("bank_compounding_interval").notNull().default("daily"),
+  bankInterestRemainderMicropoints: integer("bank_interest_remainder_micropoints").notNull().default(0),
+  bankLastAccrualDate: date("bank_last_accrual_date"),
+  bankInterestAnchorDay: integer("bank_interest_anchor_day"),
   updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
     onDelete: "set null"
   }),
@@ -463,6 +468,44 @@ export const studentPointTransactions = pgTable(
       table.createdAt
     ),
     sourceUnique: unique("student_point_transactions_profile_source_unique").on(
+      table.profileId,
+      table.sourceType,
+      table.sourceKey
+    )
+  })
+);
+
+export const studentPointBankTransactions = pgTable(
+  "student_point_bank_transactions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, {
+        onDelete: "cascade"
+      }),
+    amount: integer("amount").notNull(),
+    kind: text("kind").notNull(),
+    reason: text("reason").notNull(),
+    sourceType: text("source_type"),
+    sourceKey: text("source_key"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    balanceAfter: integer("balance_after").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    profileCreatedIndex: index("student_point_bank_transactions_profile_created_idx").on(
+      table.profileId,
+      table.createdAt
+    ),
+    sourceUnique: unique("student_point_bank_transactions_profile_source_unique").on(
       table.profileId,
       table.sourceType,
       table.sourceKey

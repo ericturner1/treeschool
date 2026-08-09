@@ -2,9 +2,15 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import type { WorkbookStudioSummary } from "../../../lib/workbook-studio/server";
 import { createWorkbookStudioCurriculumAction } from "./actions";
+import { WorkbookStandardFields } from "./workbook-standard-fields";
 
-export function CurriculumCreator() {
+export function CurriculumCreator({
+  academicStandards,
+}: {
+  academicStandards: WorkbookStudioSummary["academicStandards"];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
@@ -32,6 +38,9 @@ export function CurriculumCreator() {
               startTransition(async () => {
                 const result = await createWorkbookStudioCurriculumAction({
                   name: String(formData.get("name") ?? ""),
+                  academicStandardKey: String(
+                    formData.get("academicStandardKey") ?? "",
+                  ),
                   standardCode:
                     String(formData.get("standardCode") ?? "").trim() || null,
                   standardLabel:
@@ -89,15 +98,7 @@ export function CurriculumCreator() {
                   className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
                 />
               </label>
-              <label className="grid gap-1.5 text-sm font-bold">
-                Language
-                <input
-                  name="languageCode"
-                  defaultValue="en"
-                  required
-                  className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
-                />
-              </label>
+              <WorkbookStandardFields standards={academicStandards} />
               <label className="grid gap-1.5 text-sm font-bold">
                 Standard code
                 <input

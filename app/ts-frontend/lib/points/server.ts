@@ -9,6 +9,8 @@ export type StudentPointIconKey =
   | "diamond"
   | "custom";
 
+export type BankCompoundingInterval = "daily" | "weekly" | "monthly";
+
 export type StudentPointsPayload = {
   student: {
     id: string;
@@ -22,12 +24,26 @@ export type StudentPointsPayload = {
     iconKey: StudentPointIconKey;
     customIconUrl: string | null;
     autoAwardLessonCompletion: boolean;
+    bank: {
+      interestRatePercent: number;
+      compoundingInterval: BankCompoundingInterval;
+      lastAccrualDate: string | null;
+    };
   };
   summary: {
     balance: number;
+    availableBalance: number;
+    bankBalance: number;
+    totalBalance: number;
     lifetimeEarned: number;
     lifetimeUsed: number;
+    bankInterestEarned: number;
   };
+  balanceTimeline: Array<{
+    id: string;
+    balance: number;
+    createdAt: string;
+  }>;
   history: {
     offset: number;
     limit: number;
@@ -39,8 +55,11 @@ export type StudentPointsPayload = {
     kind: string;
     reason: string;
     balanceAfter: number;
+    balanceKind: "available" | "bank";
+    bankBalanceAfter: number | null;
     actorName: string;
     reversed: boolean;
+    interestDate: string | null;
     createdAt: string;
   }>;
 };
@@ -96,6 +115,22 @@ export function redeemStudentPoints(input: {
   return pointsMutation({ ...input, action: "redeem" });
 }
 
+export function depositStudentPointsToBank(input: {
+  parentUserId: string;
+  profileId: string;
+  amount: number;
+}) {
+  return pointsMutation({ ...input, action: "bank_deposit" });
+}
+
+export function withdrawStudentPointsFromBank(input: {
+  parentUserId: string;
+  profileId: string;
+  amount: number;
+}) {
+  return pointsMutation({ ...input, action: "bank_withdrawal" });
+}
+
 export function updateStudentPointSettings(input: {
   parentUserId: string;
   profileId: string;
@@ -103,6 +138,8 @@ export function updateStudentPointSettings(input: {
   pluralName: string;
   iconKey: StudentPointIconKey;
   autoAwardLessonCompletion: boolean;
+  bankInterestRatePercent: number;
+  bankCompoundingInterval: BankCompoundingInterval;
 }) {
   return pointsMutation({ ...input, action: "settings" });
 }

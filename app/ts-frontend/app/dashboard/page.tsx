@@ -143,7 +143,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                                 <QuickAddPoints
                                   profileId={profile.id}
                                   studentName={profile.firstName}
-                                  initialBalance={points.summary.balance}
+                                  initialBalance={points.summary.totalBalance}
                                   singularName={points.settings.singularName}
                                   pluralName={points.settings.pluralName}
                                   frequentReasons={frequentAwardReasons(points)}
@@ -219,7 +219,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                                 <QuickAddPoints
                                   profileId={profile.id}
                                   studentName={profile.firstName}
-                                  initialBalance={points.summary.balance}
+                                  initialBalance={points.summary.totalBalance}
                                   singularName={points.settings.singularName}
                                   pluralName={points.settings.pluralName}
                                   frequentReasons={frequentAwardReasons(points)}

@@ -118,6 +118,7 @@ export {
   studentCalendarExceptions,
   studentLessonDispositions,
   studentWorkbookEditionUnitCarryovers,
+  studentPointBankTransactions,
   studentPointSettings,
   studentPointTransactions,
   studentProfileCheckouts,
