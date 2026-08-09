@@ -445,8 +445,21 @@ export async function downloadPaperPlanPacket(input: {
 export async function downloadPaperPlanLessonPreview(input: {
   parentUserId: string;
   weeklyPlanItemId: string;
+  documentId?: string | null;
+  sourceUnitId?: string | null;
+  lessonLabel?: string | null;
+  firstPageIndex?: string | null;
+  lastPageIndex?: string | null;
 }) {
-  const params = new URLSearchParams(input);
+  const params = new URLSearchParams({
+    parentUserId: input.parentUserId,
+    weeklyPlanItemId: input.weeklyPlanItemId
+  });
+  if (input.documentId) params.set("documentId", input.documentId);
+  if (input.sourceUnitId) params.set("sourceUnitId", input.sourceUnitId);
+  if (input.lessonLabel) params.set("lessonLabel", input.lessonLabel);
+  if (input.firstPageIndex) params.set("firstPageIndex", input.firstPageIndex);
+  if (input.lastPageIndex) params.set("lastPageIndex", input.lastPageIndex);
   return requireOk(
     await backendFetch(`${getBackendUrl()}/internal/paper-plan/lesson-preview?${params.toString()}`, {
       cache: "no-store"

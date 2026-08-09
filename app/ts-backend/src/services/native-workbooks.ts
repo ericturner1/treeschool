@@ -81,6 +81,11 @@ import {
   parseWorkbookContent,
   workbookLessonIds
 } from "./workbook-studio-model";
+import {
+  validateWorkbookBundlePrerequisites,
+  validateWorkbookPrerequisiteCompatibility,
+  type WorkbookPrerequisiteIdentity
+} from "./native-workbook-prerequisites";
 
 const MAX_NATIVE_WORKBOOK_PAGES = 2_000;
 const MAX_NATIVE_WORKBOOK_JOB_ATTEMPTS = 3;
@@ -985,6 +990,7 @@ async function loadBundleCatalogRows(input: { includeInactive?: boolean; userId?
     priceInCents: nativeWorkbooks.priceInCents,
     currencyCode: nativeWorkbooks.currencyCode,
     thumbnailObjectPath: nativeWorkbooks.thumbnailObjectPath,
+    prerequisiteWorkbookId: nativeWorkbooks.prerequisiteWorkbookId,
     activeVersionId: nativeWorkbooks.activeVersionId,
     active: nativeWorkbooks.active,
     status: nativeWorkbooks.status,
@@ -1041,6 +1047,7 @@ async function loadBundleCatalogRows(input: { includeInactive?: boolean; userId?
         activeVersionId: member.activeVersionId,
         slug: member.slug,
         title: member.title,
+        prerequisiteWorkbookId: member.prerequisiteWorkbookId,
         subjectLabel: member.subjectLabel,
         curriculumAreaKey: member.curriculumAreaKey,
         gradeMin: member.gradeMin,
@@ -1539,6 +1546,7 @@ export async function prepareNativeWorkbookBundle(input: {
     coverageTags: nativeWorkbooks.coverageTags,
     type: nativeWorkbooks.type,
     languageCode: nativeWorkbooks.languageCode,
+    prerequisiteWorkbookId: nativeWorkbooks.prerequisiteWorkbookId,
     activeVersionId: nativeWorkbooks.activeVersionId
   }).from(nativeWorkbooks).where(and(
     inArray(nativeWorkbooks.id, workbookIds),
@@ -1548,6 +1556,7 @@ export async function prepareNativeWorkbookBundle(input: {
   if (members.length !== workbookIds.length || members.some((member) => !member.activeVersionId)) {
     throw new Error("Bundles can only contain published, indexed workbooks.");
   }
+  validateWorkbookBundlePrerequisites({ workbookIds, members });
   const isRecommendedCurriculum = input.isRecommendedCurriculum === true;
   const recommendedGradeLevel = isRecommendedCurriculum && input.recommendedGradeLevel != null
     ? normalizeGrade(input.recommendedGradeLevel)
@@ -1622,6 +1631,10 @@ export async function completeNativeWorkbookBundle(input: { userId: string; bund
   const bundle = (await loadBundleCatalogRows({ includeInactive: true, userId: input.userId }))
     .find((candidate) => candidate.id === input.bundleId);
   if (!bundle) throw new Error("Workbook bundle not found.");
+  validateWorkbookBundlePrerequisites({
+    workbookIds: bundle.memberWorkbookIds,
+    members: bundle.members
+  });
   if (bundle.isRecommendedCurriculum && (
     bundle.type !== "core" ||
     bundle.languageCode === "multi" ||
@@ -1750,6 +1763,7 @@ export async function updateNativeWorkbookBundle(input: {
     coverageTags: nativeWorkbooks.coverageTags,
     type: nativeWorkbooks.type,
     languageCode: nativeWorkbooks.languageCode,
+    prerequisiteWorkbookId: nativeWorkbooks.prerequisiteWorkbookId,
     activeVersionId: nativeWorkbooks.activeVersionId
   }).from(nativeWorkbooks).where(and(
     inArray(nativeWorkbooks.id, workbookIds),
@@ -1759,6 +1773,7 @@ export async function updateNativeWorkbookBundle(input: {
   if (members.length !== workbookIds.length || members.some((member) => !member.activeVersionId)) {
     throw new Error("Bundles can only contain published, indexed workbooks.");
   }
+  validateWorkbookBundlePrerequisites({ workbookIds, members });
 
   const isRecommendedCurriculum = input.isRecommendedCurriculum === true;
   const recommendedGradeLevel = isRecommendedCurriculum && input.recommendedGradeLevel != null
@@ -2064,12 +2079,21 @@ export async function prepareNativeWorkbookUpload(input: {
   if (pdfMimeType !== "application/pdf" && !input.pdfFilename.toLowerCase().endsWith(".pdf")) {
     throw new Error("The workbook must be a PDF file.");
   }
-  if (prerequisiteWorkbookId) {
-    const [prerequisite] = await db.select({ id: nativeWorkbooks.id })
+  const [prerequisite] = prerequisiteWorkbookId
+    ? await db.select({
+        id: nativeWorkbooks.id,
+        title: nativeWorkbooks.title,
+        academicStandardKey: nativeWorkbooks.academicStandardKey,
+        curriculumSubjectId: nativeWorkbooks.curriculumSubjectId,
+        subjectKey: nativeWorkbooks.subjectKey,
+        languageCode: nativeWorkbooks.languageCode
+      })
       .from(nativeWorkbooks)
       .where(eq(nativeWorkbooks.id, prerequisiteWorkbookId))
-      .limit(1);
-    if (!prerequisite) throw new Error("The selected prerequisite workbook no longer exists.");
+      .limit(1)
+    : [];
+  if (prerequisiteWorkbookId && !prerequisite) {
+    throw new Error("The selected prerequisite workbook no longer exists.");
   }
   const subject = await resolveCurriculumSubjectSelection({
     userId: input.userId,
@@ -2079,6 +2103,16 @@ export async function prepareNativeWorkbookUpload(input: {
     subject: input.subject,
     addSubjectToTaxonomy: input.addSubjectToTaxonomy
   });
+  if (prerequisite) {
+    validateWorkbookPrerequisiteCompatibility({
+      id: "new-workbook",
+      title,
+      academicStandardKey,
+      curriculumSubjectId: subject.curriculumSubjectId,
+      subjectKey: subject.subjectKey,
+      languageCode
+    }, prerequisite);
+  }
 
   const workbookId = randomUUID();
   const editionId = randomUUID();
@@ -2865,6 +2899,7 @@ export async function updateNativeWorkbookDetails(input: {
     title: nativeWorkbooks.title,
     academicStandardKey: nativeWorkbooks.academicStandardKey,
     curriculumSubjectId: nativeWorkbooks.curriculumSubjectId,
+    subjectKey: nativeWorkbooks.subjectKey,
     subjectLabel: nativeWorkbooks.subjectLabel,
     curriculumAreaKey: nativeWorkbooks.curriculumAreaKey,
     gradeMin: nativeWorkbooks.gradeMin,
@@ -2881,9 +2916,15 @@ export async function updateNativeWorkbookDetails(input: {
   }).from(nativeWorkbooks).where(eq(nativeWorkbooks.id, input.workbookId)).limit(1);
   if (!workbook) throw new Error("Workbook not found.");
   if (prerequisiteWorkbookId === workbook.id) throw new Error("A workbook cannot be its own prerequisite.");
+  let selectedPrerequisite: WorkbookPrerequisiteIdentity | null = null;
   if (prerequisiteWorkbookId) {
     const prerequisiteRows = await db.select({
       id: nativeWorkbooks.id,
+      title: nativeWorkbooks.title,
+      academicStandardKey: nativeWorkbooks.academicStandardKey,
+      curriculumSubjectId: nativeWorkbooks.curriculumSubjectId,
+      subjectKey: nativeWorkbooks.subjectKey,
+      languageCode: nativeWorkbooks.languageCode,
       prerequisiteWorkbookId: nativeWorkbooks.prerequisiteWorkbookId
     }).from(nativeWorkbooks);
     const prerequisiteById = new Map(
@@ -2892,6 +2933,7 @@ export async function updateNativeWorkbookDetails(input: {
     if (!prerequisiteById.has(prerequisiteWorkbookId)) {
       throw new Error("The selected prerequisite workbook no longer exists.");
     }
+    selectedPrerequisite = prerequisiteRows.find((row) => row.id === prerequisiteWorkbookId) ?? null;
     let cursor: string | null = prerequisiteWorkbookId;
     const visited = new Set<string>();
     while (cursor) {
@@ -2909,6 +2951,16 @@ export async function updateNativeWorkbookDetails(input: {
     subject: input.subject,
     addSubjectToTaxonomy: input.addSubjectToTaxonomy
   });
+  if (selectedPrerequisite) {
+    validateWorkbookPrerequisiteCompatibility({
+      id: workbook.id,
+      title,
+      academicStandardKey,
+      curriculumSubjectId: subject.curriculumSubjectId,
+      subjectKey: subject.subjectKey,
+      languageCode
+    }, selectedPrerequisite);
+  }
 
   const priceChanged = workbook.priceInCents !== priceInCents;
   const productDetailsChanged =
@@ -2954,6 +3006,12 @@ export async function updateNativeWorkbookDetails(input: {
     .from(nativeWorkbookVersions)
     .where(eq(nativeWorkbookVersions.workbookId, workbook.id)))
     .map((version) => version.id);
+  const prerequisiteVersionIds = prerequisiteWorkbookId
+    ? (await db.select({ id: nativeWorkbookVersions.id })
+        .from(nativeWorkbookVersions)
+        .where(eq(nativeWorkbookVersions.workbookId, prerequisiteWorkbookId)))
+        .map((version) => version.id)
+    : [];
 
   try {
     if (stripe && workbook.stripeProductId) {
@@ -2977,9 +3035,31 @@ export async function updateNativeWorkbookDetails(input: {
     await db.transaction(async (tx) => {
       const attachedDocuments = workbookVersionIds.length === 0
         ? []
-        : await tx.select({ materialSetId: contentDocuments.materialSetId })
+        : await tx.select({
+            learningYearId: contentDocuments.learningYearId,
+            materialSetId: contentDocuments.materialSetId,
+            prerequisiteMaterialSetId: learningYearMaterialSets.prerequisiteMaterialSetId
+          })
             .from(contentDocuments)
-            .where(inArray(contentDocuments.nativeWorkbookVersionId, workbookVersionIds));
+            .innerJoin(
+              learningYearMaterialSets,
+              eq(learningYearMaterialSets.id, contentDocuments.materialSetId)
+            )
+            .where(and(
+              inArray(contentDocuments.nativeWorkbookVersionId, workbookVersionIds),
+              isNull(contentDocuments.removedAt)
+            ));
+      const attachedPrerequisites = prerequisiteVersionIds.length === 0
+        ? []
+        : await tx.select({
+            learningYearId: contentDocuments.learningYearId,
+            materialSetId: contentDocuments.materialSetId
+          })
+            .from(contentDocuments)
+            .where(and(
+              inArray(contentDocuments.nativeWorkbookVersionId, prerequisiteVersionIds),
+              isNull(contentDocuments.removedAt)
+            ));
       await tx.update(nativeWorkbooks).set({
         title,
         academicStandardKey,
@@ -3024,6 +3104,31 @@ export async function updateNativeWorkbookDetails(input: {
           label: title,
           updatedAt: new Date()
         }).where(inArray(learningYearMaterialSets.id, attachedMaterialSetIds));
+      }
+      if (workbook.prerequisiteWorkbookId !== prerequisiteWorkbookId) {
+        const prerequisiteMaterialSetByYearId = new Map(
+          attachedPrerequisites.map((document) => [document.learningYearId, document.materialSetId])
+        );
+        const changedLearningYearIds = new Set<string>();
+        for (const document of attachedDocuments) {
+          const desiredPrerequisiteMaterialSetId = prerequisiteWorkbookId
+            ? prerequisiteMaterialSetByYearId.get(document.learningYearId) ?? null
+            : null;
+          if (document.prerequisiteMaterialSetId === desiredPrerequisiteMaterialSetId) continue;
+          await tx.update(learningYearMaterialSets).set({
+            prerequisiteMaterialSetId: desiredPrerequisiteMaterialSetId,
+            updatedAt: new Date()
+          }).where(eq(learningYearMaterialSets.id, document.materialSetId));
+          changedLearningYearIds.add(document.learningYearId);
+        }
+        if (changedLearningYearIds.size > 0) {
+          await tx.update(learningYears).set({
+            materialsUpdatedAt: new Date(),
+            curriculumCompletenessInputFingerprint: null,
+            curriculumCompletenessReviewedAt: null,
+            updatedAt: new Date()
+          }).where(inArray(learningYears.id, Array.from(changedLearningYearIds)));
+        }
       }
     });
   } catch (error) {
@@ -4226,6 +4331,10 @@ export async function attachNativeCatalogItemToLearningYear(input: {
       })
     };
   }
+  validateWorkbookBundlePrerequisites({
+    workbookIds: bundle.memberWorkbookIds,
+    members: bundle.members
+  });
   if (bundle.accessState === "purchase_required") {
     throw new Error("Purchase this workbook bundle before adding it to a lesson plan.");
   }

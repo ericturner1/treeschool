@@ -25,6 +25,7 @@ import { listNativeWorkbookCatalog } from "../../../../../lib/native-workbooks/s
 import { LessonPlanEmptyState } from "./lesson-plan-empty-state";
 import { PlanDayCard } from "./plan-day-card";
 import { PlanDaySubjectCard } from "./plan-day-subject-card";
+import { weekSubjectSummaries, workbookLessonSummary } from "./week-subject-summaries";
 import {
   WeekPlanDetails,
   WeekProgressProvider,
@@ -92,41 +93,6 @@ function fileKindLabel(document: { sourceKind?: string; mimeType?: string; pageC
 
 function languageFamily(value: string | null | undefined) {
   return value?.trim().toLowerCase().split(/[-_]/)[0] ?? "";
-}
-
-function weekSubjectSummaries(week: PaperPlanWeek) {
-  const summaries = new Map<string, { subjectKey: string; subjectLabel: string; titles: Set<string>; grades: number[] }>();
-  for (const day of week.days) {
-    for (const subject of day.subjects) {
-      const summary = summaries.get(subject.subjectKey) ?? {
-        subjectKey: subject.subjectKey,
-        subjectLabel: subject.subjectLabel,
-        titles: new Set<string>(),
-        grades: []
-      };
-      if (subject.title) summary.titles.add(subject.title);
-      if (subject.grade != null) summary.grades.push(subject.grade);
-      summaries.set(subject.subjectKey, summary);
-    }
-  }
-  if (summaries.size === 0) {
-    for (const subject of week.subjectGrades) {
-      summaries.set(subject.subjectKey, {
-        subjectKey: subject.subjectKey,
-        subjectLabel: subject.subjectLabel,
-        titles: new Set(subject.planTitle ? [subject.planTitle] : []),
-        grades: subject.grade == null ? [] : [subject.grade]
-      });
-    }
-  }
-  return Array.from(summaries.values()).map((subject) => ({
-    subjectKey: subject.subjectKey,
-    subjectLabel: subject.subjectLabel,
-    title: Array.from(subject.titles)[0] ?? null,
-    grade: subject.grades.length === 0
-      ? null
-      : Math.round(subject.grades.reduce((total, grade) => total + grade, 0) / subject.grades.length)
-  })).sort((left, right) => left.subjectLabel.localeCompare(right.subjectLabel));
 }
 
 function groupWeekLessons(items: PaperPlanWeek["items"]) {
@@ -852,7 +818,10 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
                               <ul className="mt-2 list-disc space-y-0.5 pl-4 text-xs leading-4 text-ink/48">
                                 {subjectSummaries.map((subject) => (
                                   <li key={subject.subjectKey}>
-                                    {subject.subjectLabel}{subject.title ? `: ${subject.title}` : ""}
+                                    {subject.subjectLabel}
+                                    {subject.workbooks.length > 0
+                                      ? `: ${workbookLessonSummary(subject.workbooks)}`
+                                      : subject.title ? `: ${subject.title}` : ""}
                                     {week.status === "completed" && subject.grade != null
                                       ? <span className="ml-1.5 font-semibold text-[#5f7e49]">· {subject.grade}% ({letterGrade(subject.grade)})</span>
                                       : null}
@@ -984,8 +953,12 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
                                               </p>
                                               <LessonPreviewButton
                                                 weeklyPlanItemId={lesson.first.id}
+                                                documentId={lesson.first.documentId}
+                                                sourceUnitId={lesson.first.sourceUnitId}
                                                 lessonLabel={lesson.first.label}
                                                 documentLabel={lesson.first.documentLabel}
+                                                firstPageIndex={lesson.first.firstPageIndex}
+                                                lastPageIndex={lesson.first.lastPageIndex}
                                                 pageStart={lesson.pageStart}
                                                 pageEnd={lesson.pageEnd}
                                                 disposition={lesson.first.lessonDisposition}
@@ -1037,8 +1010,12 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
                                           <p className="mt-1 text-xs leading-5 text-ink/45">{presentation.detail}</p>
                                           <LessonPreviewButton
                                             weeklyPlanItemId={lesson.first.id}
+                                            documentId={lesson.first.documentId}
+                                            sourceUnitId={lesson.first.sourceUnitId}
                                             lessonLabel={lesson.first.label}
                                             documentLabel={lesson.first.documentLabel}
+                                            firstPageIndex={lesson.first.firstPageIndex}
+                                            lastPageIndex={lesson.first.lastPageIndex}
                                             pageStart={lesson.pageStart}
                                             pageEnd={lesson.pageEnd}
                                             disposition={lesson.first.lessonDisposition}

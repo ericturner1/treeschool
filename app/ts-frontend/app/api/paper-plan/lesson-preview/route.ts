@@ -16,7 +16,12 @@ export async function GET(request: Request) {
   try {
     const response = await downloadPaperPlanLessonPreview({
       parentUserId: user.id,
-      weeklyPlanItemId
+      weeklyPlanItemId,
+      documentId: url.searchParams.get("documentId"),
+      sourceUnitId: url.searchParams.get("sourceUnitId"),
+      lessonLabel: url.searchParams.get("lessonLabel"),
+      firstPageIndex: url.searchParams.get("firstPageIndex"),
+      lastPageIndex: url.searchParams.get("lastPageIndex")
     });
     return new Response(await response.arrayBuffer(), {
       headers: {

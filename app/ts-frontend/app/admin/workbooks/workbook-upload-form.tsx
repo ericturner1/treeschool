@@ -231,10 +231,10 @@ export function WorkbookUploadForm({
             disabled={prerequisiteChoices.length === 0}
             className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3 pr-12 disabled:bg-[#f3eee5] disabled:text-ink/45"
           >
-            <option value="">{prerequisiteChoices.length ? "No workbook prerequisite" : "Add and index another workbook first"}</option>
+            <option value="">{prerequisiteChoices.length ? "No workbook prerequisite" : "Create another workbook first"}</option>
             {prerequisiteChoices.map((workbook) => <option key={workbook.id} value={workbook.id}>{workbook.title}</option>)}
           </select>
-          <span className="text-xs font-normal leading-5 text-ink/50">When both books are purchased and added to the same lesson plan, Treeschool automatically schedules this workbook after the selected one.</span>
+          <span className="text-xs font-normal leading-5 text-ink/50">Processing workbooks may be selected here. Treeschool verifies that both books use the same academic standard, subject, and language, then schedules this workbook after its prerequisite.</span>
         </label>
         <fieldset className="sm:col-span-2">
           <legend className="text-sm font-semibold text-ink">Product description</legend>

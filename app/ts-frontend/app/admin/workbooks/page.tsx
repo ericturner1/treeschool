@@ -7,6 +7,7 @@ import { discardWorkbookEditionFormAction, publishWorkbookAction, retryWorkbookI
 import { CatalogItemCreator } from "./catalog-item-creator";
 import { WorkbookDeleteButton } from "./workbook-delete-button";
 import { WorkbookDetailsEditor } from "./workbook-details-editor";
+import { buildPrerequisiteChoices } from "./prerequisite-choices";
 import { WorkbookCoverThumbnail } from "./workbook-cover-thumbnail";
 import { WorkbookPdfReplacement } from "./workbook-pdf-replacement";
 import { WorkbookEditionCreator } from "./workbook-edition-creator";
@@ -55,11 +56,7 @@ export default async function AdminWorkbooksPage() {
     if (error instanceof Error && error.message === "Administrator access is required.") notFound();
     throw error;
   }
-  const prerequisiteChoices = Array.from(new Map(
-    workbooks
-      .filter((workbook) => workbook.analysisStatus === "ready")
-      .map((workbook) => [workbook.id, { id: workbook.id, title: workbook.title }])
-  ).values());
+  const prerequisiteChoices = buildPrerequisiteChoices(workbooks);
 
   return (
     <main className="min-h-screen bg-[#f8f1e4] px-4 py-8 text-ink sm:px-6 lg:px-8">

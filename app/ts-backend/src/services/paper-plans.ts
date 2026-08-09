@@ -8169,9 +8169,16 @@ export async function setLessonDisposition(input: {
 
 export async function buildLessonPreview(
   parentUserId: string,
-  weeklyPlanItemId: string
+  locator: {
+    weeklyPlanItemId: string;
+    documentId?: string | null;
+    sourceUnitId?: string | null;
+    lessonLabel?: string | null;
+    firstPageIndex?: number | null;
+    lastPageIndex?: number | null;
+  }
 ): Promise<{ bytes: Uint8Array; filename: string }> {
-  const [seed] = await db
+  let [seed] = await db
     .select({
       item: weeklyPlanItems,
       week: weeklyPlans,
@@ -8180,8 +8187,36 @@ export async function buildLessonPreview(
     .from(weeklyPlanItems)
     .innerJoin(weeklyPlans, eq(weeklyPlans.id, weeklyPlanItems.weeklyPlanId))
     .innerJoin(contentDocuments, eq(contentDocuments.id, weeklyPlanItems.documentId))
-    .where(eq(weeklyPlanItems.id, weeklyPlanItemId))
+    .where(eq(weeklyPlanItems.id, locator.weeklyPlanItemId))
     .limit(1);
+  if (!seed && locator.documentId) {
+    const fallbackMatch = locator.sourceUnitId
+      ? eq(weeklyPlanItems.sourceUnitId, locator.sourceUnitId)
+      : locator.lessonLabel && locator.firstPageIndex != null && locator.lastPageIndex != null
+        ? and(
+            eq(weeklyPlanItems.label, locator.lessonLabel),
+            eq(weeklyPlanItems.firstPageIndex, locator.firstPageIndex),
+            eq(weeklyPlanItems.lastPageIndex, locator.lastPageIndex)
+          )
+        : null;
+    if (fallbackMatch) {
+      [seed] = await db
+        .select({
+          item: weeklyPlanItems,
+          week: weeklyPlans,
+          document: contentDocuments
+        })
+        .from(weeklyPlanItems)
+        .innerJoin(weeklyPlans, eq(weeklyPlans.id, weeklyPlanItems.weeklyPlanId))
+        .innerJoin(contentDocuments, eq(contentDocuments.id, weeklyPlanItems.documentId))
+        .where(and(
+          eq(weeklyPlanItems.documentId, locator.documentId),
+          fallbackMatch
+        ))
+        .orderBy(desc(weeklyPlans.createdAt), asc(weeklyPlanItems.sortOrder))
+        .limit(1);
+    }
+  }
   if (!seed) throw new Error("Lesson not found.");
 
   await requireOwnedYear(parentUserId, seed.week.learningYearId);

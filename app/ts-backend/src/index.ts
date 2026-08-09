@@ -1907,7 +1907,18 @@ const server = Bun.serve({
         );
       }
       try {
-        const preview = await buildLessonPreview(parentUserId, weeklyPlanItemId);
+        const firstPageIndexValue = url.searchParams.get("firstPageIndex");
+        const lastPageIndexValue = url.searchParams.get("lastPageIndex");
+        const firstPageIndex = firstPageIndexValue == null ? Number.NaN : Number(firstPageIndexValue);
+        const lastPageIndex = lastPageIndexValue == null ? Number.NaN : Number(lastPageIndexValue);
+        const preview = await buildLessonPreview(parentUserId, {
+          weeklyPlanItemId,
+          documentId: url.searchParams.get("documentId"),
+          sourceUnitId: url.searchParams.get("sourceUnitId"),
+          lessonLabel: url.searchParams.get("lessonLabel"),
+          firstPageIndex: Number.isInteger(firstPageIndex) && firstPageIndex >= 0 ? firstPageIndex : null,
+          lastPageIndex: Number.isInteger(lastPageIndex) && lastPageIndex >= 0 ? lastPageIndex : null
+        });
         return new Response(preview.bytes, {
           headers: {
             "Content-Type": "application/pdf",

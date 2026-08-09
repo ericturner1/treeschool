@@ -8,15 +8,23 @@ type Disposition = "include" | "already_mastered" | "save_for_later" | "remove";
 
 export function LessonPreviewButton({
   weeklyPlanItemId,
+  documentId,
+  sourceUnitId,
   lessonLabel,
   documentLabel,
+  firstPageIndex,
+  lastPageIndex,
   pageStart,
   pageEnd,
   disposition
 }: {
   weeklyPlanItemId: string;
+  documentId: string;
+  sourceUnitId: string | null;
   lessonLabel: string;
   documentLabel: string;
+  firstPageIndex: number;
+  lastPageIndex: number;
   pageStart: number;
   pageEnd: number;
   disposition: Disposition;
@@ -25,7 +33,15 @@ export function LessonPreviewButton({
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [currentDisposition, setCurrentDisposition] = useState(disposition);
-  const previewUrl = `/api/paper-plan/lesson-preview?weeklyPlanItemId=${encodeURIComponent(weeklyPlanItemId)}`;
+  const previewParams = new URLSearchParams({
+    weeklyPlanItemId,
+    documentId,
+    lessonLabel,
+    firstPageIndex: String(firstPageIndex),
+    lastPageIndex: String(lastPageIndex),
+    ...(sourceUnitId ? { sourceUnitId } : {})
+  });
+  const previewUrl = `/api/paper-plan/lesson-preview?${previewParams.toString()}`;
 
   useEffect(() => setCurrentDisposition(disposition), [disposition]);
 

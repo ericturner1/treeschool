@@ -149,6 +149,57 @@ describe("deterministic lesson-plan scheduler", () => {
     expect(result.assignments).toHaveLength(4);
   });
 
+  test("fits the complete sequential 国語 A-D bundle into the remaining school year", () => {
+    const materialLengths = [
+      ["kokugo-a", 11, null],
+      ["kokugo-b", 23, "kokugo-a"],
+      ["kokugo-c", 26, "kokugo-b"],
+      ["kokugo-d", 26, "kokugo-c"]
+    ] as const;
+    const materials = materialLengths.map(([id, , prerequisiteMaterialSetId], sortOrder) => ({
+      id,
+      prerequisiteMaterialSetId,
+      sortOrder
+    }));
+    const units = materialLengths.flatMap(([materialSetId, unitCount], documentOrder) =>
+      Array.from({ length: unitCount }, (_, sequenceOrder) => ({
+        key: `${materialSetId}:${sequenceOrder}`,
+        documentId: `${materialSetId}.pdf`,
+        materialSetId,
+        subjectKey: "custom:japanese-language",
+        subjectLabel: "Japanese Language (国語)",
+        documentOrder,
+        sequenceOrder,
+        estimatedMinutes: 30,
+        pageCount: 1
+      }))
+    );
+    const result = buildDeterministicPlanSchedule({
+      weekNumbers: Array.from({ length: 38 }, (_, index) => index + 5),
+      teachingDaysPerWeek: 5,
+      materials,
+      units
+    });
+    const materialByUnitKey = new Map(units.map((unit) => [unit.key, unit.materialSetId]));
+    const weeksForMaterial = (materialSetId: string) => result.assignments
+      .filter((assignment) => materialByUnitKey.get(assignment.unitKey) === materialSetId)
+      .map((assignment) => assignment.weekNumber);
+
+    expect(result.assignments).toHaveLength(86);
+    expect(weeksForMaterial("kokugo-d")).toHaveLength(26);
+    for (let index = 1; index < materialLengths.length; index += 1) {
+      const prerequisite = materialLengths[index - 1]![0];
+      const dependent = materialLengths[index]![0];
+      expect(Math.min(...weeksForMaterial(dependent)))
+        .toBeGreaterThan(Math.max(...weeksForMaterial(prerequisite)));
+    }
+    const lessonsPerWeek = Array.from({ length: 38 }, (_, index) =>
+      result.assignments.filter((assignment) => assignment.weekNumber === index + 5).length
+    );
+    expect(Math.max(...lessonsPerWeek)).toBeGreaterThanOrEqual(3);
+    expect(Math.max(...weeksForMaterial("kokugo-d"))).toBe(42);
+  });
+
   test("fills every week when independent subject sequences collectively contain enough units", () => {
     const materialLengths = [
       ["reader-e", 6, null],
