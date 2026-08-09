@@ -12,10 +12,15 @@ COPY app/ts-backend app/ts-backend
 COPY packages/ts-db packages/ts-db
 RUN bun run --filter ts-backend build
 
-FROM oven/bun:1.2.9 AS runtime
+FROM mcr.microsoft.com/playwright:v1.62.0-noble@sha256:baed2032d533817f3dbe6425de795788430ba345e819a1201337009ba17c9d07 AS runtime
 WORKDIR /workspace
 ENV NODE_ENV=production
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# Keep the application runtime aligned with the build stage while using
+# Playwright's supported, browser-pinned Ubuntu image.
+COPY --from=build /usr/local/bin/bun /usr/local/bin/bun
+RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
 
 # Poppler supports uploaded publisher PDFs. Workbook Studio uses the exact
 # Chromium revision paired with the pinned Playwright package below.
@@ -28,8 +33,6 @@ COPY app/ts-backend/package.json app/ts-backend/package.json
 COPY app/ts-frontend/package.json app/ts-frontend/package.json
 COPY packages/ts-db/package.json packages/ts-db/package.json
 RUN bun install --frozen-lockfile --production
-RUN bunx playwright@1.62.0 install --with-deps chromium \
-  && chmod -R a+rX /ms-playwright
 
 COPY --from=build /workspace/app/ts-backend/dist app/ts-backend/dist
 COPY --from=build /workspace/packages/ts-db packages/ts-db
