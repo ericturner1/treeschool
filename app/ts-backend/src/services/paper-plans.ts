@@ -53,6 +53,7 @@ import {
   type ModelUsageContext
 } from "./model-usage";
 import { drawPdfText } from "./pdf-text-fonts";
+import { inspectPdfVisualQuality } from "./pdf-visual-quality";
 import { recordTeacherGradeActivity } from "./teacher-activity";
 import { normalizePlanSubjectLabel, planSubjectKey } from "./plan-subject-key";
 import {
@@ -99,7 +100,7 @@ const TOC_SCAN_PAGE_LIMIT = 20;
 const MAX_DOCUMENT_JOB_ATTEMPTS = 3;
 const MAX_WEEKLY_PLAN_JOB_ATTEMPTS = 3;
 const METADATA_QUALITY_ALGORITHM_VERSION = 2;
-const PDF_QUALITY_REPORT_VERSION = 1;
+const PDF_QUALITY_REPORT_VERSION = 2;
 const WEEKLY_PACKET_TEMPLATE_VERSION = 6;
 const DAY_PACKET_TEMPLATE_VERSION = 5;
 const MIN_RENDERED_PAGE_DARK_PIXEL_RATIO = 0.00075;
@@ -8748,9 +8749,15 @@ let treeschoolLogoBytesPromise: Promise<Uint8Array | null> | null = null;
 
 function loadTreeschoolLogoBytes() {
   if (!treeschoolLogoBytesPromise) {
-    const logoPath = join(process.cwd(), "app", "ts-frontend", "public", "tree-icon.png");
-    treeschoolLogoBytesPromise = readFile(logoPath)
-      .then((bytes) => new Uint8Array(bytes))
+    const logoPaths = [
+      join(process.cwd(), "app", "ts-frontend", "public", "tree-icon.png"),
+      join(process.cwd(), "..", "ts-frontend", "public", "tree-icon.png"),
+    ];
+    treeschoolLogoBytesPromise = Promise.any(
+      logoPaths.map((logoPath) =>
+        readFile(logoPath).then((bytes) => new Uint8Array(bytes)),
+      ),
+    )
       .catch((error) => {
         console.warn("Could not load the Treeschool logo for a weekly PDF cover.", error);
         return null;
@@ -9383,80 +9390,45 @@ async function inspectWeeklyPacketQuality(input: {
   excludedOptionalPracticeRangeCount: number;
   excludedOptionalPracticePageCount: number;
 }): Promise<WeeklyPacketQualityReport> {
-  // pdf.js creates Path2D objects while rendering publisher PDFs. In a bundled
-  // Cloud Run build, pdf.js can otherwise resolve a second native canvas
-  // binding through createRequire(), making those Path2D objects incompatible
-  // with the canvas context used below. Install all canvas globals from the
-  // same module instance before loading pdf.js so visual QC remains reliable.
-  const canvas = await import("@napi-rs/canvas");
-  Object.assign(globalThis, {
-    DOMMatrix: canvas.DOMMatrix,
-    ImageData: canvas.ImageData,
-    Path2D: canvas.Path2D
-  });
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const { createCanvas } = canvas;
-  const document = await pdfjs.getDocument({ data: input.bytes.slice(), stopAtErrors: false }).promise;
-
-  try {
-    if (document.numPages !== input.expectedPageCount) {
-      throw new Error(
-        `PDF quality check expected ${input.expectedPageCount} pages from the weekly metadata but rendered ${document.numPages}.`
-      );
-    }
-
-    const renderedPageDarkPixelRatios: number[] = [];
-    const blankPageNumbers: number[] = [];
-    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
-      const page = await document.getPage(pageNumber);
-      const viewport = page.getViewport({ scale: 0.35 });
-      const canvas = createCanvas(Math.max(1, Math.ceil(viewport.width)), Math.max(1, Math.ceil(viewport.height)));
-      const context = canvas.getContext("2d");
-      await page.render({ canvas, canvasContext: context, viewport }).promise;
-      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-      let darkPixels = 0;
-      for (let offset = 0; offset < pixels.length; offset += 16) {
-        const red = pixels[offset] ?? 255;
-        const green = pixels[offset + 1] ?? 255;
-        const blue = pixels[offset + 2] ?? 255;
-        const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-        if (luminance < 230) darkPixels += 1;
-      }
-      const sampledPixels = Math.max(1, Math.floor(pixels.length / 16));
-      const darkPixelRatio = darkPixels / sampledPixels;
-      renderedPageDarkPixelRatios.push(Number(darkPixelRatio.toFixed(6)));
-      if (darkPixelRatio < MIN_RENDERED_PAGE_DARK_PIXEL_RATIO) blankPageNumbers.push(pageNumber);
-      page.cleanup();
-    }
-
-    if (blankPageNumbers.length > 0) {
-      throw new Error(`PDF quality check found blank rendered page${blankPageNumbers.length === 1 ? "" : "s"}: ${blankPageNumbers.join(", ")}.`);
-    }
-
-    return {
-      version: PDF_QUALITY_REPORT_VERSION,
-      checkedAt: new Date().toISOString(),
-      expectedPageCount: input.expectedPageCount,
-      actualPageCount: document.numPages,
-      sourceItemCount: input.sourceItemCount,
-      sourcePageCount: input.sourcePageCount,
-      summaryPageCount: input.summaryPageCount,
-      teachingDays: input.teachingDays,
-      excludedOptionalPracticeRangeCount: input.excludedOptionalPracticeRangeCount,
-      excludedOptionalPracticePageCount: input.excludedOptionalPracticePageCount,
-      renderedPageDarkPixelRatios,
-      checks: {
-        metadataRangesValid: true,
-        expectedPageCountMatches: true,
-        everyPageRendered: true,
-        noBlankRenderedPages: true,
-        noEmptyDaySummaryPages: true,
-        onlyOptionalPracticeExcluded: true
-      }
-    };
-  } finally {
-    await document.destroy();
+  // Poppler is already pinned in the backend image for publisher-PDF fallback
+  // rendering. Use it for packet QC too: PDF.js and @napi-rs/canvas can load
+  // separate native Path2D bindings after Bun bundles the service, which makes
+  // valid transparency groups fail only in production.
+  const visualQuality = await inspectPdfVisualQuality(input.bytes);
+  if (visualQuality.pageCount !== input.expectedPageCount) {
+    throw new Error(
+      `PDF quality check expected ${input.expectedPageCount} pages from the weekly metadata but rendered ${visualQuality.pageCount}.`
+    );
   }
+  const blankPageNumbers = visualQuality.darkPixelRatios.flatMap(
+    (ratio, index) =>
+      ratio < MIN_RENDERED_PAGE_DARK_PIXEL_RATIO ? [index + 1] : [],
+  );
+  if (blankPageNumbers.length > 0) {
+    throw new Error(`PDF quality check found blank rendered page${blankPageNumbers.length === 1 ? "" : "s"}: ${blankPageNumbers.join(", ")}.`);
+  }
+
+  return {
+    version: PDF_QUALITY_REPORT_VERSION,
+    checkedAt: new Date().toISOString(),
+    expectedPageCount: input.expectedPageCount,
+    actualPageCount: visualQuality.pageCount,
+    sourceItemCount: input.sourceItemCount,
+    sourcePageCount: input.sourcePageCount,
+    summaryPageCount: input.summaryPageCount,
+    teachingDays: input.teachingDays,
+    excludedOptionalPracticeRangeCount: input.excludedOptionalPracticeRangeCount,
+    excludedOptionalPracticePageCount: input.excludedOptionalPracticePageCount,
+    renderedPageDarkPixelRatios: visualQuality.darkPixelRatios,
+    checks: {
+      metadataRangesValid: true,
+      expectedPageCountMatches: true,
+      everyPageRendered: true,
+      noBlankRenderedPages: true,
+      noEmptyDaySummaryPages: true,
+      onlyOptionalPracticeExcluded: true
+    }
+  };
 }
 
 async function buildLegacyWeeklyPacket(
