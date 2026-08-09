@@ -31,25 +31,73 @@ function WorkbookProgressSummary({ workbook }: { workbook: NativeWorkbookCatalog
   );
 }
 
-function AddSelectedButton({ count }: { count: number }) {
+export type WorkbookPlanUpdatePreview = {
+  preservedWeekNumbers: number[];
+  rebuildWeekNumbers: number[];
+  remainingUpdates: number;
+  blockedReason: string | null;
+};
+
+function formatWeekRanges(weekNumbers: number[]) {
+  const numbers = [...new Set(weekNumbers)].sort((left, right) => left - right);
+  const ranges: string[] = [];
+  for (let index = 0; index < numbers.length; index += 1) {
+    const start = numbers[index];
+    let end = start;
+    while (index + 1 < numbers.length && numbers[index + 1] === end + 1) {
+      index += 1;
+      end = numbers[index];
+    }
+    ranges.push(start === end ? String(start) : `${start}–${end}`);
+  }
+  if (ranges.length === 0) return "No weeks";
+  if (ranges.length === 1) return `Week${numbers.length === 1 ? "" : "s"} ${ranges[0]}`;
+  return `Weeks ${ranges.slice(0, -1).join(", ")} and ${ranges.at(-1)}`;
+}
+
+function AddSelectedButton({ count, onReview }: { count: number; onReview?: () => void }) {
   const { pending } = useFormStatus();
   return (
-    <button disabled={pending || count === 0} className="cta-button cta-button--dark disabled:cursor-not-allowed disabled:opacity-45">
-      {pending ? <><span className="h-5 w-5 animate-spin rounded-full border-2 border-white/35 border-t-white" /> Adding selection…</> : `Add ${count || "selected"} workbook${count === 1 ? "" : "s"}`}
+    <button
+      type={onReview ? "button" : "submit"}
+      onClick={onReview}
+      disabled={pending || count === 0}
+      className="cta-button cta-button--dark disabled:cursor-not-allowed disabled:opacity-45"
+    >
+      {pending
+        ? <><span className="h-5 w-5 animate-spin rounded-full border-2 border-white/35 border-t-white" /> Adding selection…</>
+        : onReview ? "Review plan update" : `Add ${count || "selected"} workbook${count === 1 ? "" : "s"}`}
     </button>
   );
 }
 
-function AddRecommendedCurriculumButton() {
+function AddRecommendedCurriculumButton({ onReview }: { onReview?: () => void }) {
   const { pending } = useFormStatus();
   return (
     <button
+      type={onReview ? "button" : "submit"}
+      onClick={onReview}
       disabled={pending}
       className="cta-button cta-button--dark w-full justify-center px-6 py-5 text-lg disabled:cursor-wait disabled:opacity-65"
     >
       {pending
         ? <><span className="h-5 w-5 animate-spin rounded-full border-2 border-white/35 border-t-white" /> Adding the curriculum…</>
-        : <span className="flex flex-col items-center leading-tight"><span>Add Curriculum</span><span className="mt-1 text-xs font-medium">(Included with plan)</span></span>}
+        : <span className="flex flex-col items-center leading-tight"><span>{onReview ? "Review plan update" : "Add Curriculum"}</span><span className="mt-1 text-xs font-medium">(Included with plan)</span></span>}
+    </button>
+  );
+}
+
+function ConfirmPlanUpdateButton({ disabled }: { disabled: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={disabled || pending}
+      className="cta-button cta-button--dark disabled:cursor-not-allowed disabled:opacity-45"
+    >
+      {pending
+        ? <><span className="h-5 w-5 animate-spin rounded-full border-2 border-white/35 border-t-white" /> Adding and updating…</>
+        : "Add workbooks & update future weeks"}
     </button>
   );
 }
@@ -87,6 +135,7 @@ export function NativeWorkbookChooserDialog({
   recommendedCurriculum = null,
   addWorkbooksAction,
   purchaseWorkbookAction,
+  planUpdatePreview = null,
   checkoutCanceled = false,
   onClose
 }: {
@@ -99,6 +148,7 @@ export function NativeWorkbookChooserDialog({
   recommendedCurriculum?: NativeWorkbookCatalogItem | null;
   addWorkbooksAction: (formData: FormData) => Promise<void>;
   purchaseWorkbookAction: (formData: FormData) => Promise<void>;
+  planUpdatePreview?: WorkbookPlanUpdatePreview | null;
   checkoutCanceled?: boolean;
   onClose: () => void;
 }) {
@@ -112,6 +162,7 @@ export function NativeWorkbookChooserDialog({
       : "grade-appropriate";
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [confirmationIds, setConfirmationIds] = useState<string[]>([]);
   const selectedWorkbookCount = useMemo(() => new Set(
     workbooks
       .filter((workbook) => selectedIds.includes(workbook.id))
@@ -132,6 +183,73 @@ export function NativeWorkbookChooserDialog({
     setSelectedIds((current) => current.includes(workbookId)
       ? current.filter((id) => id !== workbookId)
       : [...current, workbookId]);
+  }
+
+  const confirmationWorkbookCount = useMemo(() => {
+    const catalogItems = recommendedCurriculum && !workbooks.some((workbook) => workbook.id === recommendedCurriculum.id)
+      ? [...workbooks, recommendedCurriculum]
+      : workbooks;
+    return new Set(
+      catalogItems
+        .filter((workbook) => confirmationIds.includes(workbook.id))
+        .flatMap((workbook) => workbook.memberWorkbookIds)
+    ).size;
+  }, [confirmationIds, recommendedCurriculum, workbooks]);
+
+  if (planUpdatePreview && confirmationIds.length > 0) {
+    const updatesAfterThis = Math.max(0, planUpdatePreview.remainingUpdates - 1);
+    return (
+      <div className="fixed inset-0 z-[120] grid place-items-center bg-black/55 p-3 sm:p-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="confirm-workbook-plan-update-title" className="w-full max-w-2xl overflow-hidden rounded-[30px] border border-[#b9cea5] bg-[#fffaf2] shadow-2xl">
+          <header className="relative bg-[#eef5e6] px-6 py-6 sm:px-9 sm:py-8">
+            <button type="button" onClick={onClose} className="absolute right-5 top-5 grid h-11 w-11 place-items-center rounded-full border border-[#b9cea5] bg-white text-2xl" aria-label="Close plan update confirmation">×</button>
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-[#4f7339]">Confirm plan update</p>
+            <h2 id="confirm-workbook-plan-update-title" className="mt-2 max-w-xl pr-12 text-3xl font-semibold tracking-[-0.05em] text-ink">
+              Update {studentName}’s future weeks?
+            </h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-ink/65">
+              You’re adding {confirmationWorkbookCount} workbook{confirmationWorkbookCount === 1 ? "" : "s"}. Treeschool will distribute its unfinished lessons across the weeks that have not been started or downloaded.
+            </p>
+          </header>
+
+          <div className="space-y-4 px-6 py-6 sm:px-9">
+            {planUpdatePreview.preservedWeekNumbers.length > 0 ? (
+              <div className="rounded-[18px] border border-[#b8cf9f] bg-[#f1f7e9] px-5 py-4">
+                <p className="font-semibold text-[#456536]">{formatWeekRanges(planUpdatePreview.preservedWeekNumbers)} will stay exactly as they are.</p>
+                <p className="mt-1 text-sm leading-6 text-[#567347]">Started, completed, and downloaded weeks are locked and will not be changed.</p>
+              </div>
+            ) : null}
+            <div className="rounded-[18px] border border-[#d7c19f] bg-white px-5 py-4">
+              <p className="font-semibold text-ink">{formatWeekRanges(planUpdatePreview.rebuildWeekNumbers)} will be rebuilt.</p>
+              <p className="mt-1 text-sm leading-6 text-ink/62">New material will be balanced alongside all unfinished work. Your current plan stays available until the replacement passes validation.</p>
+            </div>
+            <p className="text-sm leading-6 text-ink/62">
+              This uses one plan update. {updatesAfterThis} update{updatesAfterThis === 1 ? "" : "s"} will remain in the current allowance period.
+            </p>
+            {planUpdatePreview.blockedReason ? (
+              <p role="alert" className="rounded-[16px] border border-[#d9afa2] bg-[#fff1ec] px-4 py-3 text-sm font-semibold leading-6 text-[#8b3e2f]">
+                {planUpdatePreview.blockedReason}
+              </p>
+            ) : null}
+          </div>
+
+          <footer className="flex flex-col-reverse gap-3 border-t border-[#eadbc2] bg-[#fbf4e9] px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-9">
+            <button type="button" onClick={() => setConfirmationIds([])} className="cta-button cta-button--light">
+              Back to workbooks
+            </button>
+            <form action={addWorkbooksAction}>
+              <input type="hidden" name="profileId" value={profileId} />
+              <input type="hidden" name="studentName" value={studentName} />
+              <input type="hidden" name="learningYearId" value={learningYearId ?? ""} />
+              <input type="hidden" name="preferredPrintPageSize" value={preferredPrintPageSize ?? ""} />
+              <input type="hidden" name="replanAfterAttach" value="yes" />
+              {confirmationIds.map((workbookId) => <input key={workbookId} type="hidden" name="workbookId" value={workbookId} />)}
+              <ConfirmPlanUpdateButton disabled={Boolean(planUpdatePreview.blockedReason)} />
+            </form>
+          </footer>
+        </section>
+      </div>
+    );
   }
 
   if (showRecommendation && recommendedCurriculum) {
@@ -168,7 +286,7 @@ export function NativeWorkbookChooserDialog({
               <input type="hidden" name="learningYearId" value={learningYearId ?? ""} />
               <input type="hidden" name="preferredPrintPageSize" value={preferredPrintPageSize ?? ""} />
               <input type="hidden" name="workbookId" value={recommendedCurriculum.id} />
-              <AddRecommendedCurriculumButton />
+              <AddRecommendedCurriculumButton onReview={planUpdatePreview ? () => setConfirmationIds([recommendedCurriculum.id]) : undefined} />
             </form>
             <button type="button" onClick={() => setSkipRecommendation(true)} className="mt-3 w-full rounded-[16px] px-5 py-3 text-sm font-semibold text-earth underline underline-offset-4 hover:bg-[#f7efe2]">
               Choose individual workbooks instead
@@ -239,7 +357,7 @@ export function NativeWorkbookChooserDialog({
             <input type="hidden" name="learningYearId" value={learningYearId ?? ""} />
             <input type="hidden" name="preferredPrintPageSize" value={preferredPrintPageSize ?? ""} />
             {selectedIds.map((workbookId) => <input key={workbookId} type="hidden" name="workbookId" value={workbookId} />)}
-            <AddSelectedButton count={selectedWorkbookCount} />
+            <AddSelectedButton count={selectedWorkbookCount} onReview={planUpdatePreview ? () => setConfirmationIds(selectedIds) : undefined} />
           </form>
         </footer>
       </section>

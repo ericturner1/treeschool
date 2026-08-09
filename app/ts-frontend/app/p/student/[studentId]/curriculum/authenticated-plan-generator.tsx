@@ -27,7 +27,10 @@ import {
   saveStoredAuthenticatedPlanFiles
 } from "./authenticated-plan-draft-storage";
 import type { NativeWorkbookCatalogItem } from "../../../../../lib/native-workbooks/server";
-import { NativeWorkbookChooserDialog } from "./native-workbook-chooser-dialog";
+import {
+  NativeWorkbookChooserDialog,
+  type WorkbookPlanUpdatePreview
+} from "./native-workbook-chooser-dialog";
 import { NativeWorkbookContentReview } from "./native-workbook-content-review";
 import { compactSchoolYearPeriod, defaultSchoolYearEnd } from "../../../../../lib/plan-generator-dates";
 import {
@@ -216,6 +219,7 @@ export function AuthenticatedPlanGenerator({
   recommendedNativeCurriculum = null,
   addNativeWorkbooksAction,
   purchaseNativeWorkbookAction,
+  nativeWorkbookPlanUpdatePreview = null,
   checkoutCanceled = false,
   clearSavedDraft = false
 }: {
@@ -247,6 +251,7 @@ export function AuthenticatedPlanGenerator({
   recommendedNativeCurriculum?: NativeWorkbookCatalogItem | null;
   addNativeWorkbooksAction?: (formData: FormData) => Promise<void>;
   purchaseNativeWorkbookAction?: (formData: FormData) => Promise<void>;
+  nativeWorkbookPlanUpdatePreview?: WorkbookPlanUpdatePreview | null;
   checkoutCanceled?: boolean;
   clearSavedDraft?: boolean;
 }) {
@@ -856,6 +861,7 @@ export function AuthenticatedPlanGenerator({
           recommendedCurriculum={recommendedNativeCurriculum}
           addWorkbooksAction={addNativeWorkbooksAction}
           purchaseWorkbookAction={purchaseNativeWorkbookAction}
+          planUpdatePreview={nativeWorkbookPlanUpdatePreview}
           checkoutCanceled={checkoutCanceled}
           onClose={() => setShowNativeWorkbookChooser(false)}
         />,

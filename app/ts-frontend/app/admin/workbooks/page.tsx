@@ -3,7 +3,6 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "../../../lib/auth/server";
 import { listAdminNativeWorkbooks } from "../../../lib/native-workbooks/server";
 import { formatNativeWorkbookGradeRange } from "../../../lib/native-workbooks/grades";
-import { curriculumAreaLabel } from "../../../lib/native-workbooks/curriculum-areas";
 import { discardWorkbookEditionFormAction, publishWorkbookAction, retryWorkbookIndexingAction, setWorkbookBundleRecommendationAction, setWorkbookBundleVisibilityAction, setWorkbookVisibilityAction } from "./actions";
 import { CatalogItemCreator } from "./catalog-item-creator";
 import { WorkbookDeleteButton } from "./workbook-delete-button";
@@ -45,11 +44,13 @@ export default async function AdminWorkbooksPage() {
   let workbooks;
   let bundles;
   let subjects;
+  let academicStandards;
   try {
     const catalog = await listAdminNativeWorkbooks(user.id);
     workbooks = catalog.workbooks;
     bundles = catalog.bundles;
     subjects = catalog.subjects;
+    academicStandards = catalog.academicStandards;
   } catch (error) {
     if (error instanceof Error && error.message === "Administrator access is required.") notFound();
     throw error;
@@ -81,6 +82,7 @@ export default async function AdminWorkbooksPage() {
               state: workbook.analysisStatus ?? workbook.status
             }))}
             subjects={subjects}
+            academicStandards={academicStandards}
           />
         </div>
 
@@ -122,6 +124,12 @@ export default async function AdminWorkbooksPage() {
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               {workbooks.map((workbook) => {
                 const indexing = isWorkbookIndexing(workbook.status, workbook.analysisStatus);
+                const academicStandard = academicStandards.find(
+                  (standard) => standard.key === workbook.academicStandardKey
+                );
+                const curriculumArea = academicStandard?.curriculumAreas.find(
+                  (area) => area.key === workbook.curriculumAreaKey
+                );
                 return (
                 <article
                   key={`${workbook.id}:${workbook.versionId}`}
@@ -153,7 +161,7 @@ export default async function AdminWorkbooksPage() {
                         ) : null}
                       </div>
                       <h3 className="mt-2 truncate text-xl font-semibold">{workbook.title}</h3>
-                      <p className="mt-1 text-sm text-ink/58">{curriculumAreaLabel(workbook.curriculumAreaKey)} · {workbook.subjectLabel} · {formatNativeWorkbookGradeRange(workbook.gradeMin, workbook.gradeMax)} · ${(workbook.priceInCents / 100).toFixed(2)}</p>
+                      <p className="mt-1 text-sm text-ink/58">{academicStandard?.label ?? workbook.academicStandardKey} · {curriculumArea?.label ?? workbook.curriculumAreaKey} · {workbook.subjectLabel} · {formatNativeWorkbookGradeRange(workbook.gradeMin, workbook.gradeMax)} · ${(workbook.priceInCents / 100).toFixed(2)}</p>
                       <p className="mt-1 text-xs text-ink/48">{workbook.editionLabel ?? "1st edition"} · {workbook.pageCount || "—"} pages</p>
                       {workbook.prerequisiteWorkbookTitle ? <p className="mt-1 text-xs font-semibold text-[#567b40]">Starts after {workbook.prerequisiteWorkbookTitle}</p> : null}
                     </div>
@@ -187,7 +195,7 @@ export default async function AdminWorkbooksPage() {
                           </form>
                         ) : null}
                         {workbook.active ? <form action={setWorkbookVisibilityAction.bind(null, workbook.id, false)}><button className="cta-button cta-button--outline cta-button--small">Hide from store</button></form> : workbook.status === "unpublished" ? <form action={setWorkbookVisibilityAction.bind(null, workbook.id, true)}><button className="cta-button cta-button--light cta-button--small">Republish</button></form> : null}
-                        <WorkbookDetailsEditor workbook={workbook} prerequisiteChoices={prerequisiteChoices.filter((choice) => choice.id !== workbook.id)} subjects={subjects} />
+                        <WorkbookDetailsEditor workbook={workbook} prerequisiteChoices={prerequisiteChoices.filter((choice) => choice.id !== workbook.id)} subjects={subjects} academicStandards={academicStandards} />
                         {workbook.canReplacePdf ? <WorkbookPdfReplacement workbookId={workbook.id} title={workbook.title} /> : null}
                         {workbook.isActiveVersion && workbook.analysisStatus === "ready" ? (
                           <WorkbookEditionCreator

@@ -449,6 +449,7 @@ export const studentPointTransactions = pgTable(
     reversedByUserId: uuid("reversed_by_user_id").references(() => users.id, {
       onDelete: "set null"
     }),
+    balanceAfter: integer("balance_after").notNull(),
     metadata: jsonb("metadata")
       .$type<Record<string, unknown>>()
       .notNull()
@@ -520,10 +521,63 @@ export const accountPurchases = pgTable(
   })
 );
 
+export const academicStandards = pgTable("academic_standards", {
+  key: text("key").primaryKey(),
+  label: text("label").notNull(),
+  countryCode: text("country_code").notNull(),
+  defaultLanguageCode: text("default_language_code").notNull(),
+  displayOrder: integer("display_order").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+});
+
+export const academicStandardLanguages = pgTable(
+  "academic_standard_languages",
+  {
+    academicStandardKey: text("academic_standard_key")
+      .notNull()
+      .references(() => academicStandards.key, { onDelete: "cascade" }),
+    languageCode: text("language_code").notNull(),
+    label: text("label").notNull(),
+    displayOrder: integer("display_order").notNull().default(0),
+    active: boolean("active").notNull().default(true)
+  },
+  (table) => ({
+    pk: primaryKey({
+      columns: [table.academicStandardKey, table.languageCode],
+      name: "academic_standard_languages_pkey"
+    })
+  })
+);
+
+export const academicStandardCurriculumAreas = pgTable(
+  "academic_standard_curriculum_areas",
+  {
+    academicStandardKey: text("academic_standard_key")
+      .notNull()
+      .references(() => academicStandards.key, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    displayOrder: integer("display_order").notNull().default(0),
+    active: boolean("active").notNull().default(true)
+  },
+  (table) => ({
+    pk: primaryKey({
+      columns: [table.academicStandardKey, table.key],
+      name: "academic_standard_curriculum_areas_pkey"
+    })
+  })
+);
+
 export const curriculumSubjects = pgTable(
   "curriculum_subjects",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    academicStandardKey: text("academic_standard_key")
+      .notNull()
+      .default("us")
+      .references(() => academicStandards.key, { onDelete: "restrict" }),
     key: text("key").notNull(),
     label: text("label").notNull(),
     curriculumAreaKey: text("curriculum_area_key").notNull(),
@@ -540,8 +594,12 @@ export const curriculumSubjects = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
   },
   (table) => ({
-    keyUnique: unique("curriculum_subjects_key_unique").on(table.key),
-    areaIndex: index("curriculum_subjects_area_idx").on(
+    standardKeyUnique: unique("curriculum_subjects_standard_key_unique").on(
+      table.academicStandardKey,
+      table.key
+    ),
+    areaIndex: index("curriculum_subjects_standard_area_idx").on(
+      table.academicStandardKey,
       table.curriculumAreaKey,
       table.active,
       table.displayOrder
@@ -555,6 +613,10 @@ export const nativeWorkbooks = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     slug: text("slug").notNull(),
     title: text("title").notNull(),
+    academicStandardKey: text("academic_standard_key")
+      .notNull()
+      .default("us")
+      .references(() => academicStandards.key, { onDelete: "restrict" }),
     curriculumSubjectId: uuid("curriculum_subject_id").references(() => curriculumSubjects.id, {
       onDelete: "set null"
     }),
@@ -599,6 +661,13 @@ export const nativeWorkbooks = pgTable(
       table.subjectKey
     ),
     curriculumAreaIndex: index("native_workbooks_curriculum_area_idx").on(
+      table.active,
+      table.curriculumAreaKey,
+      table.gradeMin,
+      table.gradeMax
+    ),
+    academicStandardIndex: index("native_workbooks_standard_browse_idx").on(
+      table.academicStandardKey,
       table.active,
       table.curriculumAreaKey,
       table.gradeMin,
@@ -1090,6 +1159,10 @@ export const workbookCurricula = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
+    academicStandardKey: text("academic_standard_key")
+      .notNull()
+      .default("us")
+      .references(() => academicStandards.key, { onDelete: "restrict" }),
     standardCode: text("standard_code"),
     standardLabel: text("standard_label"),
     gradeLevel: integer("grade_level").notNull(),

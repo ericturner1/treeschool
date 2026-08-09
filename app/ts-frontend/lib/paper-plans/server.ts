@@ -62,6 +62,7 @@ export type PaperPlanWeek = {
   title: string;
   summary: string | null;
   status: "planned" | "in_progress" | "completed" | "skipped";
+  preservedForReplan: boolean;
   pdfQualityStatus: "unverified" | "passed";
   pdfPageCount: number | null;
   grade: number | null;

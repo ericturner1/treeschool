@@ -90,6 +90,7 @@ async function ensureLearningYearForNativeWorkbooks(input: {
 export async function addNativeWorkbooksToPlanAction(formData: FormData) {
   const parentUserId = await requireUserId(formData);
   const profileId = field(formData, "profileId");
+  const replanAfterAttach = field(formData, "replanAfterAttach") === "yes";
   const workbookIds = Array.from(new Set(
     formData.getAll("workbookId").map((value) => String(value).trim()).filter(Boolean)
   )).slice(0, 30);
@@ -97,6 +98,7 @@ export async function addNativeWorkbooksToPlanAction(formData: FormData) {
     redirect(destination(profileId, "error", "Choose at least one Treeschool workbook."));
   }
 
+  let added = 0;
   try {
     const learningYearId = await ensureLearningYearForNativeWorkbooks({
       parentUserId,
@@ -105,20 +107,69 @@ export async function addNativeWorkbooksToPlanAction(formData: FormData) {
       learningYearId: field(formData, "learningYearId") || null,
       preferredPrintPageSize: field(formData, "preferredPrintPageSize") || null
     });
-    let added = 0;
+    const currentPlan = replanAfterAttach
+      ? await getPaperPlan({ parentUserId, profileId })
+      : null;
+    const shouldReplan = Boolean(replanAfterAttach && currentPlan?.weeks.length);
+    if (shouldReplan) {
+      if (currentPlan?.year?.id !== learningYearId) {
+        throw new Error("The active learning year changed. Refresh the page and review the update again.");
+      }
+      if (!currentPlan.year.startDate || !currentPlan.year.endDate) {
+        throw new Error("Set the school-year dates before updating future weeks.");
+      }
+      if (currentPlan.planning.active > 0) {
+        throw new Error("A plan update is already running.");
+      }
+      if (currentPlan.planning.failed > 0 || currentPlan.year.status === "planning_failed") {
+        throw new Error("Finish or retry the current plan update before starting another one.");
+      }
+      if (currentPlan.documents.some((document) => ["pending", "queued", "analyzing"].includes(document.analysisStatus))) {
+        throw new Error("Wait for the current teaching materials to finish processing before updating the plan.");
+      }
+      if (currentPlan.regenerationAllowance.remaining < 1) {
+        throw new Error(
+          currentPlan.regenerationAllowance.introductoryMonth
+            ? "Plan updates unlock after the first regular membership renewal."
+            : "No plan updates remain in the current allowance period."
+        );
+      }
+      if (currentPlan.weeks.every((week) => week.preservedForReplan)) {
+        throw new Error("Every week is already started, completed, or downloaded, so there are no untouched weeks to rebuild.");
+      }
+    }
     for (const workbookId of workbookIds) {
       const result = await attachNativeWorkbook({ userId: parentUserId, workbookId, learningYearId });
       if (result.attached) added += result.attachedCount ?? 1;
     }
+    if (shouldReplan && added > 0) {
+      await startPaperPlanPlanning({ parentUserId, learningYearId });
+    }
     revalidateCurriculum(profileId);
+    if (shouldReplan && added > 0) {
+      redirect(destination(
+        profileId,
+        "message",
+        `${added} Treeschool workbook${added === 1 ? "" : "s"} added. Treeschool is rebuilding only the untouched future weeks; the current plan stays available until the update is ready.`
+      ));
+    }
     redirect(destination(
       profileId,
       "message",
-      `${added || workbookIds.length} Treeschool workbook${(added || workbookIds.length) === 1 ? "" : "s"} added. Review the materials, then create the lesson plan.`
+      added > 0
+        ? `${added} Treeschool workbook${added === 1 ? "" : "s"} added. Review the materials, then create the lesson plan.`
+        : "The selected workbook is already part of this lesson plan."
     ));
   } catch (error) {
     if (error && typeof error === "object" && "digest" in error) throw error;
-    redirect(destination(profileId, "error", error instanceof Error ? error.message : "Could not add the selected workbooks."));
+    const message = error instanceof Error ? error.message : "Could not add the selected workbooks.";
+    redirect(destination(
+      profileId,
+      "error",
+      added > 0 && replanAfterAttach
+        ? `${added} workbook${added === 1 ? " was" : "s were"} added, but the plan update did not start: ${message} Your current plan is unchanged.`
+        : message
+    ));
   }
 }
 

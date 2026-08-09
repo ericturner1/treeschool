@@ -7457,6 +7457,14 @@ export async function getPaperPlan(parentUserId: string, profileId: string) {
     .where(eq(weeklyPlans.learningYearId, year.id))
     .orderBy(asc(weeklyPlans.weekNumber));
   const weekIds = weeks.map((week) => week.id);
+  const downloadedWeekIds = new Set(
+    weekIds.length === 0
+      ? []
+      : (await db.select({ weeklyPlanId: weeklyPlanDownloadEvents.weeklyPlanId })
+          .from(weeklyPlanDownloadEvents)
+          .where(inArray(weeklyPlanDownloadEvents.weeklyPlanId, weekIds)))
+          .map((event) => event.weeklyPlanId)
+  );
   const items =
     weekIds.length === 0
       ? []
@@ -7723,6 +7731,8 @@ export async function getPaperPlan(parentUserId: string, profileId: string) {
       return {
         ...week,
         status: attendanceStatus,
+        preservedForReplan:
+          ["in_progress", "completed"].includes(week.status) || downloadedWeekIds.has(week.id),
         pdfQualityStatus: pdfAsset?.qualityStatus ?? "unverified",
         pdfPageCount: Number.isFinite(reportedPageCount) && reportedPageCount > 0
           ? reportedPageCount

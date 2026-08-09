@@ -1,52 +1,108 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { CurriculumSubjectOption } from "../../../lib/native-workbooks/server";
-import { CURRICULUM_AREAS } from "../../../lib/native-workbooks/curriculum-areas";
+import type {
+  AcademicStandardOption,
+  CurriculumSubjectOption
+} from "../../../lib/native-workbooks/server";
 
 const CUSTOM_SUBJECT_VALUE = "__custom__";
 
 export function SubjectTaxonomyFields({
   subjects,
+  academicStandards,
+  initialAcademicStandardKey = "us",
   initialCurriculumAreaKey = "",
   initialCurriculumSubjectId = null,
-  initialSubjectLabel = ""
+  initialSubjectLabel = "",
+  initialLanguageCode
 }: {
   subjects: CurriculumSubjectOption[];
+  academicStandards: AcademicStandardOption[];
+  initialAcademicStandardKey?: string;
   initialCurriculumAreaKey?: string;
   initialCurriculumSubjectId?: string | null;
   initialSubjectLabel?: string;
+  initialLanguageCode?: string;
 }) {
+  const initialStandard = academicStandards.find(
+    (standard) => standard.key === initialAcademicStandardKey
+  ) ?? academicStandards[0];
+  const [academicStandardKey, setAcademicStandardKey] = useState(
+    initialStandard?.key ?? ""
+  );
   const [curriculumAreaKey, setCurriculumAreaKey] = useState(initialCurriculumAreaKey);
   const [subjectSelection, setSubjectSelection] = useState(
     initialCurriculumSubjectId || (initialSubjectLabel ? CUSTOM_SUBJECT_VALUE : "")
   );
-  const [customSubject, setCustomSubject] = useState(initialCurriculumSubjectId ? "" : initialSubjectLabel);
+  const [customSubject, setCustomSubject] = useState(
+    initialCurriculumSubjectId ? "" : initialSubjectLabel
+  );
   const [addToTaxonomy, setAddToTaxonomy] = useState(false);
+  const [languageCode, setLanguageCode] = useState(
+    initialLanguageCode ?? initialStandard?.defaultLanguageCode ?? ""
+  );
+  const selectedStandard = useMemo(
+    () => academicStandards.find((standard) => standard.key === academicStandardKey),
+    [academicStandardKey, academicStandards]
+  );
   const availableSubjects = useMemo(
-    () => subjects.filter((subject) => subject.curriculumAreaKey === curriculumAreaKey),
-    [curriculumAreaKey, subjects]
+    () => subjects.filter(
+      (subject) => subject.academicStandardKey === academicStandardKey &&
+        subject.curriculumAreaKey === curriculumAreaKey
+    ),
+    [academicStandardKey, curriculumAreaKey, subjects]
   );
   const isCustom = subjectSelection === CUSTOM_SUBJECT_VALUE;
 
   return (
     <>
       <label className="grid gap-2 text-sm font-semibold text-ink">
+        Academic standard
+        <select
+          required
+          name="academicStandardKey"
+          value={academicStandardKey}
+          onChange={(event) => {
+            const nextKey = event.target.value;
+            const nextStandard = academicStandards.find((standard) => standard.key === nextKey);
+            setAcademicStandardKey(nextKey);
+            setCurriculumAreaKey("");
+            setSubjectSelection("");
+            setCustomSubject("");
+            setAddToTaxonomy(false);
+            setLanguageCode(nextStandard?.defaultLanguageCode ?? "");
+          }}
+          className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3 pr-12"
+        >
+          <option value="" disabled>Choose an academic standard</option>
+          {academicStandards.map((standard) => (
+            <option key={standard.key} value={standard.key}>{standard.label}</option>
+          ))}
+        </select>
+      </label>
+
+      <label className="grid gap-2 text-sm font-semibold text-ink">
         Curriculum area
         <select
           required
           name="curriculumAreaKey"
           value={curriculumAreaKey}
+          disabled={!academicStandardKey}
           onChange={(event) => {
             setCurriculumAreaKey(event.target.value);
             setSubjectSelection("");
             setCustomSubject("");
             setAddToTaxonomy(false);
           }}
-          className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3 pr-12"
+          className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3 pr-12 disabled:bg-[#f3eee5] disabled:text-ink/45"
         >
-          <option value="" disabled>Choose a curriculum area</option>
-          {CURRICULUM_AREAS.map((area) => <option key={area.value} value={area.value}>{area.label}</option>)}
+          <option value="" disabled>
+            {academicStandardKey ? "Choose a curriculum area" : "Choose an academic standard first"}
+          </option>
+          {selectedStandard?.curriculumAreas.map((area) => (
+            <option key={area.key} value={area.key}>{area.label}</option>
+          ))}
         </select>
       </label>
 
@@ -63,9 +119,30 @@ export function SubjectTaxonomyFields({
           }}
           className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3 pr-12 disabled:bg-[#f3eee5] disabled:text-ink/45"
         >
-          <option value="" disabled>{curriculumAreaKey ? "Choose a subject" : "Choose a curriculum area first"}</option>
-          {availableSubjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.label}</option>)}
+          <option value="" disabled>
+            {curriculumAreaKey ? "Choose a subject" : "Choose a curriculum area first"}
+          </option>
+          {availableSubjects.map((subject) => (
+            <option key={subject.id} value={subject.id}>{subject.label}</option>
+          ))}
           <option value={CUSTOM_SUBJECT_VALUE}>Subject not listed</option>
+        </select>
+      </label>
+
+      <label className="grid gap-2 text-sm font-semibold text-ink">
+        Language
+        <select
+          required
+          name="languageCode"
+          value={languageCode}
+          onChange={(event) => setLanguageCode(event.target.value)}
+          disabled={!selectedStandard}
+          className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3 pr-12 disabled:bg-[#f3eee5] disabled:text-ink/45"
+        >
+          <option value="" disabled>Choose a language</option>
+          {selectedStandard?.languages.map((language) => (
+            <option key={language.code} value={language.code}>{language.label}</option>
+          ))}
         </select>
       </label>
 
@@ -93,7 +170,9 @@ export function SubjectTaxonomyFields({
             />
             <span>
               Add this subject to Treeschool’s subject list
-              <span className="mt-1 block text-xs font-normal leading-5 text-ink/52">Use this only when the subject should become a reusable choice for future catalog workbooks.</span>
+              <span className="mt-1 block text-xs font-normal leading-5 text-ink/52">
+                This reusable subject will be available only under the selected academic standard and curriculum area.
+              </span>
             </span>
           </label>
         </div>

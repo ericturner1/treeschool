@@ -216,20 +216,25 @@ export default async function StudentPointsPage({ params, searchParams }: Props)
                       {transaction.actorName} ·{" "}
                       <LocalDateTime
                         value={transaction.createdAt}
-                        fallbackTimeZone={streakSettings.timeZone}
+                        timeZone={streakSettings.timeZone}
                       />
                       {transaction.reversed ? " · Completion undone" : ""}
                     </p>
                   </div>
-                  <p className={`flex-none text-xl font-semibold ${
-                    transaction.reversed
-                      ? "text-ink/40 line-through"
-                      : transaction.amount > 0
-                        ? "text-[#52783e]"
-                        : "text-earth"
-                  }`}>
-                    {transaction.amount > 0 ? "+" : ""}{transaction.amount} {unitName(transaction.amount, singularName, pluralName)}
-                  </p>
+                  <div className="flex-none sm:text-right">
+                    <p className={`text-xl font-semibold ${
+                      transaction.reversed
+                        ? "text-ink/40 line-through"
+                        : transaction.amount > 0
+                          ? "text-[#52783e]"
+                          : "text-earth"
+                    }`}>
+                      {transaction.amount > 0 ? "+" : ""}{transaction.amount} {unitName(transaction.amount, singularName, pluralName)}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-ink/48">
+                      Balance after: {transaction.balanceAfter} {unitName(transaction.balanceAfter, singularName, pluralName)}
+                    </p>
+                  </div>
                 </article>
               ))}
             </div>

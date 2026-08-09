@@ -262,6 +262,36 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
   const hasPlanningAllowance = plan.weeks.length === 0 || plan.regenerationAllowance.remaining > 0;
   const hasSchoolYearPeriod = Boolean(plan.year?.startDate && plan.year?.endDate);
   const canStartPlanning = hasSchoolYearPeriod && plan.documents.length > 0 && activeDocumentCount === 0 && readyPlanningDocumentCount > 0 && !planningActive && !planningFailed && hasPlanningAllowance && (plan.weeks.length === 0 || plan.materialsChanged);
+  const preservedWeekNumbers = plan.weeks
+    .filter((week) => week.preservedForReplan)
+    .map((week) => week.weekNumber);
+  const preservedWeekNumberSet = new Set(preservedWeekNumbers);
+  const rebuildWeekNumbers = plan.year
+    ? Array.from({ length: plan.year.totalWeeks }, (_, index) => index + 1)
+      .filter((weekNumber) => !preservedWeekNumberSet.has(weekNumber))
+    : [];
+  const nativeWorkbookPlanUpdatePreview = plan.weeks.length > 0
+    ? {
+        preservedWeekNumbers,
+        rebuildWeekNumbers,
+        remainingUpdates: plan.regenerationAllowance.remaining,
+        blockedReason: planningActive
+          ? "A plan update is already running. Wait for it to finish before adding another workbook."
+          : planningFailed
+            ? "Finish or retry the current plan update before starting another one."
+            : activeDocumentCount > 0
+              ? "Wait for the current teaching materials to finish processing before updating the plan."
+              : !hasSchoolYearPeriod
+                ? "Set the school-year dates before updating future weeks."
+                : plan.regenerationAllowance.remaining < 1
+                  ? plan.regenerationAllowance.introductoryMonth
+                    ? "Plan updates unlock after the first regular membership renewal."
+                    : "No plan updates remain in the current allowance period."
+                  : rebuildWeekNumbers.length === 0
+                    ? "Every week is already started, completed, or downloaded, so there are no untouched weeks to rebuild."
+                    : null
+      }
+    : null;
   const readyForInitialReview = plan.weeks.length === 0 && !planningAttempted && canStartPlanning;
   const analyzingDocument = plan.documents.find((document) => document.analysisStatus === "analyzing");
   const queuedDocument = plan.documents.find((document) => ["queued", "pending"].includes(document.analysisStatus));
@@ -425,6 +455,7 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
         recommendedNativeCurriculum={recommendedNativeCurriculum}
         addNativeWorkbooksAction={addNativeWorkbooksToPlanAction}
         purchaseNativeWorkbookAction={purchaseNativeWorkbookForPlanAction}
+        nativeWorkbookPlanUpdatePreview={nativeWorkbookPlanUpdatePreview}
         checkoutCanceled={searchParams?.checkout === "canceled"}
         clearSavedDraft={searchParams?.clearDraft === "1"}
       />
@@ -578,6 +609,7 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
                     recommendedNativeCurriculum={recommendedNativeCurriculum}
                     addNativeWorkbooksAction={addNativeWorkbooksToPlanAction}
                     purchaseNativeWorkbookAction={purchaseNativeWorkbookForPlanAction}
+                    nativeWorkbookPlanUpdatePreview={nativeWorkbookPlanUpdatePreview}
                     checkoutCanceled={searchParams?.checkout === "canceled"}
                     clearSavedDraft={searchParams?.clearDraft === "1"}
                   />

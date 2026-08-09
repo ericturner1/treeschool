@@ -7,6 +7,9 @@ import { PDFDocument } from "pdf-lib";
 import Stripe from "stripe";
 import {
   accounts,
+  academicStandardCurriculumAreas,
+  academicStandardLanguages,
+  academicStandards,
   contentDocuments,
   curriculumSubjects,
   learningYearMaterialSets,
@@ -58,7 +61,6 @@ import {
   type NativeWorkbookProgressSummary
 } from "./student-workbook-progress";
 import { catalogItemOverlapsAttachedWorkbooks } from "./native-workbook-recommendations";
-import { normalizeCurriculumAreaKey } from "./native-workbook-taxonomy";
 import {
   buildNativeWorkbookLessonSummaries,
   nativeWorkbookLessonPageIndexes
@@ -606,6 +608,7 @@ async function requireAdmin(userId: string) {
 
 async function resolveCurriculumSubjectSelection(input: {
   userId: string;
+  academicStandardKey: string;
   curriculumAreaKey: string;
   curriculumSubjectId?: string | null;
   subject?: string;
@@ -615,13 +618,17 @@ async function resolveCurriculumSubjectSelection(input: {
   if (curriculumSubjectId) {
     const [subject] = await db.select({
       id: curriculumSubjects.id,
+      academicStandardKey: curriculumSubjects.academicStandardKey,
       key: curriculumSubjects.key,
       label: curriculumSubjects.label,
       curriculumAreaKey: curriculumSubjects.curriculumAreaKey,
       active: curriculumSubjects.active
     }).from(curriculumSubjects).where(eq(curriculumSubjects.id, curriculumSubjectId)).limit(1);
     if (!subject?.active) throw new Error("The selected subject is no longer available.");
-    if (subject.curriculumAreaKey !== input.curriculumAreaKey) {
+    if (
+      subject.academicStandardKey !== input.academicStandardKey ||
+      subject.curriculumAreaKey !== input.curriculumAreaKey
+    ) {
       throw new Error("Choose a subject from the selected curriculum area.");
     }
     return { curriculumSubjectId: subject.id, subjectKey: subject.key, subjectLabel: subject.label };
@@ -636,10 +643,14 @@ async function resolveCurriculumSubjectSelection(input: {
 
   const [existing] = await db.select({
     id: curriculumSubjects.id,
+    academicStandardKey: curriculumSubjects.academicStandardKey,
     key: curriculumSubjects.key,
     label: curriculumSubjects.label,
     curriculumAreaKey: curriculumSubjects.curriculumAreaKey
-  }).from(curriculumSubjects).where(eq(curriculumSubjects.key, subjectKey)).limit(1);
+  }).from(curriculumSubjects).where(and(
+    eq(curriculumSubjects.academicStandardKey, input.academicStandardKey),
+    eq(curriculumSubjects.key, subjectKey)
+  )).limit(1);
   if (existing && existing.curriculumAreaKey !== input.curriculumAreaKey) {
     throw new Error(`“${existing.label}” already exists under a different curriculum area.`);
   }
@@ -652,6 +663,7 @@ async function resolveCurriculumSubjectSelection(input: {
   const id = randomUUID();
   await db.insert(curriculumSubjects).values({
     id,
+    academicStandardKey: input.academicStandardKey,
     key: subjectKey,
     label: subjectLabel,
     curriculumAreaKey: input.curriculumAreaKey,
@@ -659,13 +671,19 @@ async function resolveCurriculumSubjectSelection(input: {
     displayOrder: 1_000,
     active: true,
     createdByUserId: input.userId
-  }).onConflictDoNothing({ target: curriculumSubjects.key });
+  }).onConflictDoNothing({
+    target: [curriculumSubjects.academicStandardKey, curriculumSubjects.key]
+  });
   const [created] = await db.select({
     id: curriculumSubjects.id,
+    academicStandardKey: curriculumSubjects.academicStandardKey,
     key: curriculumSubjects.key,
     label: curriculumSubjects.label,
     curriculumAreaKey: curriculumSubjects.curriculumAreaKey
-  }).from(curriculumSubjects).where(eq(curriculumSubjects.key, subjectKey)).limit(1);
+  }).from(curriculumSubjects).where(and(
+    eq(curriculumSubjects.academicStandardKey, input.academicStandardKey),
+    eq(curriculumSubjects.key, subjectKey)
+  )).limit(1);
   if (!created || created.curriculumAreaKey !== input.curriculumAreaKey) {
     throw new Error("Could not add this subject to the Treeschool subject list.");
   }
@@ -676,13 +694,93 @@ export async function listCurriculumSubjectsForAdmin(userId: string) {
   await requireAdmin(userId);
   return db.select({
     id: curriculumSubjects.id,
+    academicStandardKey: curriculumSubjects.academicStandardKey,
     key: curriculumSubjects.key,
     label: curriculumSubjects.label,
     curriculumAreaKey: curriculumSubjects.curriculumAreaKey,
     aliases: curriculumSubjects.aliases
   }).from(curriculumSubjects)
     .where(eq(curriculumSubjects.active, true))
-    .orderBy(asc(curriculumSubjects.curriculumAreaKey), asc(curriculumSubjects.displayOrder), asc(curriculumSubjects.label));
+    .orderBy(
+      asc(curriculumSubjects.academicStandardKey),
+      asc(curriculumSubjects.curriculumAreaKey),
+      asc(curriculumSubjects.displayOrder),
+      asc(curriculumSubjects.label)
+    );
+}
+
+export async function listAcademicStandardsForAdmin(userId: string) {
+  await requireAdmin(userId);
+  const [standards, curriculumAreas, languages] = await Promise.all([
+    db.select({
+      key: academicStandards.key,
+      label: academicStandards.label,
+      countryCode: academicStandards.countryCode,
+      defaultLanguageCode: academicStandards.defaultLanguageCode
+    }).from(academicStandards)
+      .where(eq(academicStandards.active, true))
+      .orderBy(asc(academicStandards.displayOrder), asc(academicStandards.label)),
+    db.select({
+      academicStandardKey: academicStandardCurriculumAreas.academicStandardKey,
+      key: academicStandardCurriculumAreas.key,
+      label: academicStandardCurriculumAreas.label
+    }).from(academicStandardCurriculumAreas)
+      .where(eq(academicStandardCurriculumAreas.active, true))
+      .orderBy(
+        asc(academicStandardCurriculumAreas.displayOrder),
+        asc(academicStandardCurriculumAreas.label)
+      ),
+    db.select({
+      academicStandardKey: academicStandardLanguages.academicStandardKey,
+      code: academicStandardLanguages.languageCode,
+      label: academicStandardLanguages.label
+    }).from(academicStandardLanguages)
+      .where(eq(academicStandardLanguages.active, true))
+      .orderBy(asc(academicStandardLanguages.displayOrder), asc(academicStandardLanguages.label))
+  ]);
+  return standards.map((standard) => ({
+    ...standard,
+    curriculumAreas: curriculumAreas
+      .filter((area) => area.academicStandardKey === standard.key)
+      .map(({ key, label }) => ({ key, label })),
+    languages: languages
+      .filter((language) => language.academicStandardKey === standard.key)
+      .map(({ code, label }) => ({ code, label }))
+  }));
+}
+
+async function resolveAcademicStandardTaxonomy(input: {
+  academicStandardKey: string;
+  curriculumAreaKey: string;
+  languageCode: string;
+}) {
+  const academicStandardKey = normalizeText(input.academicStandardKey || "us", 80).toLowerCase();
+  const curriculumAreaKey = normalizeText(input.curriculumAreaKey, 80).toLowerCase();
+  const languageCode = normalizeText(input.languageCode, 12).toLowerCase();
+  const [[standard], [area], [language]] = await Promise.all([
+    db.select({ key: academicStandards.key }).from(academicStandards).where(and(
+      eq(academicStandards.key, academicStandardKey),
+      eq(academicStandards.active, true)
+    )).limit(1),
+    db.select({ key: academicStandardCurriculumAreas.key })
+      .from(academicStandardCurriculumAreas)
+      .where(and(
+        eq(academicStandardCurriculumAreas.academicStandardKey, academicStandardKey),
+        eq(academicStandardCurriculumAreas.key, curriculumAreaKey),
+        eq(academicStandardCurriculumAreas.active, true)
+      )).limit(1),
+    db.select({ code: academicStandardLanguages.languageCode })
+      .from(academicStandardLanguages)
+      .where(and(
+        eq(academicStandardLanguages.academicStandardKey, academicStandardKey),
+        eq(academicStandardLanguages.languageCode, languageCode),
+        eq(academicStandardLanguages.active, true)
+      )).limit(1)
+  ]);
+  if (!standard) throw new Error("Choose a valid academic standard.");
+  if (!area) throw new Error("Choose a curriculum area from the selected academic standard.");
+  if (!language) throw new Error("Choose a language available for the selected academic standard.");
+  return { academicStandardKey, curriculumAreaKey, languageCode };
 }
 
 async function getNativeWorkbookUsage(workbookId: string) {
@@ -1275,6 +1373,7 @@ export async function listAdminNativeWorkbooks(userId: string) {
       id: nativeWorkbooks.id,
       slug: nativeWorkbooks.slug,
       title: nativeWorkbooks.title,
+      academicStandardKey: nativeWorkbooks.academicStandardKey,
       curriculumSubjectId: nativeWorkbooks.curriculumSubjectId,
       subjectLabel: nativeWorkbooks.subjectLabel,
       subjectKey: nativeWorkbooks.subjectKey,
@@ -1923,6 +2022,7 @@ export async function prepareNativeWorkbookUpload(input: {
   subject?: string;
   curriculumSubjectId?: string | null;
   addSubjectToTaxonomy?: boolean;
+  academicStandardKey: string;
   curriculumAreaKey: string;
   gradeMin: number;
   gradeMax: number;
@@ -1941,7 +2041,6 @@ export async function prepareNativeWorkbookUpload(input: {
 }) {
   await requireAdmin(input.userId);
   const title = normalizeText(input.title, 180);
-  const curriculumAreaKey = normalizeCurriculumAreaKey(input.curriculumAreaKey);
   const descriptionMode = input.descriptionMode === "custom" ? "custom" : "auto";
   const description = normalizeText(input.description, 3_000);
   if (!title) throw new Error("Title is required.");
@@ -1951,7 +2050,12 @@ export async function prepareNativeWorkbookUpload(input: {
   if (gradeMax < gradeMin) throw new Error("The ending grade cannot be lower than the starting grade.");
   const type = normalizeWorkbookType(input.type);
   const priceInCents = normalizePrice(input.priceInCents);
-  const languageCode = normalizeText(input.languageCode || "en", 12).toLowerCase();
+  const taxonomy = await resolveAcademicStandardTaxonomy({
+    academicStandardKey: input.academicStandardKey,
+    curriculumAreaKey: input.curriculumAreaKey,
+    languageCode: input.languageCode || "en"
+  });
+  const { academicStandardKey, curriculumAreaKey, languageCode } = taxonomy;
   const currencyCode = normalizeText(input.currencyCode || "USD", 3).toUpperCase();
   const prerequisiteWorkbookId = normalizeOptionalUuid(input.prerequisiteWorkbookId);
   const editionLabel = normalizeText(input.editionLabel, 80);
@@ -1969,6 +2073,7 @@ export async function prepareNativeWorkbookUpload(input: {
   }
   const subject = await resolveCurriculumSubjectSelection({
     userId: input.userId,
+    academicStandardKey,
     curriculumAreaKey,
     curriculumSubjectId: input.curriculumSubjectId,
     subject: input.subject,
@@ -1994,6 +2099,7 @@ export async function prepareNativeWorkbookUpload(input: {
       id: workbookId,
       slug,
       title,
+      academicStandardKey,
       curriculumSubjectId: subject.curriculumSubjectId,
       subjectKey: subject.subjectKey,
       subjectLabel: subject.subjectLabel,
@@ -2723,6 +2829,7 @@ export async function updateNativeWorkbookDetails(input: {
   subject?: string;
   curriculumSubjectId?: string | null;
   addSubjectToTaxonomy?: boolean;
+  academicStandardKey: string;
   curriculumAreaKey: string;
   gradeMin: number;
   gradeMax: number;
@@ -2736,13 +2843,17 @@ export async function updateNativeWorkbookDetails(input: {
 }) {
   await requireAdmin(input.userId);
   const title = normalizeText(input.title, 180);
-  const curriculumAreaKey = normalizeCurriculumAreaKey(input.curriculumAreaKey);
   const description = normalizeText(input.description, 3_000);
   if (!title) throw new Error("Title is required.");
   const gradeMin = normalizeGrade(input.gradeMin);
   const gradeMax = normalizeGrade(input.gradeMax);
   if (gradeMax < gradeMin) throw new Error("The ending grade cannot be lower than the starting grade.");
-  const languageCode = normalizeText(input.languageCode || "en", 12).toLowerCase();
+  const taxonomy = await resolveAcademicStandardTaxonomy({
+    academicStandardKey: input.academicStandardKey,
+    curriculumAreaKey: input.curriculumAreaKey,
+    languageCode: input.languageCode || "en"
+  });
+  const { academicStandardKey, curriculumAreaKey, languageCode } = taxonomy;
   const type = normalizeWorkbookType(input.type);
   const priceInCents = normalizePrice(input.priceInCents);
   const coverageTags = normalizeTags(input.coverageTags);
@@ -2752,6 +2863,7 @@ export async function updateNativeWorkbookDetails(input: {
   const [workbook] = await db.select({
     id: nativeWorkbooks.id,
     title: nativeWorkbooks.title,
+    academicStandardKey: nativeWorkbooks.academicStandardKey,
     curriculumSubjectId: nativeWorkbooks.curriculumSubjectId,
     subjectLabel: nativeWorkbooks.subjectLabel,
     curriculumAreaKey: nativeWorkbooks.curriculumAreaKey,
@@ -2791,6 +2903,7 @@ export async function updateNativeWorkbookDetails(input: {
   }
   const subject = await resolveCurriculumSubjectSelection({
     userId: input.userId,
+    academicStandardKey,
     curriculumAreaKey,
     curriculumSubjectId: input.curriculumSubjectId,
     subject: input.subject,
@@ -2801,6 +2914,7 @@ export async function updateNativeWorkbookDetails(input: {
   const productDetailsChanged =
     workbook.title !== title ||
     workbook.description !== description ||
+    workbook.academicStandardKey !== academicStandardKey ||
     workbook.curriculumSubjectId !== subject.curriculumSubjectId ||
     workbook.subjectLabel !== subject.subjectLabel ||
     workbook.curriculumAreaKey !== curriculumAreaKey ||
@@ -2868,6 +2982,7 @@ export async function updateNativeWorkbookDetails(input: {
             .where(inArray(contentDocuments.nativeWorkbookVersionId, workbookVersionIds));
       await tx.update(nativeWorkbooks).set({
         title,
+        academicStandardKey,
         curriculumSubjectId: subject.curriculumSubjectId,
         subjectKey: subject.subjectKey,
         subjectLabel: subject.subjectLabel,

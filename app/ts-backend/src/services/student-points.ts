@@ -190,6 +190,7 @@ export async function getStudentPoints(input: {
       amount: transaction.amount,
       kind: transaction.kind,
       reason: transaction.reason,
+      balanceAfter: transaction.balanceAfter,
       actorName: transaction.createdByUserId
         ? actorNames.get(transaction.createdByUserId) ?? "Account member"
         : "Treeschool",
@@ -345,13 +346,24 @@ export async function awardStudentPoints(input: {
   ]);
   const amount = normalizeAmount(input.amount);
   const reason = normalizeReason(input.reason);
+  const occurredAt = new Date();
   return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`student-points:${input.profileId}`}))`);
+    const [summary] = await tx
+      .select({
+        balance: sql<number>`coalesce(sum(case when ${studentPointTransactions.reversedAt} is null then ${studentPointTransactions.amount} else 0 end), 0)::integer`
+      })
+      .from(studentPointTransactions)
+      .where(eq(studentPointTransactions.profileId, input.profileId));
+    const balanceAfter = Number(summary?.balance ?? 0) + amount;
     const [transaction] = await tx.insert(studentPointTransactions).values({
       profileId: input.profileId,
       amount,
       kind: "award",
       reason,
-      createdByUserId: input.parentUserId
+      createdByUserId: input.parentUserId,
+      balanceAfter,
+      createdAt: occurredAt
     }).returning();
     if (!transaction) throw new Error("The points could not be awarded.");
     await tx.insert(teacherActivityEvents).values({
@@ -386,6 +398,7 @@ export async function redeemStudentPoints(input: {
   ]);
   const amount = normalizeAmount(input.amount);
   const reason = normalizeReason(input.reason);
+  const occurredAt = new Date();
 
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`student-points:${input.profileId}`}))`);
@@ -406,7 +419,9 @@ export async function redeemStudentPoints(input: {
         amount: -amount,
         kind: "redemption",
         reason,
-        createdByUserId: input.parentUserId
+        createdByUserId: input.parentUserId,
+        balanceAfter: balance - amount,
+        createdAt: occurredAt
       })
       .returning();
     if (!transaction) throw new Error("The point usage could not be recorded.");
@@ -454,40 +469,79 @@ export async function applyAutomaticLessonCompletionPoint(input: {
     .limit(1);
   if (!settings?.enabled) return null;
   const reason = `Completed ${input.subjectLabel} · Week ${input.weekNumber} · Day ${input.dayNumber}`;
-  const [transaction] = await db
-    .insert(studentPointTransactions)
-    .values({
-      profileId: input.profileId,
-      amount: 1,
-      kind: "lesson_completion",
-      reason,
-      sourceType: "lesson_completion",
-      sourceKey: lessonCompletionSourceKey(input),
-      createdByUserId: input.actorUserId,
-      metadata: {
-        weeklyPlanId: input.weeklyPlanId,
-        weekNumber: input.weekNumber,
-        dayNumber: input.dayNumber,
-        subjectKey: input.subjectKey,
-        subjectLabel: input.subjectLabel
-      }
-    })
-    .onConflictDoUpdate({
-      target: [
-        studentPointTransactions.profileId,
-        studentPointTransactions.sourceType,
-        studentPointTransactions.sourceKey
-      ],
-      set: {
+  const occurredAt = new Date();
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`student-points:${input.profileId}`}))`);
+    const sourceKey = lessonCompletionSourceKey(input);
+    const [existing] = await tx
+      .select()
+      .from(studentPointTransactions)
+      .where(and(
+        eq(studentPointTransactions.profileId, input.profileId),
+        eq(studentPointTransactions.sourceType, "lesson_completion"),
+        eq(studentPointTransactions.sourceKey, sourceKey)
+      ))
+      .limit(1);
+    if (existing && !existing.reversedAt) {
+      const [transaction] = await tx
+        .update(studentPointTransactions)
+        .set({
+          reason,
+          createdByUserId: input.actorUserId,
+          updatedAt: occurredAt
+        })
+        .where(eq(studentPointTransactions.id, existing.id))
+        .returning();
+      return transaction!;
+    }
+    const [summary] = await tx
+      .select({
+        balance: sql<number>`coalesce(sum(case when ${studentPointTransactions.reversedAt} is null then ${studentPointTransactions.amount} else 0 end), 0)::integer`
+      })
+      .from(studentPointTransactions)
+      .where(eq(studentPointTransactions.profileId, input.profileId));
+    const balanceAfter = Number(summary?.balance ?? 0) + 1;
+    const metadata = {
+      weeklyPlanId: input.weeklyPlanId,
+      weekNumber: input.weekNumber,
+      dayNumber: input.dayNumber,
+      subjectKey: input.subjectKey,
+      subjectLabel: input.subjectLabel
+    };
+    if (existing) {
+      const [transaction] = await tx
+        .update(studentPointTransactions)
+        .set({
+          reason,
+          createdByUserId: input.actorUserId,
+          reversedAt: null,
+          reversedByUserId: null,
+          balanceAfter,
+          metadata,
+          createdAt: occurredAt,
+          updatedAt: occurredAt
+        })
+        .where(eq(studentPointTransactions.id, existing.id))
+        .returning();
+      return transaction!;
+    }
+    const [transaction] = await tx
+      .insert(studentPointTransactions)
+      .values({
+        profileId: input.profileId,
+        amount: 1,
+        kind: "lesson_completion",
         reason,
+        sourceType: "lesson_completion",
+        sourceKey,
         createdByUserId: input.actorUserId,
-        reversedAt: null,
-        reversedByUserId: null,
-        updatedAt: new Date()
-      }
-    })
-    .returning();
-  return transaction!;
+        balanceAfter,
+        metadata,
+        createdAt: occurredAt
+      })
+      .returning();
+    return transaction!;
+  });
 }
 
 export async function reverseAutomaticLessonCompletionPoint(input: {
@@ -497,19 +551,23 @@ export async function reverseAutomaticLessonCompletionPoint(input: {
   dayNumber: number;
   subjectKey: string;
 }) {
-  const [transaction] = await db
-    .update(studentPointTransactions)
-    .set({
-      reversedAt: new Date(),
-      reversedByUserId: input.actorUserId,
-      updatedAt: new Date()
-    })
-    .where(and(
-      eq(studentPointTransactions.profileId, input.profileId),
-      eq(studentPointTransactions.sourceType, "lesson_completion"),
-      eq(studentPointTransactions.sourceKey, lessonCompletionSourceKey(input)),
-      isNull(studentPointTransactions.reversedAt)
-    ))
-    .returning();
-  return transaction ?? null;
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`student-points:${input.profileId}`}))`);
+    const reversedAt = new Date();
+    const [transaction] = await tx
+      .update(studentPointTransactions)
+      .set({
+        reversedAt,
+        reversedByUserId: input.actorUserId,
+        updatedAt: reversedAt
+      })
+      .where(and(
+        eq(studentPointTransactions.profileId, input.profileId),
+        eq(studentPointTransactions.sourceType, "lesson_completion"),
+        eq(studentPointTransactions.sourceKey, lessonCompletionSourceKey(input)),
+        isNull(studentPointTransactions.reversedAt)
+      ))
+      .returning();
+    return transaction ?? null;
+  });
 }

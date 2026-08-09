@@ -341,6 +341,12 @@ export async function publishCompletedWorkbookStudioRender(input: {
   };
   const pdf = await downloadPrivateFile(row.render.pdfObjectPath);
   const filename = `${row.project.slug}-${input.editionLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
+  const [curriculumStandard] = row.project.curriculumId
+    ? await db.select({ academicStandardKey: workbookCurricula.academicStandardKey })
+        .from(workbookCurricula)
+        .where(eq(workbookCurricula.id, row.project.curriculumId))
+        .limit(1)
+    : [];
 
   if (input.releaseMode === "first_release") {
     const prepared = await prepareNativeWorkbookUpload({
@@ -348,6 +354,7 @@ export async function publishCompletedWorkbookStudioRender(input: {
       title: row.project.title,
       subject: row.project.subjectLabel,
       addSubjectToTaxonomy: true,
+      academicStandardKey: curriculumStandard?.academicStandardKey ?? "us",
       curriculumAreaKey: catalog.curriculumAreaKey,
       gradeMin: row.project.gradeMin,
       gradeMax: row.project.gradeMax,

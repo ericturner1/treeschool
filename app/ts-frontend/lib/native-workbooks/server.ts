@@ -20,10 +20,20 @@ export type NativeWorkbookAccessState = "owned" | "included" | "purchase_require
 
 export type CurriculumSubjectOption = {
   id: string;
+  academicStandardKey: string;
   key: string;
   label: string;
   curriculumAreaKey: string;
   aliases: string[];
+};
+
+export type AcademicStandardOption = {
+  key: string;
+  label: string;
+  countryCode: string;
+  defaultLanguageCode: string;
+  curriculumAreas: Array<{ key: string; label: string }>;
+  languages: Array<{ code: string; label: string }>;
 };
 
 export type NativeWorkbookCatalogItem = {
@@ -117,6 +127,7 @@ export type AdminNativeWorkbook = {
   id: string;
   slug: string;
   title: string;
+  academicStandardKey: string;
   curriculumSubjectId: string | null;
   subjectLabel: string;
   subjectKey: string;
@@ -271,6 +282,7 @@ export async function listAdminNativeWorkbooks(userId: string) {
     workbooks: AdminNativeWorkbook[];
     bundles: AdminNativeWorkbookBundle[];
     subjects: CurriculumSubjectOption[];
+    academicStandards: AcademicStandardOption[];
   }>;
 }
 

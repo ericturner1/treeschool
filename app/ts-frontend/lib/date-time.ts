@@ -19,6 +19,6 @@ export function formatDateTimeInTimeZone(
     hour: "numeric",
     minute: "2-digit",
     timeZone: safeTimeZone(timeZone),
-    timeZoneName: "short"
+    timeZoneName: "shortGeneric"
   }).format(new Date(value));
 }

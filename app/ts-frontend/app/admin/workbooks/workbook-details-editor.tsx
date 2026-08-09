@@ -3,18 +3,14 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import type { AdminNativeWorkbook, CurriculumSubjectOption } from "../../../lib/native-workbooks/server";
+import type {
+  AcademicStandardOption,
+  AdminNativeWorkbook,
+  CurriculumSubjectOption
+} from "../../../lib/native-workbooks/server";
 import { parseWorkbookPriceInCents } from "../../../lib/native-workbooks/price";
 import { updateWorkbookDetailsAction } from "./actions";
 import { selectedCurriculumSubjectId, SubjectTaxonomyFields } from "./subject-taxonomy-fields";
-
-const LANGUAGES = [
-  ["en", "English"],
-  ["es", "Spanish"],
-  ["fr", "French"],
-  ["de", "German"],
-  ["ja", "Japanese"]
-] as const;
 
 const GRADE_OPTIONS = [
   { value: 0, label: "Kindergarten" },
@@ -24,11 +20,13 @@ const GRADE_OPTIONS = [
 export function WorkbookDetailsEditor({
   workbook,
   prerequisiteChoices,
-  subjects
+  subjects,
+  academicStandards
 }: {
   workbook: AdminNativeWorkbook;
   prerequisiteChoices: Array<{ id: string; title: string }>;
   subjects: CurriculumSubjectOption[];
+  academicStandards: AcademicStandardOption[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -64,6 +62,7 @@ export function WorkbookDetailsEditor({
       subject: String(formData.get("subject") ?? ""),
       curriculumSubjectId: selectedCurriculumSubjectId(formData),
       addSubjectToTaxonomy: formData.get("addSubjectToTaxonomy") === "on",
+      academicStandardKey: String(formData.get("academicStandardKey") ?? "us"),
       curriculumAreaKey: String(formData.get("curriculumAreaKey") ?? "other"),
       gradeMin,
       gradeMax,
@@ -100,13 +99,15 @@ export function WorkbookDetailsEditor({
               <label className="grid gap-2 text-sm font-semibold text-ink">Title<input autoFocus required name="title" maxLength={180} defaultValue={workbook.title} className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3" /></label>
               <SubjectTaxonomyFields
                 subjects={subjects}
+                academicStandards={academicStandards}
+                initialAcademicStandardKey={workbook.academicStandardKey}
                 initialCurriculumAreaKey={workbook.curriculumAreaKey}
                 initialCurriculumSubjectId={workbook.curriculumSubjectId}
                 initialSubjectLabel={workbook.subjectLabel}
+                initialLanguageCode={workbook.languageCode}
               />
               <label className="grid gap-2 text-sm font-semibold text-ink">From grade<select name="gradeMin" defaultValue={String(workbook.gradeMin)} className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3 pr-12">{GRADE_OPTIONS.map((grade) => <option key={grade.value} value={grade.value}>{grade.label}</option>)}</select></label>
               <label className="grid gap-2 text-sm font-semibold text-ink">Through grade<select name="gradeMax" defaultValue={String(workbook.gradeMax)} className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3 pr-12">{GRADE_OPTIONS.map((grade) => <option key={grade.value} value={grade.value}>{grade.label}</option>)}</select></label>
-              <label className="grid gap-2 text-sm font-semibold text-ink">Language<select name="languageCode" defaultValue={workbook.languageCode} className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3 pr-12">{LANGUAGES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
               <label className="grid gap-2 text-sm font-semibold text-ink">Catalog role<select name="type" defaultValue={workbook.type} className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3 pr-12"><option value="core">Core subject</option><option value="elective">Elective</option></select></label>
               <label className="grid gap-2 text-sm font-semibold text-ink">Price ({workbook.currencyCode})<input required name="price" type="text" inputMode="decimal" pattern="[0-9]+(?:\.[0-9]{1,2})?" defaultValue={(workbook.priceInCents / 100).toFixed(2)} autoComplete="off" className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3" /></label>
               <label className="grid gap-2 text-sm font-semibold text-ink">Edition<input required name="editionLabel" maxLength={80} defaultValue={workbook.editionLabel ?? "1st edition"} placeholder="1st edition, Revised edition…" className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3" /></label>

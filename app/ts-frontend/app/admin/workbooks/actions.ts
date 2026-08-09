@@ -38,6 +38,7 @@ export async function prepareWorkbookUploadAction(input: {
   subject: string;
   curriculumSubjectId: string | null;
   addSubjectToTaxonomy: boolean;
+  academicStandardKey: string;
   curriculumAreaKey: string;
   gradeMin: number;
   gradeMax: number;
@@ -291,6 +292,7 @@ export async function updateWorkbookDetailsAction(input: {
   subject: string;
   curriculumSubjectId: string | null;
   addSubjectToTaxonomy: boolean;
+  academicStandardKey: string;
   curriculumAreaKey: string;
   gradeMin: number;
   gradeMax: number;

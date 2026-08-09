@@ -7,6 +7,7 @@ describe("formatDateTimeInTimeZone", () => {
   test("renders point activity in the configured local timezone", () => {
     const local = formatDateTimeInTimeZone(timestamp, "Asia/Tokyo");
     expect(local).toContain("11:07");
+    expect(local).toContain("Japan Time");
     expect(local).not.toContain("2:07 AM");
   });
 

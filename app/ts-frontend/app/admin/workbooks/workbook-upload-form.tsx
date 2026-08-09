@@ -8,16 +8,11 @@ import {
   prepareWorkbookUploadAction
 } from "./actions";
 import { parseWorkbookPriceInCents } from "../../../lib/native-workbooks/price";
-import type { CurriculumSubjectOption } from "../../../lib/native-workbooks/server";
+import type {
+  AcademicStandardOption,
+  CurriculumSubjectOption
+} from "../../../lib/native-workbooks/server";
 import { selectedCurriculumSubjectId, SubjectTaxonomyFields } from "./subject-taxonomy-fields";
-
-const LANGUAGES = [
-  ["en", "English"],
-  ["es", "Spanish"],
-  ["fr", "French"],
-  ["de", "German"],
-  ["ja", "Japanese"]
-] as const;
 
 const GRADE_OPTIONS = [
   { value: 0, label: "Kindergarten" },
@@ -43,11 +38,13 @@ async function uploadFile(label: string, url: string, file: File, contentType: s
 export function WorkbookUploadForm({
   prerequisiteChoices = [],
   workbookStates = [],
-  subjects = []
+  subjects = [],
+  academicStandards = []
 }: {
   prerequisiteChoices?: Array<{ id: string; title: string }>;
   workbookStates?: Array<{ id: string; state: string }>;
   subjects?: CurriculumSubjectOption[];
+  academicStandards?: AcademicStandardOption[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -95,6 +92,7 @@ export function WorkbookUploadForm({
         subject: String(formData.get("subject") ?? ""),
         curriculumSubjectId: selectedCurriculumSubjectId(formData),
         addSubjectToTaxonomy: formData.get("addSubjectToTaxonomy") === "on",
+        academicStandardKey: String(formData.get("academicStandardKey") ?? "us"),
         curriculumAreaKey: String(formData.get("curriculumAreaKey") ?? "other"),
         gradeMin: selectedGradeMin,
         gradeMax: selectedGradeMax,
@@ -169,7 +167,7 @@ export function WorkbookUploadForm({
         <>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <label className="grid gap-2 text-sm font-semibold text-ink">Title<input required name="title" maxLength={180} className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3" /></label>
-        <SubjectTaxonomyFields subjects={subjects} />
+        <SubjectTaxonomyFields subjects={subjects} academicStandards={academicStandards} />
         <div className="grid gap-4 sm:col-span-2">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-2 text-sm font-semibold text-ink">
@@ -221,7 +219,6 @@ export function WorkbookUploadForm({
           ) : null}
           {!isMultiGrade ? <input type="hidden" name="gradeMax" value={gradeMin} /> : null}
         </div>
-        <label className="grid gap-2 text-sm font-semibold text-ink">Language<select name="languageCode" defaultValue="en" className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3 pr-12">{LANGUAGES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label className="grid gap-2 text-sm font-semibold text-ink">Catalog role<select name="type" defaultValue="core" className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3 pr-12"><option value="core">Core subject</option><option value="elective">Elective</option></select></label>
         <label className="grid gap-2 text-sm font-semibold text-ink">One-time price (USD)<input required name="price" type="text" inputMode="decimal" pattern="[0-9]+(?:\.[0-9]{1,2})?" defaultValue="3.99" autoComplete="off" className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3" /></label>
         <label className="grid gap-2 text-sm font-semibold text-ink">Edition<input required name="editionLabel" maxLength={80} defaultValue="1st edition" placeholder="1st edition, Revised edition…" className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3" /></label>

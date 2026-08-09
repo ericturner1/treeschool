@@ -38,6 +38,7 @@ export type StudentPointsPayload = {
     amount: number;
     kind: string;
     reason: string;
+    balanceAfter: number;
     actorName: string;
     reversed: boolean;
     createdAt: string;

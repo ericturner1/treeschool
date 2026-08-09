@@ -25,6 +25,9 @@ export type {
   WorkbookStudioJobStatus
 } from "./schema";
 export {
+  academicStandardCurriculumAreas,
+  academicStandardLanguages,
+  academicStandards,
   accountInvitationStatusEnum,
   accountInvitations,
   accountMemberRoleEnum,

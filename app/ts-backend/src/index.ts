@@ -158,6 +158,7 @@ import {
   getNativeWorkbookPlanningPreview,
   getNativeWorkbookProduct,
   getPurchasedNativeWorkbookDownload,
+  listAcademicStandardsForAdmin,
   listCurriculumSubjectsForAdmin,
   listAdminNativeWorkbooks,
   listAdminNativeWorkbookBundles,
@@ -1147,12 +1148,13 @@ const server = Bun.serve({
       try {
         const userId = url.searchParams.get("userId");
         if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
-        const [workbooks, bundles, subjects] = await Promise.all([
+        const [workbooks, bundles, subjects, academicStandards] = await Promise.all([
           listAdminNativeWorkbooks(userId),
           listAdminNativeWorkbookBundles(userId),
-          listCurriculumSubjectsForAdmin(userId)
+          listCurriculumSubjectsForAdmin(userId),
+          listAcademicStandardsForAdmin(userId)
         ]);
-        return Response.json({ workbooks, bundles, subjects });
+        return Response.json({ workbooks, bundles, subjects, academicStandards });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Could not load workbook administration.";
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
