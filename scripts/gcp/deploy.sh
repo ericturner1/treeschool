@@ -8,6 +8,8 @@ IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/backend:$(git rev-pa
 API_SERVICE="${GCP_API_SERVICE:-treeschool-api}"
 PROCESSOR_JOB="${GCP_PROCESSOR_JOB_NAME:-treeschool-processor}"
 BUCKET="${GCS_BUCKET_NAME:-treeschool-private-assets}"
+API_MEMORY="${GCP_API_MEMORY:-1Gi}"
+API_CONCURRENCY="${GCP_API_CONCURRENCY:-1}"
 
 API_SECRETS="DATABASE_URL=DATABASE_URL:latest,GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,INTERNAL_API_SECRET=INTERNAL_API_SECRET:latest"
 PROCESSOR_SECRETS="DATABASE_URL=DATABASE_URL:latest,GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest"
@@ -54,10 +56,10 @@ gcloud run deploy "${API_SERVICE}" \
   --allow-unauthenticated \
   --port 8080 \
   --cpu 1 \
-  --memory 512Mi \
+  --memory "${API_MEMORY}" \
   --min-instances 0 \
   --max-instances 3 \
-  --concurrency 40 \
+  --concurrency "${API_CONCURRENCY}" \
   --timeout 300 \
   --set-env-vars "GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_PROCESSOR_JOB_NAME=${PROCESSOR_JOB},GCS_BUCKET_NAME=${BUCKET},PUBLIC_APP_URL=https://www.treehomeschool.com,META_PIXEL_ID=930584153407646,META_GRAPH_API_VERSION=v25.0,SMTP_HOST=mail.privateemail.com,SMTP_PORT=465,SMTP_SECURE=true,SMTP_USER=support@treehomeschool.com,SMTP_FROM=Treeschool Support <support@treehomeschool.com>" \
   --set-secrets "${API_SECRETS}" \

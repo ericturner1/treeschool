@@ -9394,7 +9394,10 @@ async function inspectWeeklyPacketQuality(input: {
   // rendering. Use it for packet QC too: PDF.js and @napi-rs/canvas can load
   // separate native Path2D bindings after Bun bundles the service, which makes
   // valid transparency groups fail only in production.
-  const visualQuality = await inspectPdfVisualQuality(input.bytes);
+  const visualQuality = await inspectPdfVisualQuality(
+    input.bytes,
+    input.expectedPageCount,
+  );
   if (visualQuality.pageCount !== input.expectedPageCount) {
     throw new Error(
       `PDF quality check expected ${input.expectedPageCount} pages from the weekly metadata but rendered ${visualQuality.pageCount}.`

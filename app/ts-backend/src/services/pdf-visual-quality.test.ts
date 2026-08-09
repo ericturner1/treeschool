@@ -29,7 +29,7 @@ describe("weekly PDF visual quality", () => {
     });
     document.addPage([612, 792]);
 
-    const result = await inspectPdfVisualQuality(await document.save());
+    const result = await inspectPdfVisualQuality(await document.save(), 2);
 
     expect(result.pageCount).toBe(2);
     expect(result.darkPixelRatios[0]).toBeGreaterThan(0.00075);

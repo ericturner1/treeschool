@@ -1,74 +1,75 @@
 import { createCanvas, loadImage } from "@napi-rs/canvas";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const QUALITY_RENDER_MAX_DIMENSION = 220;
 
-export async function inspectPdfVisualQuality(bytes: Uint8Array) {
+async function renderQualityPage(input: {
+  sourcePath: string;
+  outputPrefix: string;
+  pageNumber: number;
+}) {
+  let renderer: ReturnType<typeof Bun.spawn>;
+  try {
+    renderer = Bun.spawn(
+      [
+        "pdftoppm",
+        "-png",
+        "-singlefile",
+        "-scale-to",
+        String(QUALITY_RENDER_MAX_DIMENSION),
+        "-f",
+        String(input.pageNumber),
+        "-l",
+        String(input.pageNumber),
+        input.sourcePath,
+        input.outputPrefix,
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+  } catch (error) {
+    throw new Error(
+      `The weekly PDF quality renderer is unavailable. ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  const [exitCode, , stderr] = await Promise.all([
+    renderer.exited,
+    new Response(renderer.stdout as ReadableStream<Uint8Array>).text(),
+    new Response(renderer.stderr as ReadableStream<Uint8Array>).text(),
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(
+      `The weekly PDF quality renderer failed on page ${input.pageNumber} (exit ${exitCode}).${stderr.trim() ? ` ${stderr.trim()}` : ""}`,
+    );
+  }
+}
+
+export async function inspectPdfVisualQuality(
+  bytes: Uint8Array,
+  expectedPageCount: number,
+) {
+  if (!Number.isInteger(expectedPageCount) || expectedPageCount < 1) {
+    throw new Error("The weekly PDF quality renderer needs a valid page count.");
+  }
   const workingDirectory = await mkdtemp(
     join(tmpdir(), "treeschool-pdf-quality-"),
   );
   const sourcePath = join(workingDirectory, "packet.pdf");
-  const outputPrefix = join(workingDirectory, "page");
 
   try {
     await writeFile(sourcePath, bytes);
-    let renderer: ReturnType<typeof Bun.spawn>;
-    try {
-      renderer = Bun.spawn(
-        [
-          "pdftoppm",
-          "-png",
-          "-scale-to",
-          String(QUALITY_RENDER_MAX_DIMENSION),
-          sourcePath,
-          outputPrefix,
-        ],
-        { stdout: "pipe", stderr: "pipe" },
-      );
-    } catch (error) {
-      throw new Error(
-        `The weekly PDF quality renderer is unavailable. ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-
-    const [exitCode, , stderr] = await Promise.all([
-      renderer.exited,
-      new Response(renderer.stdout as ReadableStream<Uint8Array>).text(),
-      new Response(renderer.stderr as ReadableStream<Uint8Array>).text(),
-    ]);
-    if (exitCode !== 0) {
-      throw new Error(
-        `The weekly PDF quality renderer failed (exit ${exitCode}).${stderr.trim() ? ` ${stderr.trim()}` : ""}`,
-      );
-    }
-
-    const renderedPages = (await readdir(workingDirectory))
-      .map((filename) => ({
-        filename,
-        pageNumber: Number(
-          filename.match(/^page-(\d+)\.png$/)?.[1] ?? Number.NaN,
-        ),
-      }))
-      .filter(({ pageNumber }) => Number.isInteger(pageNumber))
-      .sort((left, right) => left.pageNumber - right.pageNumber);
-    if (!renderedPages.length || renderedPages[0]?.pageNumber !== 1) {
-      throw new Error("The weekly PDF quality renderer returned no first page.");
-    }
-    for (let index = 0; index < renderedPages.length; index += 1) {
-      if (renderedPages[index]?.pageNumber !== index + 1) {
-        throw new Error(
-          "The weekly PDF quality renderer returned an incomplete page sequence.",
-        );
-      }
-    }
-
     const darkPixelRatios: number[] = [];
-    for (const renderedPage of renderedPages) {
-      const image = await loadImage(
-        await readFile(join(workingDirectory, renderedPage.filename)),
-      );
+    // Poppler can retain every rendered page until the process exits. Render and
+    // inspect one page per process so large weekly packets have a bounded memory
+    // footprint in the synchronous API request.
+    for (let pageNumber = 1; pageNumber <= expectedPageCount; pageNumber += 1) {
+      const outputPrefix = join(workingDirectory, `page-${pageNumber}`);
+      const outputPath = `${outputPrefix}.png`;
+      await renderQualityPage({ sourcePath, outputPrefix, pageNumber });
+
+      const image = await loadImage(await readFile(outputPath));
       const canvas = createCanvas(image.width, image.height);
       const context = canvas.getContext("2d");
       context.fillStyle = "white";
@@ -85,10 +86,11 @@ export async function inspectPdfVisualQuality(bytes: Uint8Array) {
       }
       const sampledPixels = Math.max(1, Math.floor(pixels.length / 16));
       darkPixelRatios.push(Number((darkPixels / sampledPixels).toFixed(6)));
+      await unlink(outputPath);
     }
 
     return {
-      pageCount: renderedPages.length,
+      pageCount: darkPixelRatios.length,
       darkPixelRatios,
     };
   } finally {
