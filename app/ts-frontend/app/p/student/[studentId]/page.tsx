@@ -387,7 +387,7 @@ export default async function ParentStudentOverviewPage({
                 </p>
               </article>
 
-              <article className="rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] px-5 py-5">
+              {metrics.lastAttendance?.daysSince === 0 ? null : <article className="rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] px-5 py-5">
                 <p className="text-sm font-semibold uppercase tracking-[0.08em] text-ink/55">Days since last attendance</p>
                 {metrics.premiumAccess && metrics.lastAttendance ? (
                   <p className="mt-3 text-[36px] font-semibold leading-none tracking-[-0.06em] text-ink">
@@ -403,7 +403,7 @@ export default async function ParentStudentOverviewPage({
                       ? `Last recorded ${lastAttendanceLabel}.`
                       : "No attendance recorded yet."}
                 </p>
-              </article>
+              </article>}
 
               <article className="rounded-[22px] border border-[#c9d9b7] bg-[#f1f7e8] px-5 py-5">
                 <p className="text-sm font-semibold uppercase tracking-[0.08em] text-[#587443]">Learning streak</p>

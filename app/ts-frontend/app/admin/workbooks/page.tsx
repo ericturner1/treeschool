@@ -69,7 +69,7 @@ export default async function AdminWorkbooksPage() {
             <p className="text-xs font-black uppercase tracking-[0.16em] text-earth">Treeschool administration</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-[-0.05em] sm:text-5xl">Workbooks</h1>
           </div>
-          <div className="flex flex-wrap gap-3"><Link href="/bookstore" className="cta-button cta-button--light cta-button--small">View bookstore</Link><Link href="/admin" className="cta-button cta-button--outline cta-button--small">Back to Admin</Link></div>
+          <div className="flex flex-wrap gap-3"><Link href="/bookstore" className="cta-button cta-button--light cta-button--small">View bookstore</Link></div>
         </header>
 
         <div className="mt-8">

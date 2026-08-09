@@ -15,7 +15,7 @@ export type StudentAttendancePayload = {
   entries: Array<{
     id: string; date: string; entryKind: string; activityType: string; subjectLabel: string | null;
     subjectLabels: string[]; weeklyPlanDayNumber: number | null;
-    title: string; notes: string | null; minutes: number | null;
+    title: string; notes: string | null; minutes: number | null; extraCreditPoints: number | null;
   }>;
 };
 

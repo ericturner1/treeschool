@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { unlockWeekCompletionSound } from "../../../../../lib/audio/week-completion-sound";
 import { usePlanDayProgress, useWeekProgress } from "./week-progress-state";
 
 export function LessonCompletionButton({
@@ -57,6 +58,7 @@ export function LessonCompletionButton({
             <button
               type="button"
               disabled={pending}
+              onPointerDown={() => void unlockWeekCompletionSound()}
               onClick={() => update(false)}
               className="text-xs font-semibold text-ink/48 underline decoration-ink/25 underline-offset-4 hover:text-earth disabled:cursor-wait disabled:opacity-55"
             >
@@ -68,6 +70,7 @@ export function LessonCompletionButton({
         <button
           type="button"
           disabled={pending}
+          onPointerDown={() => void unlockWeekCompletionSound()}
           onClick={() => update(true)}
           className="rounded-full border border-[#97b67f] bg-[#f6faef] px-4 py-2 text-xs font-bold text-[#486a38] shadow-[0_2px_0_#c9dbba] transition hover:bg-[#ebf4df] disabled:cursor-wait disabled:opacity-60"
         >

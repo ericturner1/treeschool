@@ -32,7 +32,9 @@ import {
   isCustomizedFunnelList
 } from "../../../lib/funnels/list-style";
 import type { AdminManagedFunnelPagePayload, ManagedFunnelPage } from "../../../lib/funnels/server";
+import type { NativeWorkbookCatalogItem } from "../../../lib/native-workbooks/server";
 import { showGlobalToast } from "../../../lib/toast";
+import { CurriculumCheckoutOptions } from "../../first-grade-homeschool-curriculum/curriculum-checkout-choice";
 
 type Selection =
   | { kind: "page" }
@@ -252,7 +254,7 @@ function PreviewElement({ element, palette, onSelect, selected }: { element: Fun
   return <hr onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} border-ink/15`} />;
 }
 
-function EditorCanvas({ document, selection, onSelect, viewport, showProtectedOrderForm = false }: { document: FunnelPageDocument; selection: Selection; onSelect: (selection: Selection) => void; viewport: "desktop" | "mobile"; showProtectedOrderForm?: boolean }) {
+function EditorCanvas({ document, selection, onSelect, viewport, orderFormPreview = null }: { document: FunnelPageDocument; selection: Selection; onSelect: (selection: Selection) => void; viewport: "desktop" | "mobile"; orderFormPreview?: ReactNode }) {
   const baseTheme = themes[document.theme];
   const styles = document.styles;
   const pageBg = styles?.colors?.pageBackground ?? baseTheme.page;
@@ -291,30 +293,7 @@ function EditorCanvas({ document, selection, onSelect, viewport, showProtectedOr
             </section>
           );
         })}
-        {showProtectedOrderForm ? (
-          <section className="rounded-[22px] border border-[#bdd2aa] bg-[#f5faef] px-5 py-6 shadow-[0_8px_24px_rgba(79,84,51,.06)]">
-            <div className="mx-auto flex max-w-[920px] flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="grid h-8 w-8 place-items-center rounded-full bg-[#dfeccf] text-[#4d6b3a]" aria-hidden="true">
-                    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none">
-                      <rect x="4.5" y="8.5" width="11" height="8" rx="2" stroke="currentColor" strokeWidth="1.7" />
-                      <path d="M7 8.5V6.8a3 3 0 0 1 6 0v1.7" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
-                    </svg>
-                  </span>
-                  <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Protected checkout</p>
-                </div>
-                <h3 className="mt-2 text-xl font-semibold tracking-[-.025em]">Secure order form</h3>
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-ink/55">
-                  The selected product, optional order bumps, and Stripe checkout button appear here on the live page.
-                </p>
-              </div>
-              <span className="shrink-0 rounded-full border border-[#bdd2aa] bg-white px-3 py-1.5 text-xs font-semibold text-[#567b40]">
-                Managed in step settings
-              </span>
-            </div>
-          </section>
-        ) : null}
+        {orderFormPreview}
       </div>
     </div>
   );
@@ -483,15 +462,30 @@ function ElementInspector({ element, update, chooseMedia, move, remove, buttonPa
     {element.type === "button" ? <ButtonInspector element={element} palette={buttonPalette} update={update} /> : null}
     {element.type === "countdown" ? <CountdownInspector element={element} palette={buttonPalette} update={update} /> : null}
     {element.type === "lead_capture" ? <><label className="grid gap-1.5 text-xs font-semibold">Form heading<input className={INPUT} value={element.props.heading} onChange={(event) => update({ ...element, props: { ...element.props, heading: event.target.value } })} /></label><label className="grid gap-1.5 text-xs font-semibold">Submit label<input className={INPUT} value={element.props.submitLabel} onChange={(event) => update({ ...element, props: { ...element.props, submitLabel: event.target.value } })} /></label></> : null}
-    {element.type === "button" || element.type === "lead_capture" ? <><label className="grid gap-1.5 text-xs font-semibold">Click action<select className={INPUT} value={element.props.action.type} onChange={(event) => update({ ...element, props: { ...element.props, action: buildAction(event.target.value as FunnelAction["type"], actionTarget(element.props.action), actionOffer(element.props.action)) } } as FunnelPageElement)}><option value="next_step">Next funnel step</option><option value="url">Fixed URL</option><option value="checkout">Start checkout</option><option value="accept_offer">Accept offer</option><option value="decline_offer">Decline offer</option><option value="none">No action</option></select></label>{element.props.action.type !== "next_step" && element.props.action.type !== "none" ? <label className="grid gap-1.5 text-xs font-semibold">Destination<input className={INPUT} value={actionTarget(element.props.action)} onChange={(event) => update({ ...element, props: { ...element.props, action: buildAction(element.props.action.type, event.target.value, actionOffer(element.props.action)) } } as FunnelPageElement)} placeholder="Optional funnel-relative target" /></label> : null}{"offerKey" in element.props.action ? <label className="grid gap-1.5 text-xs font-semibold">Offer key<input className={INPUT} value={element.props.action.offerKey} onChange={(event) => update({ ...element, props: { ...element.props, action: buildAction(element.props.action.type, actionTarget(element.props.action), event.target.value) } } as FunnelPageElement)} /></label> : null}</> : null}
+    {element.type === "button" || element.type === "lead_capture" ? <><label className="grid gap-1.5 text-xs font-semibold">Click action<select className={INPUT} value={element.props.action.type} onChange={(event) => update({ ...element, props: { ...element.props, action: buildAction(event.target.value as FunnelAction["type"], actionTarget(element.props.action), actionOffer(element.props.action)) } } as FunnelPageElement)}><option value="next_step">Next funnel step</option><option value="url">Fixed URL</option><option value="checkout">Start checkout</option><option value="accept_offer">Accept offer</option><option value="decline_offer">Decline offer</option><option value="none">No action</option></select></label>{element.props.action.type === "url" || element.props.action.type === "checkout" ? <label className="grid gap-1.5 text-xs font-semibold">Destination<input className={INPUT} value={actionTarget(element.props.action)} onChange={(event) => update({ ...element, props: { ...element.props, action: buildAction(element.props.action.type, event.target.value, actionOffer(element.props.action)) } } as FunnelPageElement)} placeholder="Optional funnel-relative target" /></label> : null}{"offerKey" in element.props.action ? <label className="grid gap-1.5 text-xs font-semibold">Offer key<input className={INPUT} value={element.props.action.offerKey} onChange={(event) => update({ ...element, props: { ...element.props, action: buildAction(element.props.action.type, actionTarget(element.props.action), event.target.value) } } as FunnelPageElement)} /></label> : null}</> : null}
     {align ? <label className="grid gap-1.5 text-xs font-semibold">Alignment<select className={INPUT} value={align} onChange={(event) => update({ ...element, props: { ...element.props, align: event.target.value as "left" | "center" | "right" } } as FunnelPageElement)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label> : null}
   </div>;
 }
 
-export function FunnelPageStudio({ funnelId, funnelSlug, stepId, data }: { funnelId: string; funnelSlug: string; stepId: string; data: AdminManagedFunnelPagePayload }) {
+export function FunnelPageStudio({
+  funnelId,
+  funnelSlug,
+  stepId,
+  data,
+  orderFormCatalog = [],
+  editorUserEmail = null
+}: {
+  funnelId: string;
+  funnelSlug: string;
+  stepId: string;
+  data: AdminManagedFunnelPagePayload;
+  orderFormCatalog?: NativeWorkbookCatalogItem[];
+  editorUserEmail?: string | null;
+}) {
   const [page, setPage] = useState<ManagedFunnelPage | null>(data.page);
   const [document, setDocument] = useState<FunnelPageDocument>(() => data.page?.content ?? emptyFunnelPageDocument(data.step.name, data.step.description));
-  const [savedDocumentSnapshot, setSavedDocumentSnapshot] = useState(() => JSON.stringify(data.page?.content ?? document));
+  const [seo, setSeo] = useState<ManagedFunnelPage["seo"]>(() => data.page?.seo ?? { title: data.step.name, description: data.step.description, noIndex: false });
+  const [savedDocumentSnapshot, setSavedDocumentSnapshot] = useState(() => JSON.stringify({ document: data.page?.content ?? document, seo: data.page?.seo ?? { title: data.step.name, description: data.step.description, noIndex: false } }));
   const [selection, setSelection] = useState<Selection>({ kind: "page" });
   const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
   const [panel, setPanel] = useState<"elements" | "blocks" | "styles">("elements");
@@ -502,7 +496,7 @@ export function FunnelPageStudio({ funnelId, funnelSlug, stepId, data }: { funne
   const [error, setError] = useState<string | null>(null);
   const [pendingNavigation, setPendingNavigation] = useState<PendingNavigation | null>(null);
   const assets = useMemo(() => document.assets ?? [], [document.assets]);
-  const currentDocumentSnapshot = useMemo(() => JSON.stringify(document), [document]);
+  const currentDocumentSnapshot = useMemo(() => JSON.stringify({ document, seo }), [document, seo]);
   const hasUnsavedChanges = currentDocumentSnapshot !== savedDocumentSnapshot;
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
   const allowNavigationRef = useRef(false);
@@ -587,19 +581,20 @@ export function FunnelPageStudio({ funnelId, funnelSlug, stepId, data }: { funne
   }
 
   async function save(publish = false) {
-    const snapshotBeingSaved = JSON.stringify(document);
+    const snapshotBeingSaved = JSON.stringify({ document, seo });
     setError(null);
     publish ? setPublishing(true) : setSaving(true);
     try {
       const saveResponse = await fetch("/api/funnels/pages", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
           funnelId, stepId, pageId: page?.id ?? null, source: "manual", content: document,
-          seo: page?.seo ?? { title: data.step.name, description: data.step.description, noIndex: false }
+          seo
         })
       });
       if (!saveResponse.ok) throw new Error(await responseError(saveResponse, "Could not save the page draft."));
       const saved = await saveResponse.json() as { page: ManagedFunnelPage };
       setPage(saved.page);
+      setSeo(saved.page.seo);
       setSavedDocumentSnapshot(snapshotBeingSaved);
       window.history.replaceState(window.history.state, "", `${window.location.pathname}?page=${encodeURIComponent(saved.page.id)}`);
       if (publish) {
@@ -666,6 +661,48 @@ export function FunnelPageStudio({ funnelId, funnelSlug, stepId, data }: { funne
     secondaryShadow: baseTheme.secondaryShadow,
     pageBorderRadius: document.styles?.buttons?.borderRadius
   };
+  const rawOrderFormSettings = data.step.settings.orderForm;
+  const orderFormSettings = rawOrderFormSettings && typeof rawOrderFormSettings === "object"
+    ? rawOrderFormSettings as Record<string, unknown>
+    : {};
+  const primaryProductId = typeof orderFormSettings.primaryProductId === "string" ? orderFormSettings.primaryProductId : null;
+  const primaryProduct = primaryProductId ? orderFormCatalog.find((item) => item.id === primaryProductId) ?? null : null;
+  const orderBumpIds = Array.isArray(orderFormSettings.orderBumpProductIds)
+    ? orderFormSettings.orderBumpProductIds.filter((id): id is string => typeof id === "string")
+    : [];
+  const orderBumps = orderBumpIds
+    .map((id) => orderFormCatalog.find((item) => item.id === id) ?? null)
+    .filter((item): item is NativeWorkbookCatalogItem => Boolean(item && item.id !== primaryProduct?.id));
+  const submitLabel = typeof orderFormSettings.submitLabel === "string" && orderFormSettings.submitLabel.trim()
+    ? orderFormSettings.submitLabel.trim()
+    : "Continue to secure checkout";
+  const orderFormPreview = data.step.stepType === "order_form" ? (
+    <section className="pointer-events-none mx-auto mb-12 w-full max-w-[1120px] rounded-[30px] border border-[#d8c7ad] bg-[#fffaf2] p-6 shadow-[0_18px_50px_rgba(79,54,34,.09)] sm:p-9" aria-label="Protected checkout preview">
+      {primaryProduct ? (
+        <CurriculumCheckoutOptions
+          bundleId={primaryProduct.id}
+          bundleSlug={primaryProduct.slug}
+          bundleTitle={primaryProduct.title}
+          bundleDescription={primaryProduct.description}
+          bundlePrice={new Intl.NumberFormat("en-US", { style: "currency", currency: primaryProduct.currencyCode }).format(primaryProduct.priceInCents / 100)}
+          bundlePriceInCents={primaryProduct.priceInCents}
+          currencyCode={primaryProduct.currencyCode}
+          orderBumps={orderBumps.map((item) => ({ id: item.id, title: item.title, description: item.description, priceInCents: item.priceInCents, currencyCode: item.currencyCode }))}
+          submitLabel={submitLabel}
+          userEmail={editorUserEmail}
+          returnPath={page?.publicPath ?? "/"}
+          funnelKey={funnelSlug}
+          previewMode
+          successPath={page?.nextHref ?? undefined}
+        />
+      ) : (
+        <div className="grid gap-4 text-center">
+          <p className="text-base font-semibold text-ink/65">Checkout is temporarily unavailable because this order form does not have a published product configured.</p>
+          <button type="button" disabled className="cta-button cta-button--light w-full cursor-not-allowed justify-center opacity-50">{submitLabel}</button>
+        </div>
+      )}
+    </section>
+  ) : null;
   return <main className="flex min-h-screen flex-col bg-[#eee8dd] text-ink">
     <header className="flex min-h-16 flex-wrap items-center gap-3 border-b border-[#d6c6af] bg-[#fffaf2] px-4 py-2 shadow-sm">
       <a href={backHref} className="inline-flex h-10 items-center rounded-[11px] border border-[#d8c5a8] bg-white px-3 text-sm font-semibold">← Funnel</a>
@@ -684,9 +721,9 @@ export function FunnelPageStudio({ funnelId, funnelSlug, stepId, data }: { funne
         {panel === "blocks" ? <div className="mt-4 grid gap-2">{(["hero", "split", "offer", "blank"] as const).map((kind) => <button type="button" key={kind} onClick={() => mutate((draft) => { draft.sections.push(newSection(kind)); setSelection({ kind: "section", sectionIndex: draft.sections.length - 1 }); })} className="min-h-14 rounded-[12px] border border-[#d8c5a8] bg-white px-3 text-left text-sm font-semibold capitalize hover:border-[#739655]">+ {kind} section</button>)}</div> : null}
         {panel === "styles" ? <div className="mt-4 grid gap-4"><label className="grid gap-1 text-xs font-semibold">Theme<select className={INPUT} value={document.theme} onChange={(event) => mutate((draft) => { draft.theme = event.target.value as FunnelPageDocument["theme"]; })}>{Object.keys(themes).map((theme) => <option key={theme} value={theme}>{theme[0]!.toUpperCase()}{theme.slice(1)}</option>)}</select></label><ColorControl label="Page background" value={document.styles?.colors?.pageBackground ?? baseTheme.page} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, pageBackground: value } }; })} /><ColorControl label="Surface" value={document.styles?.colors?.surface ?? baseTheme.surface} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, surface: value } }; })} /><ColorControl label="Primary" value={document.styles?.colors?.primary ?? baseTheme.primary} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, primary: value } }; })} /><NumberControl label="Content width" value={document.styles?.layout?.contentWidth ?? 1120} min={640} max={1600} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, layout: { ...draft.styles?.layout, contentWidth: value } }; })} /><NumberControl label="Section spacing" value={document.styles?.layout?.sectionGap ?? 22} min={0} max={160} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, layout: { ...draft.styles?.layout, sectionGap: value } }; })} /></div> : null}
       </aside>
-      <section className="min-w-0 overflow-auto bg-[#d9d4cc] p-5"><EditorCanvas document={document} selection={selection} onSelect={setSelection} viewport={viewport} showProtectedOrderForm={data.step.stepType === "order_form"} /></section>
+      <section className="min-w-0 overflow-auto bg-[#d9d4cc] p-5"><EditorCanvas document={document} selection={selection} onSelect={setSelection} viewport={viewport} orderFormPreview={orderFormPreview} /></section>
       <aside className="overflow-auto border-l border-[#d6c6af] bg-[#fffaf2] p-4">
-        {currentElement && selection.kind === "element" ? <ElementInspector element={currentElement} buttonPalette={buttonPalette} chooseMedia={() => setMediaOpen(true)} update={(next) => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements[selection.elementIndex] = next; })} move={(direction) => mutate((draft) => { const items = draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements; const nextIndex = selection.elementIndex + direction; if (nextIndex < 0 || nextIndex >= items.length) return; const [item] = items.splice(selection.elementIndex, 1); if (item) items.splice(nextIndex, 0, item); setSelection({ ...selection, elementIndex: nextIndex }); })} remove={() => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements.splice(selection.elementIndex, 1); setSelection({ kind: "section", sectionIndex: selection.sectionIndex }); })} /> : selection.kind === "section" ? <SectionInspector section={document.sections[selection.sectionIndex]!} chooseMedia={() => setMediaOpen(true)} update={(recipe) => mutate((draft) => recipe(draft.sections[selection.sectionIndex]!))} move={(direction) => mutate((draft) => { const nextIndex = selection.sectionIndex + direction; if (nextIndex < 0 || nextIndex >= draft.sections.length) return; const [item] = draft.sections.splice(selection.sectionIndex, 1); if (item) draft.sections.splice(nextIndex, 0, item); setSelection({ kind: "section", sectionIndex: nextIndex }); })} remove={() => mutate((draft) => { if (draft.sections.length <= 1) return; draft.sections.splice(selection.sectionIndex, 1); setSelection({ kind: "page" }); })} /> : <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Page</p><h3 className="mt-1 text-lg font-semibold">Styles & structure</h3><p className="mt-3 text-sm leading-6 text-ink/55">Select an element on the canvas to edit its content. Use the left panel to add elements, complete blocks, and page-wide styles.</p><button type="button" onClick={() => setPanel("styles")} className="mt-4 w-full rounded-[12px] border border-[#d8c5a8] bg-white px-4 py-3 text-sm font-semibold">Open page styles</button></div>}
+        {currentElement && selection.kind === "element" ? <ElementInspector element={currentElement} buttonPalette={buttonPalette} chooseMedia={() => setMediaOpen(true)} update={(next) => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements[selection.elementIndex] = next; })} move={(direction) => mutate((draft) => { const items = draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements; const nextIndex = selection.elementIndex + direction; if (nextIndex < 0 || nextIndex >= items.length) return; const [item] = items.splice(selection.elementIndex, 1); if (item) items.splice(nextIndex, 0, item); setSelection({ ...selection, elementIndex: nextIndex }); })} remove={() => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements.splice(selection.elementIndex, 1); setSelection({ kind: "section", sectionIndex: selection.sectionIndex }); })} /> : selection.kind === "section" ? <SectionInspector section={document.sections[selection.sectionIndex]!} chooseMedia={() => setMediaOpen(true)} update={(recipe) => mutate((draft) => recipe(draft.sections[selection.sectionIndex]!))} move={(direction) => mutate((draft) => { const nextIndex = selection.sectionIndex + direction; if (nextIndex < 0 || nextIndex >= draft.sections.length) return; const [item] = draft.sections.splice(selection.sectionIndex, 1); if (item) draft.sections.splice(nextIndex, 0, item); setSelection({ kind: "section", sectionIndex: nextIndex }); })} remove={() => mutate((draft) => { if (draft.sections.length <= 1) return; draft.sections.splice(selection.sectionIndex, 1); setSelection({ kind: "page" }); })} /> : <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Page</p><h3 className="mt-1 text-lg font-semibold">Page settings</h3><p className="mt-3 text-sm leading-6 text-ink/55">Select an element on the canvas to edit its content. Page-wide styles are available from the left panel.</p><button type="button" onClick={() => setPanel("styles")} className="mt-4 w-full rounded-[12px] border border-[#d8c5a8] bg-white px-4 py-3 text-sm font-semibold">Open page styles</button><div className="mt-5 border-t border-[#eadfce] pt-5"><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Search appearance</p><div className="mt-3 grid gap-4"><label className="grid gap-1.5 text-xs font-semibold">SEO title<input className={INPUT} value={seo.title} maxLength={140} onChange={(event) => setSeo((current) => ({ ...current, title: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.title.length}/140 characters</span></label><label className="grid gap-1.5 text-xs font-semibold">Meta description<textarea className={`${INPUT} min-h-28 resize-y`} value={seo.description} maxLength={320} onChange={(event) => setSeo((current) => ({ ...current, description: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.description.length}/320 characters</span></label><label className="flex items-start gap-3 rounded-[12px] border border-[#dfcfb7] bg-white px-3 py-3 text-xs font-semibold"><input type="checkbox" checked={seo.noIndex} onChange={(event) => setSeo((current) => ({ ...current, noIndex: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-[#76a456]" /><span>Hide this page from search engines<span className="mt-1 block font-normal leading-5 text-ink/50">Adds a no-index directive while keeping the page available by its funnel URL.</span></span></label></div></div></div>}
       </aside>
     </div>
     {mediaOpen ? <AssetLibrary assets={assets} funnelId={funnelId} stepId={stepId} onClose={() => setMediaOpen(false)} onUploaded={(asset) => mutate((draft) => { draft.assets = [...(draft.assets ?? []), asset]; if (selection.kind === "element") { const element = draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements[selection.elementIndex]; if (element?.type === "image") element.props.media = asset; } else if (selection.kind === "section") draft.sections[selection.sectionIndex]!.props.background = asset; setMediaOpen(false); })} onChoose={(asset) => mutate((draft) => { if (selection.kind === "element") { const element = draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements[selection.elementIndex]; if (element?.type === "image") element.props.media = asset; } else if (selection.kind === "section") draft.sections[selection.sectionIndex]!.props.background = asset; setMediaOpen(false); })} /> : null}

@@ -91,4 +91,31 @@ describe("funnel journey reachability", () => {
 
     expect([...issues.keys()]).toEqual([]);
   });
+
+  test("accepts a downsell immediately after an active upsell", () => {
+    const issues = findFunnelJourneyIssues([
+      step("order", { stepType: "order_form" }),
+      step("upsell", { stepType: "upsell", settings: { journeyNextAction: "button" } }),
+      step("downsell", { stepType: "downsell", settings: { journeyNextAction: "button" } }),
+      step("finish", { stepType: "thank_you" })
+    ]);
+
+    expect(issues.has("downsell")).toBe(false);
+  });
+
+  test("flags a standalone or second consecutive downsell", () => {
+    const standaloneIssues = findFunnelJourneyIssues([
+      step("order", { stepType: "order_form" }),
+      step("downsell", { stepType: "downsell", settings: { journeyNextAction: "button" } })
+    ]);
+    const consecutiveIssues = findFunnelJourneyIssues([
+      step("upsell", { stepType: "upsell", settings: { journeyNextAction: "button" } }),
+      step("first-downsell", { stepType: "downsell", settings: { journeyNextAction: "button" } }),
+      step("second-downsell", { stepType: "downsell", settings: { journeyNextAction: "button" } })
+    ]);
+
+    expect(standaloneIssues.get("downsell")?.message).toContain("immediately follow");
+    expect(consecutiveIssues.has("first-downsell")).toBe(false);
+    expect(consecutiveIssues.get("second-downsell")?.message).toContain("immediately follow");
+  });
 });

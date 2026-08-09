@@ -87,10 +87,6 @@ export function FunnelSettingsDialog({
             Objective
             <textarea name="objective" rows={2} defaultValue={funnel.objective} className="ts-input resize-y" />
           </label>
-          <label className="grid gap-2 text-sm font-semibold sm:col-span-2">
-            Fallback top-of-funnel path
-            <input name="publicPath" defaultValue={funnel.publicPath ?? ""} placeholder="/f/example" className="ts-input" />
-          </label>
           <div className="flex flex-wrap items-center justify-end gap-3 sm:col-span-2">
             <button type="button" onClick={closeDialog} className="cta-button cta-button--outline cta-button--small">
               Cancel

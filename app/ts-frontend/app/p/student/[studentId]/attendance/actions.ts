@@ -34,7 +34,8 @@ export async function addManualAttendanceAction(formData: FormData) {
       subjectLabel: value(formData, "subjectLabel") || null,
       title: value(formData, "title"),
       notes: value(formData, "notes") || null,
-      minutes: Number(value(formData, "minutes")) || null
+      minutes: Number(value(formData, "minutes")) || null,
+      extraCreditPoints: Number(value(formData, "extraCreditPoints")) || null
     });
   } catch (error) {
     redirect(`${path}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not save attendance.")}`);
@@ -127,7 +128,8 @@ export async function updateManualAttendanceAction(formData: FormData) {
       subjectLabel: value(formData, "subjectLabel") || null,
       title: value(formData, "title"),
       notes: value(formData, "notes") || null,
-      minutes: Number(value(formData, "minutes")) || null
+      minutes: Number(value(formData, "minutes")) || null,
+      extraCreditPoints: Number(value(formData, "extraCreditPoints")) || null
     });
   } catch (error) {
     redirect(`${path}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not update attendance.")}`);

@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
+import { unlockWeekCompletionSound } from "../../../../../lib/audio/week-completion-sound";
 import { usePlanDayProgress, useWeekProgress } from "./week-progress-state";
 
 type SubjectOption = { subjectKey: string; subjectLabel: string };
@@ -20,7 +21,7 @@ export function DayAttendanceControl({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const day = usePlanDayProgress(dayNumber);
-  const { setSubjectCompleted, setSubjectsCompleted } = useWeekProgress();
+  const { setSubjectsCompleted } = useWeekProgress();
   const completedKeys = new Set(day.completedSubjectKeys);
   const remainingSubjects = subjects.filter((subject) => !completedKeys.has(subject.subjectKey));
   const today = new Date().toISOString().slice(0, 10);
@@ -38,7 +39,6 @@ export function DayAttendanceControl({
     const subjectKeys = remainingSubjects.map((subject) => subject.subjectKey);
     setPending(true);
     setError(null);
-    setSubjectsCompleted(dayNumber, subjectKeys);
     try {
       const response = await fetch("/api/paper-plan/lesson-completion", {
         method: "POST",
@@ -53,9 +53,9 @@ export function DayAttendanceControl({
       });
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) throw new Error(payload?.error ?? "Could not complete the lessons.");
+      setSubjectsCompleted(dayNumber, subjectKeys);
       setOpen(false);
     } catch (caught) {
-      for (const subjectKey of subjectKeys) setSubjectCompleted(dayNumber, subjectKey, false);
       setError(caught instanceof Error ? caught.message : "Could not complete the lessons.");
     } finally {
       setPending(false);
@@ -104,7 +104,7 @@ export function DayAttendanceControl({
             {error ? <p role="alert" className="mt-4 rounded-[12px] bg-[#fff0eb] px-3 py-2 text-sm font-semibold text-[#8b3e2f]">{error}</p> : null}
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button type="button" disabled={pending} onClick={() => setOpen(false)} className="cta-button cta-button--outline cta-button--small disabled:opacity-50">Cancel</button>
-              <button type="submit" disabled={pending} className="cta-button cta-button--light cta-button--small disabled:cursor-wait disabled:opacity-60">
+              <button type="submit" disabled={pending} onPointerDown={() => void unlockWeekCompletionSound()} className="cta-button cta-button--light cta-button--small disabled:cursor-wait disabled:opacity-60">
                 {pending ? "Marking lessons…" : "Mark remaining lessons done"}
               </button>
             </div>

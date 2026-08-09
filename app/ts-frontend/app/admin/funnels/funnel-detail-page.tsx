@@ -205,6 +205,11 @@ function StepFields({
             <p className="text-sm leading-6 text-ink/55">
               Edit the page itself to control the accept button and decline-link copy.
             </p>
+            <p className="rounded-[14px] border border-[#d9cfea] bg-[#f7f3fb] px-4 py-3 text-sm leading-6 text-[#5f5275]">
+              {step?.stepType === "downsell"
+                ? "A downsell must immediately follow an active upsell. It appears only when that upsell is declined; either downsell choice then continues to the following step."
+                : "If this upsell is accepted, Treeschool skips the immediately following downsell. If it is declined, the customer sees that downsell next."}
+            </p>
           </section>
         ) : null}
         <label className="grid gap-2 text-sm font-semibold text-ink/82 sm:col-span-2">
@@ -271,7 +276,6 @@ export async function AdminFunnelDetailPage({
     listNativeWorkbookCatalog({ userId: user.id }).catch(() => ({ workbooks: [] }))
   ]);
   const catalog = catalogData.workbooks;
-  const variantCount = funnel.steps.length - stepHierarchy.length;
   const topStep = funnel.steps.find((step) => step.isTopOfFunnel);
   const funnelPublicPath = topStep?.routePath ?? topStep?.publicPath ?? funnel.publicPath;
   const selectedStepHasManagedEditor = Boolean(
@@ -330,15 +334,7 @@ export async function AdminFunnelDetailPage({
 
         <section className="mt-2 grid gap-5 lg:grid-cols-[350px_minmax(0,1fr)]">
           <aside className="rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] p-4 shadow-[0_8px_24px_rgba(79,54,34,.05)]">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.12em] text-[#567b40]">Journey</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">Funnel steps</h2>
-              </div>
-              <span className="rounded-full bg-[#efe7d9] px-3 py-1 text-xs font-semibold text-ink/55">
-                {stepHierarchy.length} steps{variantCount > 0 ? ` · ${variantCount} variants` : ""}
-              </span>
-            </div>
+            <h2 className="mb-4 text-2xl font-semibold tracking-[-0.04em]">Funnel steps</h2>
 
             <FunnelStepRail
               funnelId={funnel.id}
@@ -406,7 +402,7 @@ export async function AdminFunnelDetailPage({
                             <div>
                               <StepFields funnelId={funnel.id} funnelSlug={funnel.slug} options={data} existingSteps={funnel.steps} step={selectedStep} catalog={catalog} />
                             </div>
-                            <aside className="flex flex-wrap items-start gap-2 border-t border-[#eadbc5] pt-4 lg:flex-col lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+                            <aside className="flex flex-wrap items-start gap-3 border-t border-[#eadbc5] pt-4 lg:flex-col lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
                               <FunnelSubmitButton
                                 label="Save"
                                 pendingLabel="Saving…"

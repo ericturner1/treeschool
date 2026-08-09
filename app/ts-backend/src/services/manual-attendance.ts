@@ -15,6 +15,7 @@ export type ManualAttendanceFields = {
   title: string;
   notes?: string | null;
   minutes?: number | null;
+  extraCreditPoints?: number | null;
 };
 
 function trimmedOptional(value: string | null | undefined, maximum: number, fieldName: string) {
@@ -51,17 +52,32 @@ function minutes(value: number | null | undefined) {
   return value;
 }
 
+function extraCreditPoints(value: number | null | undefined) {
+  if (value == null) return null;
+  if (!Number.isInteger(value) || value < 1 || value > 100) {
+    throw new Error("Extra credit must be a whole number between 1 and 100 points.");
+  }
+  return value;
+}
+
 export function normalizeManualAttendanceFields(input: ManualAttendanceFields) {
   const title = input.title.trim();
   if (!title) throw new Error("Add a short description of the learning activity.");
   if (title.length > 240) throw new Error("The learning activity description is too long.");
 
+  const subjectLabel = trimmedOptional(input.subjectLabel, 120, "The subject");
+  const bonusPoints = extraCreditPoints(input.extraCreditPoints);
+  if (bonusPoints != null && !subjectLabel) {
+    throw new Error("Choose a subject before adding extra credit.");
+  }
+
   return {
     attendanceDate: attendanceDate(input.attendanceDate),
     activityType: activityType(input.activityType),
-    subjectLabel: trimmedOptional(input.subjectLabel, 120, "The subject"),
+    subjectLabel,
     title,
     notes: trimmedOptional(input.notes, 4000, "The notes"),
-    minutes: minutes(input.minutes)
+    minutes: minutes(input.minutes),
+    extraCreditPoints: bonusPoints
   };
 }

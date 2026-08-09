@@ -9,14 +9,16 @@ describe("manual attendance editing", () => {
       subjectLabel: "  Science  ",
       title: "  Visited the natural history museum  ",
       notes: "  Studied dinosaur fossils.  ",
-      minutes: 90
+      minutes: 90,
+      extraCreditPoints: 5
     })).toEqual({
       attendanceDate: "2026-07-27",
       activityType: "field_trip",
       subjectLabel: "Science",
       title: "Visited the natural history museum",
       notes: "Studied dinosaur fossils.",
-      minutes: 90
+      minutes: 90,
+      extraCreditPoints: 5
     });
   });
 
@@ -31,8 +33,25 @@ describe("manual attendance editing", () => {
     })).toMatchObject({
       subjectLabel: null,
       notes: null,
-      minutes: null
+      minutes: null,
+      extraCreditPoints: null
     });
+  });
+
+  test("requires a subject and valid whole-number points for extra credit", () => {
+    expect(() => normalizeManualAttendanceFields({
+      attendanceDate: "2026-07-27",
+      activityType: "project",
+      title: "Science fair display",
+      extraCreditPoints: 5
+    })).toThrow("Choose a subject before adding extra credit.");
+    expect(() => normalizeManualAttendanceFields({
+      attendanceDate: "2026-07-27",
+      activityType: "project",
+      subjectLabel: "Science",
+      title: "Science fair display",
+      extraCreditPoints: 2.5
+    })).toThrow("Extra credit must be a whole number");
   });
 
   test("rejects invalid dates, activity types, and minutes", () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useEffect, useState } from "react";
+import { unlockWeekCompletionSound } from "../../../../../lib/audio/week-completion-sound";
 import { letterGrade } from "./grade-utils";
 import { useWeekProgress } from "./week-progress-state";
 
@@ -101,7 +102,7 @@ export function DaySubjectGradeField({
         className="min-h-10 w-24 rounded-[12px] border border-[#dcc8aa] bg-white px-3 text-sm"
       />
       {grade ? <span className="rounded-[10px] bg-[#e5efd9] px-3 py-2 text-sm font-semibold text-[#486a38]">{grade}</span> : null}
-      <button type="submit" disabled={saving} className="rounded-[12px] border border-[#b8cda8] bg-white px-4 py-2 text-sm font-semibold text-[#486a38] shadow-[0_3px_0_#b8cda8] disabled:cursor-wait disabled:opacity-60">{saving ? "Saving…" : "Save grade"}</button>
+      <button type="submit" disabled={saving} onPointerDown={() => void unlockWeekCompletionSound()} className="rounded-[12px] border border-[#b8cda8] bg-white px-4 py-2 text-sm font-semibold text-[#486a38] shadow-[0_3px_0_#b8cda8] disabled:cursor-wait disabled:opacity-60">{saving ? "Saving…" : "Save grade"}</button>
       <button type="button" disabled={saving} onClick={() => { setValue(savedValue == null ? "" : String(savedValue)); setError(null); setEditing(false); }} className="px-2 py-2 text-xs font-semibold text-ink/55 disabled:opacity-50">Cancel</button>
       {canRemove && savedValue != null ? <button type="button" disabled={saving} onClick={() => void save(null)} className="px-2 py-2 text-xs font-semibold text-[#8b3e2f] underline underline-offset-4 disabled:opacity-50">{saving ? "Removing…" : "Remove"}</button> : null}
       {error ? <p role="alert" className="basis-full text-xs font-semibold text-[#8b3e2f]">{error}</p> : null}

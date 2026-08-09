@@ -8,7 +8,7 @@ import {
   getAdminFunnelPage,
   saveAdminFunnelPageDraft
 } from "../../../../../../../lib/funnels/server";
-import { getNativeWorkbookNavigation } from "../../../../../../../lib/native-workbooks/server";
+import { getNativeWorkbookNavigation, listNativeWorkbookCatalog } from "../../../../../../../lib/native-workbooks/server";
 
 export const metadata: Metadata = {
   title: "Funnel page editor · Treeschool Admin",
@@ -71,5 +71,9 @@ export default async function FunnelPageEditorRoute({
     }
   }
 
-  return <FunnelPageStudio funnelId={resolvedData.funnel.id} funnelSlug={resolvedData.funnel.slug} stepId={resolvedData.step.id} data={resolvedData} />;
+  const orderFormCatalog = resolvedData.step.stepType === "order_form"
+    ? (await listNativeWorkbookCatalog({ userId: user.id }).catch(() => ({ workbooks: [] }))).workbooks
+    : [];
+
+  return <FunnelPageStudio funnelId={resolvedData.funnel.id} funnelSlug={resolvedData.funnel.slug} stepId={resolvedData.step.id} data={resolvedData} orderFormCatalog={orderFormCatalog} editorUserEmail={user.email ?? null} />;
 }

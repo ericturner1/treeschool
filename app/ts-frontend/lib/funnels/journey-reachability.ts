@@ -76,5 +76,14 @@ export function findFunnelJourneyIssues(steps: AdminFunnelStep[]) {
     }
   }
 
+  for (const [index, { step }] of activeNodes.entries()) {
+    if (step.stepType !== "downsell") continue;
+    if (activeNodes[index - 1]?.step.stepType === "upsell") continue;
+    issues.set(step.id, {
+      stepId: step.id,
+      message: "A downsell must immediately follow an active upsell."
+    });
+  }
+
   return issues;
 }

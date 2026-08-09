@@ -53,6 +53,7 @@ import {
   type ModelUsageContext
 } from "./model-usage";
 import { recordTeacherGradeActivity } from "./teacher-activity";
+import { normalizePlanSubjectLabel, planSubjectKey } from "./plan-subject-key";
 import {
   buildPageNumberMappingFromPdfLabels,
   buildPageNumberMappingFromObservedPoints,
@@ -689,18 +690,8 @@ async function requireOwnedYear(parentUserId: string, learningYearId: string) {
   return year;
 }
 
-function normalizeSubjectKey(label: string) {
-  return label
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-}
-
 function subjectKeyFor(input: { subjectId?: string | null; subjectLabel?: string | null }) {
-  if (input.subjectId) return `system:${input.subjectId}`;
-  return `custom:${normalizeSubjectKey(input.subjectLabel || "Uncategorized") || "uncategorized"}`;
+  return planSubjectKey(input);
 }
 
 function normalizeTeachingDays(value: unknown, fallback: number | null = null) {
@@ -2038,7 +2029,7 @@ export function buildLearningUnitMetadata(input: {
   for (const sectionGroup of sectionGroups) {
     const firstSection = sectionGroup[0]!;
     const leafTitle = learningUnitBaseTitle(firstSection.title);
-    const idStem = normalizeSubjectKey(leafTitle) || "teaching-unit";
+    const idStem = normalizePlanSubjectLabel(leafTitle) || "teaching-unit";
     const id = `unit-${String(learningUnits.length + 1).padStart(4, "0")}-${idStem}`;
     const openingText = input.pages[firstSection.startPage - 1]?.text ?? "";
     const titleScore = pageTitleMatchScore(openingText, firstSection.title);
@@ -6560,7 +6551,7 @@ export async function evaluateLearningYearCurriculumCompleteness(
 
   for (const { document, analysis, academicLevel } of preparedDocuments) {
     const name = document.subjectLabel?.trim() || document.label.trim() || "Uncategorized";
-    const key = normalizeSubjectKey(name) || "uncategorized";
+    const key = normalizePlanSubjectLabel(name) || "uncategorized";
     const subject = subjects.get(key) ?? { name, parentLevel: null, materials: [] };
     subject.materials.push({
       title: String(analysis.suggestedTitle || document.label).trim(),

@@ -10,6 +10,7 @@ import {
   useRef,
   useState
 } from "react";
+import { playWeekCompletionSound } from "../../../../../lib/audio/week-completion-sound";
 
 export type InitialPlanDayProgress = {
   dayNumber: number;
@@ -73,12 +74,18 @@ export function WeekProgressProvider({
   const [days, setDays] = useState(() => initialDays.map(normalizeDay));
   const summary = useMemo(() => deriveWeekProgress(days, initialStatus), [days, initialStatus]);
   const mounted = useRef(false);
+  const previousStatus = useRef(summary.status);
 
   useEffect(() => {
     if (!mounted.current) {
       mounted.current = true;
+      previousStatus.current = summary.status;
       return;
     }
+    if (previousStatus.current !== "completed" && summary.status === "completed") {
+      void playWeekCompletionSound();
+    }
+    previousStatus.current = summary.status;
     window.dispatchEvent(new CustomEvent(WEEK_PROGRESS_EVENT, {
       detail: { weekId, status: summary.status }
     }));

@@ -3196,6 +3196,7 @@ const server = Bun.serve({
         title?: string;
         notes?: string | null;
         minutes?: number | null;
+        extraCreditPoints?: number | null;
       };
       if (!body.parentUserId || !body.profileId || !body.entryKind) {
         return Response.json({ error: "parentUserId, profileId, and entryKind are required." }, { status: 400 });
@@ -3251,7 +3252,8 @@ const server = Bun.serve({
           subjectLabel: body.subjectLabel,
           title: body.title ?? "",
           notes: body.notes,
-          minutes: body.minutes
+          minutes: body.minutes,
+          extraCreditPoints: body.extraCreditPoints
         }), { status: 201 });
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : "Failed to record attendance." }, { status: 400 });
@@ -3285,6 +3287,7 @@ const server = Bun.serve({
         title?: string;
         notes?: string | null;
         minutes?: number | null;
+        extraCreditPoints?: number | null;
       };
       if (
         !body.parentUserId ||
@@ -3309,7 +3312,8 @@ const server = Bun.serve({
           subjectLabel: body.subjectLabel,
           title: body.title,
           notes: body.notes,
-          minutes: body.minutes
+          minutes: body.minutes,
+          extraCreditPoints: body.extraCreditPoints
         }));
       } catch (error) {
         return Response.json(

@@ -115,7 +115,6 @@ export default async function AdminFaqsPage({ searchParams }: Props) {
           </div>
           <div className="flex flex-wrap gap-3">
             <Link href="/faq" className="cta-button cta-button--outline cta-button--small">View public FAQ</Link>
-            <Link href="/admin" className="cta-button cta-button--outline cta-button--small">Back to Admin</Link>
           </div>
         </header>
 

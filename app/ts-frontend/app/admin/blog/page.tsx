@@ -32,7 +32,6 @@ export default async function AdminBlogPage({ searchParams }: Props) {
           </div>
           <div className="flex flex-wrap gap-3">
             <Link href="/blog" className="cta-button cta-button--outline cta-button--small">View public blog</Link>
-            <Link href="/admin" className="cta-button cta-button--outline cta-button--small">Back to Admin</Link>
             <Link href="/admin/blog/new" className="cta-button cta-button--light cta-button--small">New post</Link>
           </div>
         </header>

@@ -6,6 +6,7 @@ import {
   learningYears,
   weeklyPlanDayPdfAssets,
   weeklyPlanDaySubjectGrades,
+  weeklyPlanDownloadEvents,
   weeklyPlanItems,
   weeklyPlanJobs,
   weeklyPlanPdfAssets,
@@ -15,24 +16,12 @@ import {
 import { db } from "../db";
 import { getManageableStudentProfile } from "./accounts";
 import { getPremiumFeatureAccess } from "./entitlements";
+import { averageWithExtraCredit } from "./grade-average";
 import { translateScoreToGrade } from "./grades";
+import { planSubjectKey } from "./plan-subject-key";
 import { calculateSchoolYearPacing } from "./school-year-pacing";
 
 const DAY_MS = 86_400_000;
-
-function normalizeSubjectKey(label: string) {
-  return label
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-}
-
-function planSubjectKey(subjectId: string | null, subjectLabel: string | null) {
-  if (subjectId) return `system:${subjectId}`;
-  return `custom:${normalizeSubjectKey(subjectLabel || "Uncategorized") || "uncategorized"}`;
-}
 
 function daysSince(date: string) {
   const today = new Date();
@@ -131,7 +120,9 @@ export async function getStudentOverviewMetrics(input: {
     legacyGrades,
     lastAttendanceRow,
     weekPdfAssets,
-    dayPdfAssets
+    dayPdfAssets,
+    downloadEvents,
+    extraCreditRows
   ] = await Promise.all([
     !featureAccess.allowed || weekIds.length === 0
       ? Promise.resolve([])
@@ -202,7 +193,23 @@ export async function getStudentOverviewMetrics(input: {
       : db
           .select({ weeklyPlanId: weeklyPlanDayPdfAssets.weeklyPlanId })
           .from(weeklyPlanDayPdfAssets)
-          .where(inArray(weeklyPlanDayPdfAssets.weeklyPlanId, weekIds))
+          .where(inArray(weeklyPlanDayPdfAssets.weeklyPlanId, weekIds)),
+    weekIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({ weeklyPlanId: weeklyPlanDownloadEvents.weeklyPlanId })
+          .from(weeklyPlanDownloadEvents)
+          .where(inArray(weeklyPlanDownloadEvents.weeklyPlanId, weekIds)),
+    !featureAccess.allowed
+      ? Promise.resolve([])
+      : db
+          .select({ points: attendanceEntries.extraCreditPoints })
+          .from(attendanceEntries)
+          .where(and(
+            eq(attendanceEntries.profileId, input.profileId),
+            eq(attendanceEntries.learningYearId, learningYear.id),
+            eq(attendanceEntries.entryKind, "manual")
+          ))
   ]);
 
   const attendanceSubjects = planAttendance.length === 0
@@ -220,7 +227,7 @@ export async function getStudentOverviewMetrics(input: {
     if (item.dayNumber == null) continue;
     const dayKey = `${item.weeklyPlanId}:${item.dayNumber}`;
     const subjects = scheduledSubjectsByDay.get(dayKey) ?? new Set<string>();
-    subjects.add(planSubjectKey(item.subjectId, item.subjectLabel));
+    subjects.add(planSubjectKey({ subjectId: item.subjectId, subjectLabel: item.subjectLabel }));
     scheduledSubjectsByDay.set(dayKey, subjects);
   }
 
@@ -282,6 +289,7 @@ export async function getStudentOverviewMetrics(input: {
     ? 0
     : Math.round(nextWeekProgressValues.reduce((sum, value) => sum + value, 0) / nextWeekProgressValues.length);
   const downloadedWeekIds = new Set([
+    ...downloadEvents.map((event) => event.weeklyPlanId),
     ...weekPdfAssets.map((asset) => asset.weeklyPlanId),
     ...dayPdfAssets.map((asset) => asset.weeklyPlanId)
   ]);
@@ -392,9 +400,10 @@ export async function getStudentOverviewMetrics(input: {
       .filter((grade) => grade.score != null && !dayGradeKeys.has(`${grade.weeklyPlanId}:${grade.subjectKey}`))
       .map((grade) => grade.score as number)
   ];
-  const gradeAverage = gradeScores.length === 0
-    ? null
-    : Math.round(gradeScores.reduce((sum, score) => sum + score, 0) / gradeScores.length);
+  const extraCreditPoints = extraCreditRows
+    .map((row) => row.points)
+    .filter((points): points is number => points != null);
+  const gradeAverage = averageWithExtraCredit(gradeScores, extraCreditPoints);
 
   return {
     premiumAccess: featureAccess.allowed,
@@ -418,7 +427,7 @@ export async function getStudentOverviewMetrics(input: {
       letter: gradeAverage == null
         ? null
         : translateScoreToGrade(studentProfile.gradingScheme, gradeAverage),
-      gradedEntries: gradeScores.length
+      gradedEntries: gradeScores.length + extraCreditPoints.length
     } : null,
     lastAttendance: featureAccess.allowed && lastAttendanceRow
       ? {

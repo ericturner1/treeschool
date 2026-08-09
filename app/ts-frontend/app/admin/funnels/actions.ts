@@ -56,8 +56,7 @@ export async function saveFunnelAction(formData: FormData) {
       badgeLabel: value(formData, "badgeLabel") || null,
       audience: value(formData, "audience"),
       objective: value(formData, "objective"),
-      status: value(formData, "status") || "draft",
-      publicPath: value(formData, "publicPath") || null
+      status: value(formData, "status") || "draft"
     });
     revalidatePath("/admin/funnels");
     revalidatePath(`/admin/funnels/${result.funnel.slug}`);

@@ -92,6 +92,7 @@ type Theme = (typeof THEMES)[keyof typeof THEMES];
 function resolveActionHref(action: FunnelAction, nextHref: string | null) {
   if (action.type === "next_step") return nextHref;
   if (action.type === "url") return action.target;
+  if (action.type === "accept_offer" || action.type === "decline_offer") return nextHref;
   if (action.type === "none") return null;
   return action.target ?? nextHref;
 }
@@ -228,7 +229,6 @@ function PageElement({
   }
   if (element.type === "button") {
     const target = resolveActionHref(element.props.action, nextHref);
-    if (!target) return null;
     const palette: FunnelButtonPalette = {
       ...theme.buttonPalette,
       primary: styles?.colors?.primary ?? theme.buttonPalette.primary,
@@ -277,6 +277,7 @@ function PageElement({
         </div>
       );
     }
+    if (!target) return null;
     const linkedTarget = withSourceCheckoutSession(target, sourceCheckoutSessionId);
     return (
       <div className={`${visibility} flex ${alignClass(element.props.align)}`}>

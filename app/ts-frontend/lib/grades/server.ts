@@ -17,9 +17,10 @@ export type StudentGradesPayload = {
   }>;
   selectedSubject: StudentGradesPayload["subjects"][number] | null;
   entries: Array<{
-    weeklyPlanId: string; weekNumber: number; dayNumber: number | null; source: "day" | "legacy"; weekStatus: string; subjectId: string | null;
+    entryId: string | null; weeklyPlanId: string | null; weekNumber: number | null; dayNumber: number | null; source: "day" | "legacy" | "extra_credit"; weekStatus: string; subjectId: string | null;
     subjectKey: string; subjectLabel: string; planTitle: string | null; score: number | null;
     assessmentRecommended: boolean; grade: string | null; completedAt: string | null; updatedAt: string;
+    isExtraCredit: boolean; extraCreditPoints: number | null;
   }>;
 };
 

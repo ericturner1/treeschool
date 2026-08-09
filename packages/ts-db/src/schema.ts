@@ -1703,6 +1703,7 @@ export const attendanceEntries = pgTable(
     title: text("title").notNull(),
     notes: text("notes"),
     minutes: integer("minutes"),
+    extraCreditPoints: integer("extra_credit_points"),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, {
       onDelete: "set null"
     }),

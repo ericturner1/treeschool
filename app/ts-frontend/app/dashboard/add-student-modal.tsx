@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { StudentCalendarSetup } from "./student-calendar-setup";
 
 const strengthSubjects = [
@@ -45,12 +45,22 @@ export function AddStudentModal({
   fields
 }: AddStudentModalProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [studentName, setStudentName] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [checkoutOffer, setCheckoutOffer] = useState<{ url: string; copy: string } | null>(null);
+  const [awaitingDashboardToken, setAwaitingDashboardToken] = useState<string | null>(null);
+  const busy = submitting || awaitingDashboardToken !== null;
+
+  useEffect(() => {
+    if (!awaitingDashboardToken || searchParams.get("student_created") !== awaitingDashboardToken) return;
+    setOpen(false);
+    setAwaitingDashboardToken(null);
+    setSubmitting(false);
+  }, [awaitingDashboardToken, searchParams]);
 
   async function submitStudent(formData: FormData) {
     setSubmitting(true);
@@ -68,8 +78,9 @@ export function AddStudentModal({
         });
         return;
       }
-      setOpen(false);
-      router.push("/p/dashboard?message=Child%20record%20created.");
+      const token = crypto.randomUUID();
+      setAwaitingDashboardToken(token);
+      router.replace(`/p/dashboard?message=Child%20record%20created.&student_created=${encodeURIComponent(token)}`);
     } finally {
       setSubmitting(false);
     }
@@ -80,6 +91,7 @@ export function AddStudentModal({
       <button type="button" className="cta-button cta-button--light cta-button--small w-full" onClick={() => {
         setSubmissionError(null);
         setCheckoutOffer(null);
+        setAwaitingDashboardToken(null);
         setOpen(true);
       }}>
         {openLabel}
@@ -93,7 +105,7 @@ export function AddStudentModal({
               <button
                 type="button"
                 aria-label={cancelLabel}
-                disabled={submitting}
+                disabled={busy}
                 className="rounded-full px-3 py-1 text-2xl font-semibold text-ink/60 transition hover:text-ink disabled:cursor-not-allowed disabled:opacity-35"
                 onClick={() => setOpen(false)}
               >
@@ -128,7 +140,7 @@ export function AddStudentModal({
                 </div>
               </div>
             ) : (
-            <form action={submitStudent} className="mt-6 space-y-5" aria-busy={submitting}>
+            <form action={submitStudent} className="mt-6 space-y-5" aria-busy={busy}>
               {submissionError ? (
                 <p role="alert" className="rounded-[16px] border border-[#d9afa2] bg-[#fff1ec] px-4 py-3 text-sm font-semibold text-[#8b3e2f]">
                   {submissionError}
@@ -143,7 +155,7 @@ export function AddStudentModal({
                   name="firstName"
                   type="text"
                   required
-                  disabled={submitting}
+                  disabled={busy}
                   value={studentName}
                   onChange={(event) => setStudentName(event.target.value)}
                   className="mt-2 min-h-14 w-full rounded-[18px] border border-[#dcc8aa] bg-white px-4 text-base text-ink outline-none transition-colors focus:border-[#8f6544]"
@@ -165,7 +177,7 @@ export function AddStudentModal({
                   name="learningProfileNotes"
                   rows={4}
                   maxLength={4000}
-                  disabled={submitting}
+                  disabled={busy}
                   placeholder="For example: loves stories, gets frustrated by repetitive math practice, and learns best with short lessons."
                   className="mt-2 w-full rounded-[18px] border border-[#dcc8aa] bg-[#fffaf2] px-4 py-3 text-base leading-6 text-ink outline-none transition-colors focus:border-[#8f6544]"
                 />
@@ -175,7 +187,7 @@ export function AddStudentModal({
                     <p className="mt-1 text-xs leading-5 text-ink/55">Choose Not sure when you do not yet have a strong sense.</p>
                   </div>
                   {strengthSubjects.map(([key, label]) => (
-                    <fieldset key={key} disabled={submitting}>
+                    <fieldset key={key} disabled={busy}>
                       <legend className="text-sm font-semibold text-ink/75">{label}</legend>
                       <div className="mt-2 grid grid-cols-2 gap-1 rounded-[14px] bg-[#f2eadc] p-1 sm:grid-cols-4">
                         {strengthChoices.map(([value, choiceLabel]) => (
@@ -207,7 +219,7 @@ export function AddStudentModal({
                   name="birthDate"
                   type="date"
                   required
-                  disabled={submitting}
+                  disabled={busy}
                   value={birthDate}
                   onChange={(event) => setBirthDate(event.target.value)}
                   className="mt-2 min-h-14 w-full rounded-[18px] border border-[#dcc8aa] bg-white px-4 text-base text-ink outline-none transition-colors focus:border-[#8f6544]"
@@ -223,7 +235,7 @@ export function AddStudentModal({
                   name="gradeLevel"
                   defaultValue=""
                   required
-                  disabled={submitting}
+                  disabled={busy}
                   className="mt-2 min-h-14 w-full rounded-[18px] border border-[#dcc8aa] bg-white py-3 pl-4 pr-12 text-base text-ink outline-none transition-colors focus:border-[#8f6544]"
                 >
                   <option value="" disabled>Select a grade</option>
@@ -237,22 +249,22 @@ export function AddStudentModal({
               <StudentCalendarSetup
                 studentName={studentName}
                 birthDate={birthDate}
-                disabled={submitting}
+                disabled={busy}
               />
 
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                <button type="button" disabled={submitting} className="cta-button cta-button--outline cta-button--small disabled:cursor-not-allowed disabled:opacity-45" onClick={() => setOpen(false)}>
+                <button type="button" disabled={busy} className="cta-button cta-button--outline cta-button--small disabled:cursor-not-allowed disabled:opacity-45" onClick={() => setOpen(false)}>
                   {cancelLabel}
                 </button>
-                <button type="submit" disabled={submitting} className="cta-button cta-button--light disabled:cursor-wait disabled:opacity-75">
+                <button type="submit" disabled={busy} className="cta-button cta-button--light disabled:cursor-wait disabled:opacity-75">
                   <span className="inline-flex items-center justify-center gap-2">
-                    {submitting ? (
+                    {busy ? (
                       <span
                         aria-hidden="true"
                         className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"
                       />
                     ) : null}
-                    <span>{submitting ? `${submitLabel}…` : submitLabel}</span>
+                    <span>{busy ? `${submitLabel}…` : submitLabel}</span>
                   </span>
                 </button>
               </div>

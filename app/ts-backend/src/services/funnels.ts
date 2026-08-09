@@ -39,6 +39,11 @@ import {
 } from "./media";
 import { normalizeGeminiUsage } from "./model-providers/gemini-usage";
 import { recordModelUsage } from "./model-usage";
+import {
+  invalidActiveDownsell,
+  nextActiveFunnelJourneyStep,
+  pairedUpsellForDownsell
+} from "./funnel-offer-flow";
 
 export const FUNNEL_STATUSES = ["draft", "live", "paused", "archived"] as const;
 export const FUNNEL_STEP_STATUSES = ["draft", "active", "inactive"] as const;
@@ -106,8 +111,7 @@ const funnelInputSchema = z.object({
   badgeLabel: z.string().trim().max(100).optional().nullable(),
   audience: z.string().trim().max(1000).default(""),
   objective: z.string().trim().max(1000).default(""),
-  status: z.enum(FUNNEL_STATUSES).default("draft"),
-  publicPath: optionalPathSchema
+  status: z.enum(FUNNEL_STATUSES).default("draft")
 });
 
 const stepInputSchema = z.object({
@@ -1109,18 +1113,15 @@ async function getPublishedPageRevision(pageId: string, revisionNumber: number) 
 
 async function resolveNextStepHref(
   funnel: typeof funnels.$inferSelect,
-  step: typeof funnelSteps.$inferSelect
+  step: typeof funnelSteps.$inferSelect,
+  options: { skipPairedDownsell?: boolean } = {}
 ) {
   const ordered = await db
     .select()
     .from(funnelSteps)
     .where(eq(funnelSteps.funnelId, funnel.id))
     .orderBy(asc(funnelSteps.displayOrder), asc(funnelSteps.createdAt));
-  const currentIndex = ordered.findIndex(({ id }) => id === step.id);
-  if (currentIndex < 0) return null;
-  const next = ordered
-    .slice(currentIndex + 1)
-    .find((candidate) => candidate.status === "active");
+  const next = nextActiveFunnelJourneyStep(ordered, step.id, options);
   if (!next) return null;
   const page = await getPrimaryPage(next.id);
   if (page?.status === "published" && page.publishedRevisionNumber) {
@@ -1175,6 +1176,15 @@ export async function resolvePublicFunnelOneClickOffer(input: { stepId: string }
     ))
     .limit(1);
   if (!record) throw new Error("This offer is not available.");
+  if (record.step.stepType === "downsell") {
+    const steps = await db
+      .select()
+      .from(funnelSteps)
+      .where(eq(funnelSteps.funnelId, record.funnel.id));
+    if (!pairedUpsellForDownsell(steps, record.step.id)) {
+      throw new Error("This downsell is not available without a preceding upsell.");
+    }
+  }
   const settings = record.step.settingsJson && typeof record.step.settingsJson === "object"
     ? record.step.settingsJson as Record<string, unknown>
     : {};
@@ -1191,8 +1201,18 @@ export async function resolvePublicFunnelOneClickOffer(input: { stepId: string }
     funnelSlug: record.funnel.slug,
     stepId: record.step.id,
     productId,
-    nextHref: await resolveNextStepHref(record.funnel, record.step)
+    nextHref: await resolveNextStepHref(record.funnel, record.step, {
+      skipPairedDownsell: record.step.stepType === "upsell"
+    })
   };
+}
+
+function assertValidActiveDownsellFlow(steps: Array<typeof funnelSteps.$inferSelect>) {
+  const invalid = invalidActiveDownsell(steps);
+  if (!invalid) return;
+  throw new Error(
+    `Downsell “${invalid.name}” must immediately follow an active upsell. Move or unpublish the downsell first.`
+  );
 }
 
 function normalizePageDocumentActions(
@@ -1927,7 +1947,6 @@ export async function saveAdminFunnel(input: z.input<typeof funnelInputSchema>) 
     audience: parsed.audience,
     objective: parsed.objective,
     status: parsed.status as FunnelStatus,
-    publicPath: normalizeFunnelPath(parsed.publicPath, "Top-of-funnel path"),
     updatedByUserId: parsed.userId,
     updatedAt: new Date()
   };
@@ -2026,6 +2045,10 @@ export async function saveAdminFunnelStep(input: z.input<typeof stepInputSchema>
         .where(and(eq(funnelSteps.id, parsed.id), eq(funnelSteps.funnelId, parsed.funnelId)))
         .returning();
       if (!updated) throw new Error("Funnel step not found.");
+      assertValidActiveDownsellFlow(await tx
+        .select()
+        .from(funnelSteps)
+        .where(eq(funnelSteps.funnelId, parsed.funnelId)));
       return { step: presentStep(updated) };
     }
     const [{ highestOrder }] = await tx
@@ -2043,6 +2066,10 @@ export async function saveAdminFunnelStep(input: z.input<typeof stepInputSchema>
       })
       .returning();
     if (!created) throw new Error("Could not create the funnel step.");
+    assertValidActiveDownsellFlow(await tx
+      .select()
+      .from(funnelSteps)
+      .where(eq(funnelSteps.funnelId, parsed.funnelId)));
     return { step: presentStep(created) };
   });
 }
@@ -2211,6 +2238,10 @@ export async function reorderAdminFunnelSteps(input: {
         })
         .where(and(eq(funnelSteps.id, id), eq(funnelSteps.funnelId, parsed.funnelId)));
     }
+    assertValidActiveDownsellFlow(await tx
+      .select()
+      .from(funnelSteps)
+      .where(eq(funnelSteps.funnelId, parsed.funnelId)));
     await tx
       .update(funnels)
       .set({ updatedByUserId: parsed.userId, updatedAt: new Date() })
@@ -2350,10 +2381,11 @@ export async function deleteAdminFunnelStep(input: {
       .returning({ id: funnelSteps.id, wasTop: funnelSteps.isTopOfFunnel });
     if (!deleted) throw new Error("Funnel step not found.");
     const remaining = await tx
-      .select({ id: funnelSteps.id })
+      .select()
       .from(funnelSteps)
       .where(eq(funnelSteps.funnelId, parsed.funnelId))
       .orderBy(asc(funnelSteps.displayOrder), asc(funnelSteps.createdAt));
+    assertValidActiveDownsellFlow(remaining);
     for (const [index, { id }] of remaining.entries()) {
       await tx
         .update(funnelSteps)
@@ -2737,6 +2769,10 @@ export async function publishAdminFunnelPage(input: {
           updatedAt: new Date()
         })
         .where(eq(funnelSteps.id, step.id));
+      assertValidActiveDownsellFlow(await tx
+        .select()
+        .from(funnelSteps)
+        .where(eq(funnelSteps.funnelId, funnel.id)));
     }
     if (page.isPrimary && step.isTopOfFunnel) {
       await tx
@@ -2786,6 +2822,10 @@ export async function unpublishAdminFunnelPage(input: {
           updatedAt: new Date()
         })
         .where(eq(funnelSteps.id, step.id));
+      assertValidActiveDownsellFlow(await tx
+        .select()
+        .from(funnelSteps)
+        .where(eq(funnelSteps.funnelId, funnel.id)));
     }
     if (page.isPrimary && step.isTopOfFunnel) {
       await tx

@@ -26,7 +26,6 @@ export default async function AdminFunnelsPage({
             <Image src="/tree-icon.png" alt="Treeschool tree icon" width={72} height={72} className="h-16 w-16 object-contain" />
             <span className="brand-logo text-[28px] font-semibold">treeschool</span>
           </Link>
-          <Link href="/admin" className="cta-button cta-button--outline cta-button--small">Back to Admin</Link>
         </header>
 
         <section className="mt-10 rounded-[32px] border border-[#b8cf9f] bg-[#e8f0e1] px-6 py-8 sm:px-9 sm:py-10">

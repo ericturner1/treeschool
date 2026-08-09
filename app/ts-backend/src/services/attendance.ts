@@ -29,6 +29,7 @@ import {
   normalizeManualAttendanceFields,
   type ManualAttendanceFields
 } from "./manual-attendance";
+import { planSubjectKey } from "./plan-subject-key";
 
 const DAY_MS = 86_400_000;
 
@@ -40,14 +41,6 @@ function safeDate(value: string | null | undefined, fallback: Date) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return fallback;
   const parsed = new Date(`${value}T00:00:00.000Z`);
   return Number.isNaN(parsed.getTime()) ? fallback : parsed;
-}
-
-function subjectKey(label: string) {
-  return label.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "general";
-}
-
-function planSubjectKey(subjectId: string | null, label: string) {
-  return subjectId ? `system:${subjectId}` : `custom:${subjectKey(label)}`;
 }
 
 async function verifyStudent(parentUserId: string, profileId: string) {
@@ -99,7 +92,7 @@ export async function getStudentAttendance(input: {
     day.minutes += row.minutes ?? 0;
     dailyMap.set(row.attendanceDate, day);
     const rowSubjects = subjectsByEntryId.get(row.id) ?? (row.subjectLabel ? [{
-      subjectKey: row.subjectKey ?? subjectKey(row.subjectLabel),
+      subjectKey: row.subjectKey ?? planSubjectKey({ subjectLabel: row.subjectLabel }),
       subjectLabel: row.subjectLabel
     }] : []);
     for (const rowSubject of rowSubjects) {
@@ -150,7 +143,8 @@ export async function getStudentAttendance(input: {
       weeklyPlanDayNumber: row.weeklyPlanDayNumber,
       title: row.title,
       notes: row.notes,
-      minutes: row.minutes
+      minutes: row.minutes,
+      extraCreditPoints: row.extraCreditPoints
     }))
   };
 }
@@ -175,7 +169,7 @@ async function synchronizeWeekStatusFromAttendance(weeklyPlanId: string) {
     if (row.dayNumber == null) continue;
     const label = row.subjectLabel?.trim() || row.documentLabel;
     const subjects = scheduledSubjectsByDay.get(row.dayNumber) ?? new Set<string>();
-    subjects.add(planSubjectKey(row.subjectId, label));
+    subjects.add(planSubjectKey({ subjectId: row.subjectId, subjectLabel: label }));
     scheduledSubjectsByDay.set(row.dayNumber, subjects);
   }
   if (scheduledSubjectsByDay.size === 0) return;
@@ -265,7 +259,7 @@ export async function recordPlanDayAttendance(input: {
   const availableSubjects = new Map<string, string>();
   for (const row of rows) {
     const label = row.subjectLabel?.trim() || row.documentLabel;
-    availableSubjects.set(planSubjectKey(row.subjectId, label), label);
+    availableSubjects.set(planSubjectKey({ subjectId: row.subjectId, subjectLabel: label }), label);
   }
   const requestedKeys = Array.from(new Set(input.subjectKeys ?? [])).filter((key) => availableSubjects.has(key));
   const selectedKeys = input.subjectKeys == null ? Array.from(availableSubjects.keys()) : requestedKeys;
@@ -303,7 +297,7 @@ export async function recordPlanDayAttendance(input: {
   });
   const completedNativeUnits = rows.filter((row) => {
     const label = row.subjectLabel?.trim() || row.documentLabel;
-    return selectedKeys.includes(planSubjectKey(row.subjectId, label)) &&
+    return selectedKeys.includes(planSubjectKey({ subjectId: row.subjectId, subjectLabel: label })) &&
       Boolean(row.nativeWorkbookVersionId && row.sourceUnitId);
   });
   const completedByVersion = new Map<string, string[]>();
@@ -389,7 +383,7 @@ export async function setPlanDaySubjectCompletion(input: {
   }
   const availableSubjectKeys = new Set(rows.map((row) => {
     const label = row.subjectLabel?.trim() || row.documentLabel;
-    return planSubjectKey(row.subjectId, label);
+    return planSubjectKey({ subjectId: row.subjectId, subjectLabel: label });
   }));
   if (!availableSubjectKeys.has(input.subjectKey)) {
     throw new Error("Planned lesson not found.");
@@ -423,7 +417,7 @@ export async function setPlanDaySubjectCompletion(input: {
   for (const row of rows) {
     const label = row.subjectLabel?.trim() || row.documentLabel;
     if (
-      planSubjectKey(row.subjectId, label) !== input.subjectKey ||
+      planSubjectKey({ subjectId: row.subjectId, subjectLabel: label }) !== input.subjectKey ||
       !row.nativeWorkbookVersionId ||
       !row.sourceUnitId
     ) continue;
@@ -486,7 +480,7 @@ export async function recordPlanItemAttendance(input: {
     attendanceDate: date,
     entryKind: "plan_item",
     activityType: "lesson",
-    subjectKey: item.subjectId ?? subjectKey(label),
+    subjectKey: planSubjectKey({ subjectId: item.subjectId, subjectLabel: label }),
     subjectLabel: label,
     title: item.itemLabel,
     createdByUserId: input.parentUserId
@@ -526,11 +520,12 @@ export async function createManualAttendanceEntry(input: {
       attendanceDate: fields.attendanceDate,
       entryKind: "manual",
       activityType: fields.activityType,
-      subjectKey: label ? subjectKey(label) : null,
+      subjectKey: label ? planSubjectKey({ subjectLabel: label }) : null,
       subjectLabel: label,
       title: fields.title,
       notes: fields.notes,
       minutes: fields.minutes,
+      extraCreditPoints: fields.extraCreditPoints,
       createdByUserId: input.parentUserId
     }).returning();
     if (!savedEntry) throw new Error("The learning activity could not be recorded.");
@@ -551,7 +546,8 @@ export async function createManualAttendanceEntry(input: {
         attendanceDate: fields.attendanceDate,
         activityType: fields.activityType,
         activityTitle: fields.title,
-        minutes: fields.minutes
+        minutes: fields.minutes,
+        extraCreditPoints: fields.extraCreditPoints
       }
     }).onConflictDoNothing();
     return savedEntry;
@@ -587,11 +583,12 @@ export async function updateManualAttendanceEntry(input: {
       .set({
         attendanceDate: fields.attendanceDate,
         activityType: fields.activityType,
-        subjectKey: label ? subjectKey(label) : null,
+        subjectKey: label ? planSubjectKey({ subjectLabel: label }) : null,
         subjectLabel: label,
         title: fields.title,
         notes: fields.notes,
-        minutes: fields.minutes
+        minutes: fields.minutes,
+        extraCreditPoints: fields.extraCreditPoints
       })
       .where(eq(attendanceEntries.id, existing.id))
       .returning();
@@ -616,7 +613,8 @@ export async function updateManualAttendanceEntry(input: {
             attendanceDate: fields.attendanceDate,
             activityType: fields.activityType,
             activityTitle: fields.title,
-            minutes: fields.minutes
+            minutes: fields.minutes,
+            extraCreditPoints: fields.extraCreditPoints
           }
         })
         .where(eq(teacherActivityEvents.id, event.id));
