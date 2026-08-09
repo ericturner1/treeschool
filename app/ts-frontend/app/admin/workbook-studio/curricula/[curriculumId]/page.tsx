@@ -68,7 +68,13 @@ export default async function WorkbookCurriculumPage({
             </span>
           ) : null}
         </div>
-        <CurriculumEditor detail={detail} prompts={studio.prompts} />
+        <CurriculumEditor
+          detail={detail}
+          prompts={studio.prompts}
+          academicStandards={studio.academicStandards}
+          curriculumSubjects={studio.curriculumSubjects}
+          themes={studio.themes}
+        />
       </div>
     </main>
   );

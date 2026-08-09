@@ -51,6 +51,7 @@ export default async function WorkbookStudioPage() {
               prompts={studio.prompts}
             />
             <StudioProjectCreator
+              courses={studio.courses}
               curricula={studio.curricula}
               prompts={studio.prompts}
             />

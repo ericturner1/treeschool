@@ -12,6 +12,7 @@ import {
   queueWorkbookStudioRender,
   saveWorkbookStudioCurriculum,
   saveWorkbookStudioRevision,
+  setWorkbookStudioCourseTheme,
   setWorkbookStudioCurriculumTheme,
   setWorkbookStudioProjectTheme,
   saveWorkbookStudioTheme,
@@ -193,6 +194,31 @@ export async function setWorkbookStudioCurriculumThemeAction(
   }
 }
 
+export async function setWorkbookStudioCourseThemeAction(
+  curriculumId: string,
+  courseId: string,
+  themeVersionId: string | null,
+) {
+  try {
+    const result = await setWorkbookStudioCourseTheme({
+      userId: await requireUserId(),
+      courseId,
+      themeVersionId,
+    });
+    revalidatePath(`/admin/workbook-studio/curricula/${curriculumId}`);
+    revalidatePath("/admin/workbook-studio");
+    return { ok: true as const, ...result };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Could not change the course theme.",
+    };
+  }
+}
+
 export async function saveWorkbookStudioThemeAction(
   input: Record<string, unknown>,
 ) {
@@ -254,12 +280,8 @@ export async function saveWorkbookStudioRuleAction(
 }
 
 export async function createWorkbookStudioProjectAction(input: {
-  curriculumId: string | null;
+  courseId: string;
   title: string;
-  subjectKey: string;
-  subjectLabel: string;
-  gradeMin: number;
-  gradeMax: number;
   languageCode: string;
   localeCode: string | null;
   layoutProfile: string;

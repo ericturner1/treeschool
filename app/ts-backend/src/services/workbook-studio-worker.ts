@@ -1,8 +1,10 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import {
+  curriculumSubjects,
   nativeWorkbookEditions,
   nativeWorkbooks,
   workbookContentRevisions,
+  workbookCourses,
   workbookCurricula,
   workbookCurriculumRevisions,
   workbookGenerationBatches,
@@ -19,7 +21,7 @@ import { db } from "../db";
 import {
   generateWorkbookCatalogPlan,
   generateWorkbookContent,
-  generateWorkbookCurriculumBrief,
+  generateWorkbookBrief,
   generateWorkbookOutline,
   workbookGenerationModel,
   type WorkbookOutline,
@@ -28,6 +30,7 @@ import { executeWorkbookRenderRun } from "./workbook-renderer";
 import {
   assembleWorkbookGenerationPrompt,
   listApplicableWorkbookRules,
+  materializeWorkbookCatalogCourses,
   resolveEffectiveWorkbookThemeVersionId,
   saveWorkbookStudioRevision,
 } from "./workbook-studio";
@@ -100,6 +103,7 @@ async function generationContext(job: WorkbookStudioJobRow) {
     .select({
       run: workbookGenerationRuns,
       project: workbookProjects,
+      subjectKey: curriculumSubjects.key,
       promptText: workbookGenerationPromptVersions.promptText,
       promptConfiguration: workbookGenerationPromptVersions.configurationJson,
       promptKind: workbookGenerationPrompts.kind,
@@ -108,6 +112,11 @@ async function generationContext(job: WorkbookStudioJobRow) {
     .innerJoin(
       workbookProjects,
       eq(workbookProjects.id, workbookGenerationRuns.projectId),
+    )
+    .innerJoin(workbookCourses, eq(workbookCourses.id, workbookProjects.courseId))
+    .innerJoin(
+      curriculumSubjects,
+      eq(curriculumSubjects.id, workbookCourses.curriculumSubjectId),
     )
     .leftJoin(
       workbookGenerationPromptVersions,
@@ -134,7 +143,7 @@ async function generationContext(job: WorkbookStudioJobRow) {
   if (!row.promptText)
     throw new Error("The selected generation prompt version is unavailable.");
   const rules = await listApplicableWorkbookRules({
-    subjectKey: row.project.subjectKey,
+    subjectKey: row.subjectKey,
     gradeMin: row.project.gradeMin,
     gradeMax: row.project.gradeMax,
     languageCode: row.project.languageCode,
@@ -147,7 +156,7 @@ async function generationContext(job: WorkbookStudioJobRow) {
   const stagePromptVersionId =
     configuration.stagePromptVersionIds?.[job.jobType];
   const overlayVersionId =
-    configuration.subjectOverlayPromptVersionIds?.[row.project.subjectKey];
+    configuration.subjectOverlayPromptVersionIds?.[row.subjectKey];
   const [stagePromptRows, overlayRows] = await Promise.all([
     stagePromptVersionId
       ? db
@@ -186,21 +195,21 @@ async function generationContext(job: WorkbookStudioJobRow) {
 
 async function executeOutlineJob(job: WorkbookStudioJobRow) {
   const context = await generationContext(job);
-  const [curriculumJob] = await db
+  const [briefJob] = await db
     .select({ resultJson: workbookStudioJobs.resultJson })
     .from(workbookStudioJobs)
     .where(
       and(
         eq(workbookStudioJobs.runId, context.run.id),
-        eq(workbookStudioJobs.jobType, "curriculum"),
+        eq(workbookStudioJobs.jobType, "workbook_brief"),
       ),
     )
     .limit(1);
-  const curriculum = z
-    .object({ curriculum: z.unknown() })
-    .safeParse(curriculumJob?.resultJson);
-  const assembledPrompt = curriculum.success
-    ? `${context.assembledPrompt}\n\nAPPROVED CURRICULUM BRIEF\n${JSON.stringify(curriculum.data.curriculum, null, 2)}`
+  const brief = z
+    .object({ workbookBrief: z.unknown() })
+    .safeParse(briefJob?.resultJson);
+  const assembledPrompt = brief.success
+    ? `${context.assembledPrompt}\n\nAPPROVED WORKBOOK BRIEF\n${JSON.stringify(brief.data.workbookBrief, null, 2)}`
     : context.assembledPrompt;
   const generated = await generateWorkbookOutline({ assembledPrompt });
   await db.transaction(async (tx) => {
@@ -228,9 +237,9 @@ async function executeOutlineJob(job: WorkbookStudioJobRow) {
   return { outline: generated.outline };
 }
 
-async function executeCurriculumJob(job: WorkbookStudioJobRow) {
+async function executeWorkbookBriefJob(job: WorkbookStudioJobRow) {
   const context = await generationContext(job);
-  const generated = await generateWorkbookCurriculumBrief({
+  const generated = await generateWorkbookBrief({
     assembledPrompt: context.assembledPrompt,
   });
   await db
@@ -246,7 +255,7 @@ async function executeCurriculumJob(job: WorkbookStudioJobRow) {
       startedAt: sql`coalesce(${workbookGenerationRuns.startedAt}, now())`,
     })
     .where(eq(workbookGenerationRuns.id, context.run.id));
-  return { curriculum: generated.curriculum, usage: generated.usage };
+  return { workbookBrief: generated.workbookBrief, usage: generated.usage };
 }
 
 async function executeCatalogPlanJob(job: WorkbookStudioJobRow) {
@@ -304,6 +313,11 @@ async function executeCatalogPlanJob(job: WorkbookStudioJobRow) {
     scope: row.run.scopeJson,
   });
   const generated = await generateWorkbookCatalogPlan({ assembledPrompt });
+  const plan = await materializeWorkbookCatalogCourses({
+    curriculumId: row.curriculum.id,
+    plan: generated.plan,
+    userId: row.run.requestedByUserId,
+  });
 
   const [currentRevision] = row.curriculum.currentRevisionId
     ? await db
@@ -328,11 +342,10 @@ async function executeCatalogPlanJob(job: WorkbookStudioJobRow) {
         revisionNumber: numberRow?.next ?? 1,
         source: "ai",
         planJson: {
-          schemaVersion: 1,
           generationBatchId: row.batch.id,
           catalogPromptVersionId: row.run.promptVersionId,
           workbookPromptVersionId: payload.workbookPromptVersionId,
-          ...generated.plan,
+          ...plan,
         },
         validationJson: { issues: [] },
         createdByUserId: row.run.requestedByUserId,
@@ -363,7 +376,7 @@ async function executeCatalogPlanJob(job: WorkbookStudioJobRow) {
     })
     .where(eq(workbookGenerationRuns.id, row.run.id));
   return {
-    plan: generated.plan,
+    plan,
     curriculumId: row.curriculum.id,
     usage: generated.usage,
   };
@@ -430,9 +443,15 @@ async function executeValidationJob(job: WorkbookStudioJobRow) {
   const [row] = await db
     .select({
       project: workbookProjects,
+      subjectKey: curriculumSubjects.key,
       revision: workbookContentRevisions,
     })
     .from(workbookProjects)
+    .innerJoin(workbookCourses, eq(workbookCourses.id, workbookProjects.courseId))
+    .innerJoin(
+      curriculumSubjects,
+      eq(curriculumSubjects.id, workbookCourses.curriculumSubjectId),
+    )
     .innerJoin(
       workbookContentRevisions,
       eq(
@@ -446,7 +465,10 @@ async function executeValidationJob(job: WorkbookStudioJobRow) {
     .limit(1);
   if (!row) throw new Error("The workbook revision to validate was not found.");
   const content = parseWorkbookContent(row.revision.contentJson);
-  const issues = await validateWorkbookForScope(content, row.project);
+  const issues = await validateWorkbookForScope(content, {
+    ...row.project,
+    subjectKey: row.subjectKey,
+  });
   const blocking = issues.filter((issue) => issue.severity === "error");
   await db
     .update(workbookContentRevisions)
@@ -638,8 +660,8 @@ async function executeJob(job: WorkbookStudioJobRow) {
   switch (job.jobType) {
     case "catalog_plan":
       return executeCatalogPlanJob(job);
-    case "curriculum":
-      return executeCurriculumJob(job);
+    case "workbook_brief":
+      return executeWorkbookBriefJob(job);
     case "outline":
       return executeOutlineJob(job);
     case "lesson_content":

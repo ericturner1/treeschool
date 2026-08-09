@@ -120,23 +120,38 @@ export type WorkbookContent = {
 };
 
 export type WorkbookCatalogPlan = {
+  schemaVersion: 2;
   curriculumName: string;
-  workbooks: Array<{
+  courses: Array<{
     stableKey: string;
-    title: string;
+    curriculumSubjectId?: string | null;
     subjectKey: string;
     subjectLabel: string;
-    domains: string[];
-    languageCode: string;
-    localeCode: string | null;
-    layoutProfile: "standard" | "reader";
-    scriptProfile: "latin" | "japanese";
+    status: "inherited" | "modified" | "new" | "retired";
+    academicStandardOverrideKey: string | null;
+    standardCode: string | null;
+    standardLabel: string | null;
+    themeOverrideVersionId?: string | null;
+    boundaryNotes: string;
+    coverageNotes: string;
+    pipelineKey: string | null;
+    workbooks: Array<{
+      stableKey: string;
+      title: string;
+      domains: string[];
+      languageCode: string;
+      localeCode: string | null;
+      layoutProfile: "standard" | "reader";
+      scriptProfile: "latin" | "japanese";
+    }>;
   }>;
 };
 
 export type WorkbookStudioProject = {
   id: string;
-  curriculumId: string | null;
+  courseId: string;
+  curriculumId: string;
+  courseStableKey: string;
   nativeWorkbookId: string | null;
   catalogPlanKey: string | null;
   slug: string;
@@ -170,6 +185,32 @@ export type WorkbookStudioSummary = {
     status: string;
     defaultThemeVersionId: string;
     updatedAt: string;
+  }>;
+  courses: Array<{
+    id: string;
+    curriculumId: string;
+    stableKey: string;
+    curriculumSubjectId: string;
+    status: "inherited" | "modified" | "new" | "retired";
+    academicStandardOverrideKey: string | null;
+    standardCode: string | null;
+    standardLabel: string | null;
+    themeOverrideVersionId: string | null;
+    boundaryNotes: string | null;
+    coverageNotes: string | null;
+    pipelineKey: string | null;
+    subjectKey: string;
+    subjectLabel: string;
+    subjectAcademicStandardKey: string;
+  }>;
+  curriculumSubjects: Array<{
+    id: string;
+    academicStandardKey: string;
+    key: string;
+    label: string;
+    curriculumAreaKey: string;
+    aliases: string[];
+    displayOrder: number;
   }>;
   academicStandards: Array<{
     key: string;
@@ -347,6 +388,7 @@ export type WorkbookStudioCurriculumDetail = {
     createdAt: string;
   } | null;
   publishedRevision: { id: string; revisionNumber: number } | null;
+  courses: WorkbookStudioSummary["courses"];
   projects: WorkbookStudioProject[];
   batches: WorkbookStudioSummary["activeBatches"];
 };
@@ -495,6 +537,16 @@ export function setWorkbookStudioCurriculumTheme(
     "/internal/workbook-studio/admin/curriculum/theme",
     input,
     "Could not change the curriculum theme.",
+  );
+}
+
+export function setWorkbookStudioCourseTheme(
+  input: Record<string, unknown>,
+) {
+  return postJson<{ batchId: string | null; affectedProjects: number }>(
+    "/internal/workbook-studio/admin/course/theme",
+    input,
+    "Could not change the course theme.",
   );
 }
 

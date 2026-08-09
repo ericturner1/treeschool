@@ -222,7 +222,7 @@ export function WorkbookRuleManager({
             >
               <option value="">Every stage</option>
               <option value="catalog_plan">Catalog plan</option>
-              <option value="curriculum">Curriculum</option>
+              <option value="workbook_brief">Workbook brief</option>
               <option value="outline">Outline</option>
               <option value="lesson_content">Lesson content</option>
             </select>

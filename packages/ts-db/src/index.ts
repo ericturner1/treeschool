@@ -18,6 +18,7 @@ export type {
 export type {
   WorkbookStudioRevisionSource,
   WorkbookStudioProjectStatus,
+  WorkbookCourseStatus,
   WorkbookThemeVersionStatus,
   WorkbookGenerationPromptKind,
   WorkbookGenerationBatchKind,
@@ -129,6 +130,7 @@ export {
   uiThemeEnum,
   users,
   workbookContentRevisions,
+  workbookCourses,
   workbookCurricula,
   workbookCurriculumRevisions,
   workbookGenerationBatches,

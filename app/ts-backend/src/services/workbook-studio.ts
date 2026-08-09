@@ -2,8 +2,10 @@ import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   academicStandardLanguages,
   academicStandards,
+  curriculumSubjects,
   profiles,
   workbookContentRevisions,
+  workbookCourses,
   workbookCurricula,
   workbookCurriculumRevisions,
   workbookGenerationBatches,
@@ -27,6 +29,7 @@ import { db } from "../db";
 import {
   parseWorkbookCatalogPlan,
   workbookGenerationModel,
+  type WorkbookCatalogPlan,
 } from "./workbook-generation-provider";
 import {
   classifyWorkbookContentChange,
@@ -48,13 +51,9 @@ const uuidSchema = z.string().uuid();
 const projectInputSchema = z
   .object({
     userId: uuidSchema,
-    curriculumId: uuidSchema.nullable().default(null),
+    courseId: uuidSchema,
     catalogPlanKey: z.string().trim().min(1).max(160).nullable().default(null),
     title: z.string().trim().min(1).max(180),
-    subjectKey: z.string().trim().min(1).max(100),
-    subjectLabel: z.string().trim().min(1).max(120),
-    gradeMin: z.number().int().min(-2).max(20),
-    gradeMax: z.number().int().min(-2).max(20),
     languageCode: z.string().trim().min(2).max(20).default("en"),
     localeCode: z.string().trim().max(40).nullable().default(null),
     layoutProfile: z.string().trim().min(1).max(80).default("standard"),
@@ -62,10 +61,6 @@ const projectInputSchema = z
     authoringMode: z.enum(["manual", "generate"]),
     generationPromptVersionId: uuidSchema.nullable().default(null),
     generationScope: z.record(z.unknown()).default({}),
-  })
-  .refine((value) => value.gradeMin <= value.gradeMax, {
-    message: "The minimum grade cannot be above the maximum grade.",
-    path: ["gradeMax"],
   })
   .refine(
     (value) =>
@@ -136,6 +131,35 @@ function slugify(value: string) {
   );
 }
 
+async function courseWorkflowPromptVersionId(
+  pipelineKey: string | null,
+  fallbackVersionId: string,
+) {
+  const workflowSlug =
+    pipelineKey === "math"
+      ? "math-workbook-generation"
+      : pipelineKey === "leveled-reader"
+        ? "leveled-reader-generation"
+        : pipelineKey === "foreign-language"
+          ? "japanese-kokugo-generation"
+          : pipelineKey === "general"
+            ? "general-workbook-generation"
+            : null;
+  if (!workflowSlug) return fallbackVersionId;
+  const [prompt] = await db
+    .select({ versionId: workbookGenerationPrompts.publishedVersionId })
+    .from(workbookGenerationPrompts)
+    .where(
+      and(
+        eq(workbookGenerationPrompts.slug, workflowSlug),
+        eq(workbookGenerationPrompts.kind, "workflow"),
+        eq(workbookGenerationPrompts.status, "active"),
+      ),
+    )
+    .limit(1);
+  return prompt?.versionId ?? fallbackVersionId;
+}
+
 async function uniqueProjectSlug(title: string) {
   const base = slugify(title);
   const rows = await db
@@ -202,25 +226,32 @@ async function assertWorkbookCurriculumStandard(input: {
 
 export async function resolveEffectiveWorkbookThemeVersionId(input: {
   themeOverrideVersionId: string | null;
-  curriculumId: string | null;
+  courseId: string;
 }) {
   if (input.themeOverrideVersionId) return input.themeOverrideVersionId;
-  if (input.curriculumId) {
-    const [curriculum] = await db
-      .select({ versionId: workbookCurricula.defaultThemeVersionId })
-      .from(workbookCurricula)
-      .where(eq(workbookCurricula.id, input.curriculumId))
-      .limit(1);
-    if (curriculum) return curriculum.versionId;
-  }
+  const [theme] = await db
+    .select({
+      courseVersionId: workbookCourses.themeOverrideVersionId,
+      curriculumVersionId: workbookCurricula.defaultThemeVersionId,
+    })
+    .from(workbookCourses)
+    .innerJoin(
+      workbookCurricula,
+      eq(workbookCurricula.id, workbookCourses.curriculumId),
+    )
+    .where(eq(workbookCourses.id, input.courseId))
+    .limit(1);
+  if (theme) return theme.courseVersionId ?? theme.curriculumVersionId;
   return classicThemeVersionId();
 }
 
 export async function listAdminWorkbookStudio(userId: string) {
   await requireAdmin(userId);
   const [
-    projects,
+    projectRows,
     curricula,
+    courseRows,
+    subjectRows,
     themes,
     promptRows,
     rules,
@@ -230,13 +261,46 @@ export async function listAdminWorkbookStudio(userId: string) {
     standardLanguageRows,
   ] = await Promise.all([
     db
-      .select()
+      .select({
+        project: workbookProjects,
+        curriculumId: workbookCourses.curriculumId,
+        subjectKey: curriculumSubjects.key,
+        subjectLabel: curriculumSubjects.label,
+        courseStableKey: workbookCourses.stableKey,
+      })
       .from(workbookProjects)
+      .innerJoin(workbookCourses, eq(workbookCourses.id, workbookProjects.courseId))
+      .innerJoin(
+        curriculumSubjects,
+        eq(curriculumSubjects.id, workbookCourses.curriculumSubjectId),
+      )
       .orderBy(desc(workbookProjects.updatedAt)),
     db
       .select()
       .from(workbookCurricula)
       .orderBy(desc(workbookCurricula.updatedAt)),
+    db
+      .select({
+        course: workbookCourses,
+        subjectKey: curriculumSubjects.key,
+        subjectLabel: curriculumSubjects.label,
+        subjectAcademicStandardKey: curriculumSubjects.academicStandardKey,
+      })
+      .from(workbookCourses)
+      .innerJoin(
+        curriculumSubjects,
+        eq(curriculumSubjects.id, workbookCourses.curriculumSubjectId),
+      )
+      .orderBy(asc(workbookCourses.curriculumId), asc(curriculumSubjects.displayOrder)),
+    db
+      .select()
+      .from(curriculumSubjects)
+      .where(eq(curriculumSubjects.active, true))
+      .orderBy(
+        asc(curriculumSubjects.academicStandardKey),
+        asc(curriculumSubjects.curriculumAreaKey),
+        asc(curriculumSubjects.displayOrder),
+      ),
     db
       .select({
         id: workbookThemes.id,
@@ -370,8 +434,16 @@ export async function listAdminWorkbookStudio(userId: string) {
   ]);
 
   return {
-    projects,
+    projects: projectRows.map(({ project, ...derived }) => ({
+      ...project,
+      ...derived,
+    })),
     curricula,
+    courses: courseRows.map(({ course, ...subject }) => ({
+      ...course,
+      ...subject,
+    })),
+    curriculumSubjects: subjectRows,
     themes,
     prompts: promptRows,
     rules,
@@ -393,12 +465,25 @@ export async function getAdminWorkbookStudioProject(input: {
   projectId: string;
 }) {
   await requireAdmin(input.userId);
-  const [project] = await db
-    .select()
+  const [row] = await db
+    .select({
+      project: workbookProjects,
+      curriculumId: workbookCourses.curriculumId,
+      subjectKey: curriculumSubjects.key,
+      subjectLabel: curriculumSubjects.label,
+      courseStableKey: workbookCourses.stableKey,
+    })
     .from(workbookProjects)
+    .innerJoin(workbookCourses, eq(workbookCourses.id, workbookProjects.courseId))
+    .innerJoin(
+      curriculumSubjects,
+      eq(curriculumSubjects.id, workbookCourses.curriculumSubjectId),
+    )
     .where(eq(workbookProjects.id, uuidSchema.parse(input.projectId)))
     .limit(1);
-  if (!project) throw new Error("Workbook project not found.");
+  if (!row) throw new Error("Workbook project not found.");
+  const { project: projectRecord, ...derivedProject } = row;
+  const project = { ...projectRecord, ...derivedProject };
 
   const themeVersionId = await resolveEffectiveWorkbookThemeVersionId(project);
   const [
@@ -460,14 +545,27 @@ export async function createWorkbookStudioProject(
   await requireAdmin(input.userId);
   const slug = await uniqueProjectSlug(input.title);
 
-  if (input.curriculumId) {
-    const [curriculum] = await db
-      .select({ id: workbookCurricula.id })
-      .from(workbookCurricula)
-      .where(eq(workbookCurricula.id, input.curriculumId))
-      .limit(1);
-    if (!curriculum)
-      throw new Error("Choose a valid Workbook Studio curriculum.");
+  const [courseContext] = await db
+    .select({
+      course: workbookCourses,
+      curriculum: workbookCurricula,
+      subjectKey: curriculumSubjects.key,
+      subjectLabel: curriculumSubjects.label,
+    })
+    .from(workbookCourses)
+    .innerJoin(
+      workbookCurricula,
+      eq(workbookCurricula.id, workbookCourses.curriculumId),
+    )
+    .innerJoin(
+      curriculumSubjects,
+      eq(curriculumSubjects.id, workbookCourses.curriculumSubjectId),
+    )
+    .where(eq(workbookCourses.id, input.courseId))
+    .limit(1);
+  if (!courseContext) throw new Error("Choose a valid curriculum course.");
+  if (courseContext.course.status === "retired") {
+    throw new Error("A retired course cannot receive new workbooks.");
   }
   if (input.generationPromptVersionId) {
     const [prompt] = await db
@@ -504,14 +602,12 @@ export async function createWorkbookStudioProject(
     const [project] = await tx
       .insert(workbookProjects)
       .values({
-        curriculumId: input.curriculumId,
+        courseId: input.courseId,
         catalogPlanKey: input.catalogPlanKey,
         slug,
         title: input.title,
-        subjectKey: slugify(input.subjectKey),
-        subjectLabel: input.subjectLabel,
-        gradeMin: input.gradeMin,
-        gradeMax: input.gradeMax,
+        gradeMin: courseContext.curriculum.gradeLevel,
+        gradeMax: courseContext.curriculum.gradeLevel,
         languageCode: input.languageCode.toLowerCase(),
         localeCode: input.localeCode,
         layoutProfile: input.layoutProfile,
@@ -528,12 +624,12 @@ export async function createWorkbookStudioProject(
         title: input.title,
         editionLabel: "1st Edition",
         gradeLabel:
-          input.gradeMin === input.gradeMax
-            ? input.gradeMin === 0
+          project.gradeMin === project.gradeMax
+            ? project.gradeMin === 0
               ? "Kindergarten"
-              : `Grade ${input.gradeMin}`
-            : `Grades ${input.gradeMin}–${input.gradeMax}`,
-        subjectLabel: input.subjectLabel,
+              : `Grade ${project.gradeMin}`
+            : `Grades ${project.gradeMin}–${project.gradeMax}`,
+        subjectLabel: courseContext.subjectLabel,
       });
       const [revision] = await tx
         .insert(workbookContentRevisions)
@@ -567,11 +663,26 @@ export async function createWorkbookStudioProject(
         provider: "anthropic",
         model: workbookGenerationModel(),
         status: "queued",
-        currentStage: "curriculum",
+        currentStage: "workbook_brief",
         scopeJson: {
           ...input.generationScope,
-          subjectKey: project.subjectKey,
-          subjectLabel: project.subjectLabel,
+          courseId: courseContext.course.id,
+          courseStableKey: courseContext.course.stableKey,
+          courseStatus: courseContext.course.status,
+          academicStandardKey:
+            courseContext.course.academicStandardOverrideKey ??
+            courseContext.curriculum.academicStandardKey,
+          standardCode:
+            courseContext.course.standardCode ??
+            courseContext.curriculum.standardCode,
+          standardLabel:
+            courseContext.course.standardLabel ??
+            courseContext.curriculum.standardLabel,
+          boundaryNotes: courseContext.course.boundaryNotes,
+          coverageNotes: courseContext.course.coverageNotes,
+          pipelineKey: courseContext.course.pipelineKey,
+          subjectKey: courseContext.subjectKey,
+          subjectLabel: courseContext.subjectLabel,
           gradeMin: project.gradeMin,
           gradeMax: project.gradeMax,
           languageCode: project.languageCode,
@@ -586,7 +697,7 @@ export async function createWorkbookStudioProject(
       {
         runId: run.id,
         projectId: project.id,
-        jobType: "curriculum",
+        jobType: "workbook_brief",
         sequenceNumber: 10,
       },
       {
@@ -628,12 +739,18 @@ export async function saveWorkbookStudioRevision(input: {
   await requireAdmin(input.userId);
   const projectId = uuidSchema.parse(input.projectId);
   const content = parseWorkbookContent(input.content);
-  const [project] = await db
-    .select()
+  const [projectRow] = await db
+    .select({ project: workbookProjects, subjectKey: curriculumSubjects.key })
     .from(workbookProjects)
+    .innerJoin(workbookCourses, eq(workbookCourses.id, workbookProjects.courseId))
+    .innerJoin(
+      curriculumSubjects,
+      eq(curriculumSubjects.id, workbookCourses.curriculumSubjectId),
+    )
     .where(eq(workbookProjects.id, projectId))
     .limit(1);
-  if (!project) throw new Error("Workbook project not found.");
+  if (!projectRow) throw new Error("Workbook project not found.");
+  const project = { ...projectRow.project, subjectKey: projectRow.subjectKey };
 
   const comparisonRevisionId =
     project.publishedRevisionId ?? project.currentRevisionId;
@@ -723,7 +840,11 @@ export async function createWorkbookStudioCurriculum(input: {
         curriculumId: curriculum.id,
         revisionNumber: 1,
         source: "manual",
-        planJson: input.plan ?? { workbooks: [] },
+        planJson: input.plan ?? {
+          schemaVersion: 2,
+          curriculumName: name,
+          courses: [],
+        },
         validationJson: {},
         createdByUserId: input.userId,
       })
@@ -733,6 +854,151 @@ export async function createWorkbookStudioCurriculum(input: {
       .set({ currentRevisionId: revision.id })
       .where(eq(workbookCurricula.id, curriculum.id));
     return { curriculum, revision };
+  });
+}
+
+export async function materializeWorkbookCatalogCourses(input: {
+  curriculumId: string;
+  plan: WorkbookCatalogPlan;
+  userId: string;
+}) {
+  const curriculumId = uuidSchema.parse(input.curriculumId);
+  const plan = parseWorkbookCatalogPlan(input.plan);
+  const [curriculum, subjects] = await Promise.all([
+    db
+      .select()
+      .from(workbookCurricula)
+      .where(eq(workbookCurricula.id, curriculumId))
+      .limit(1),
+    db
+      .select()
+      .from(curriculumSubjects)
+      .where(eq(curriculumSubjects.active, true)),
+  ]);
+  const selectedCurriculum = curriculum[0];
+  if (!selectedCurriculum) throw new Error("Workbook curriculum not found.");
+
+  const resolved = plan.courses.map((course) => {
+    const effectiveStandardKey =
+      course.academicStandardOverrideKey ??
+      selectedCurriculum.academicStandardKey;
+    const subject = course.curriculumSubjectId
+      ? subjects.find((candidate) => candidate.id === course.curriculumSubjectId)
+      : subjects.find(
+          (candidate) =>
+            candidate.academicStandardKey === effectiveStandardKey &&
+            candidate.key === slugify(course.subjectKey),
+        );
+    if (!subject) {
+      throw new Error(
+        `Choose a valid ${effectiveStandardKey} subject for ${course.subjectLabel}.`,
+      );
+    }
+    if (subject.academicStandardKey !== effectiveStandardKey) {
+      throw new Error(
+        `${subject.label} belongs to ${subject.academicStandardKey}, not ${effectiveStandardKey}.`,
+      );
+    }
+    return { course, subject };
+  });
+  if (new Set(resolved.map(({ subject }) => subject.id)).size !== resolved.length) {
+    throw new Error("A curriculum can contain only one course per subject.");
+  }
+  await Promise.all(
+    resolved.flatMap(({ course }) =>
+      course.themeOverrideVersionId
+        ? [assertPublishedThemeVersion(course.themeOverrideVersionId)]
+        : [],
+    ),
+  );
+
+  return db.transaction(async (tx) => {
+    const canonicalCourses: WorkbookCatalogPlan["courses"] = [];
+    const savedCourseIds: string[] = [];
+    for (const { course, subject } of resolved) {
+      const matches = await tx
+        .select({
+          id: workbookCourses.id,
+          themeOverrideVersionId: workbookCourses.themeOverrideVersionId,
+        })
+        .from(workbookCourses)
+        .where(
+          and(
+            eq(workbookCourses.curriculumId, curriculumId),
+            or(
+              eq(workbookCourses.stableKey, slugify(course.stableKey)),
+              eq(workbookCourses.curriculumSubjectId, subject.id),
+            ),
+          ),
+        );
+      if (matches.length > 1) {
+        throw new Error(
+          `Changing ${course.subjectLabel} would collide with another saved course. Retire or remove that course first.`,
+        );
+      }
+      const existing = matches[0];
+      const values = {
+        curriculumId,
+        stableKey: slugify(course.stableKey),
+        curriculumSubjectId: subject.id,
+        status: course.status,
+        academicStandardOverrideKey:
+          course.academicStandardOverrideKey ?? null,
+        standardCode: course.standardCode?.trim() || null,
+        standardLabel: course.standardLabel?.trim() || null,
+        themeOverrideVersionId:
+          existing?.themeOverrideVersionId ??
+          course.themeOverrideVersionId ??
+          null,
+        boundaryNotes: course.boundaryNotes.trim() || null,
+        coverageNotes: course.coverageNotes.trim() || null,
+        pipelineKey: course.pipelineKey?.trim() || null,
+        updatedByUserId: input.userId,
+        updatedAt: new Date(),
+      };
+      const [saved] = existing
+        ? await tx
+            .update(workbookCourses)
+            .set(values)
+            .where(eq(workbookCourses.id, existing.id))
+            .returning()
+        : await tx
+            .insert(workbookCourses)
+            .values({
+              ...values,
+              createdByUserId: input.userId,
+            })
+            .returning();
+      savedCourseIds.push(saved.id);
+      canonicalCourses.push({
+        ...course,
+        stableKey: saved.stableKey,
+        curriculumSubjectId: subject.id,
+        subjectKey: subject.key,
+        subjectLabel: subject.label,
+        themeOverrideVersionId: saved.themeOverrideVersionId,
+      });
+    }
+    const persistedCourses = await tx
+      .select({ id: workbookCourses.id, stableKey: workbookCourses.stableKey })
+      .from(workbookCourses)
+      .where(eq(workbookCourses.curriculumId, curriculumId));
+    for (const staleCourse of persistedCourses.filter(
+      (course) => !savedCourseIds.includes(course.id),
+    )) {
+      const [project] = await tx
+        .select({ id: workbookProjects.id })
+        .from(workbookProjects)
+        .where(eq(workbookProjects.courseId, staleCourse.id))
+        .limit(1);
+      if (project) {
+        throw new Error(
+          `Retire ${staleCourse.stableKey} instead of removing it because it already has workbook projects.`,
+        );
+      }
+      await tx.delete(workbookCourses).where(eq(workbookCourses.id, staleCourse.id));
+    }
+    return { ...plan, schemaVersion: 2 as const, courses: canonicalCourses };
   });
 }
 
@@ -897,18 +1163,43 @@ export async function getAdminWorkbookStudioCurriculum(input: {
     .where(eq(workbookCurricula.id, curriculumId))
     .limit(1);
   if (!curriculum) throw new Error("Workbook curriculum not found.");
-  const [revisions, projects, batches] = await Promise.all([
+  const [revisions, courses, projectRows, batches] = await Promise.all([
     db
       .select()
       .from(workbookCurriculumRevisions)
       .where(eq(workbookCurriculumRevisions.curriculumId, curriculumId))
       .orderBy(desc(workbookCurriculumRevisions.revisionNumber)),
     db
-      .select()
+      .select({
+        course: workbookCourses,
+        subjectKey: curriculumSubjects.key,
+        subjectLabel: curriculumSubjects.label,
+        subjectAcademicStandardKey: curriculumSubjects.academicStandardKey,
+      })
+      .from(workbookCourses)
+      .innerJoin(
+        curriculumSubjects,
+        eq(curriculumSubjects.id, workbookCourses.curriculumSubjectId),
+      )
+      .where(eq(workbookCourses.curriculumId, curriculumId))
+      .orderBy(asc(curriculumSubjects.displayOrder), asc(curriculumSubjects.label)),
+    db
+      .select({
+        project: workbookProjects,
+        curriculumId: workbookCourses.curriculumId,
+        subjectKey: curriculumSubjects.key,
+        subjectLabel: curriculumSubjects.label,
+        courseStableKey: workbookCourses.stableKey,
+      })
       .from(workbookProjects)
-      .where(eq(workbookProjects.curriculumId, curriculumId))
+      .innerJoin(workbookCourses, eq(workbookCourses.id, workbookProjects.courseId))
+      .innerJoin(
+        curriculumSubjects,
+        eq(curriculumSubjects.id, workbookCourses.curriculumSubjectId),
+      )
+      .where(eq(workbookCourses.curriculumId, curriculumId))
       .orderBy(
-        asc(workbookProjects.subjectLabel),
+        asc(curriculumSubjects.label),
         asc(workbookProjects.localeCode),
       ),
     db
@@ -928,7 +1219,11 @@ export async function getAdminWorkbookStudioCurriculum(input: {
       revisions.find(
         (revision) => revision.id === curriculum.publishedRevisionId,
       ) ?? null,
-    projects,
+    courses: courses.map(({ course, ...subject }) => ({ ...course, ...subject })),
+    projects: projectRows.map(({ project, ...derived }) => ({
+      ...project,
+      ...derived,
+    })),
     batches,
   };
 }
@@ -941,7 +1236,7 @@ export async function saveWorkbookStudioCurriculumRevision(input: {
 }) {
   await requireAdmin(input.userId);
   const curriculumId = uuidSchema.parse(input.curriculumId);
-  const plan = parseWorkbookCatalogPlan(input.plan);
+  const parsedPlan = parseWorkbookCatalogPlan(input.plan);
   const workbookPromptVersionId = input.workbookPromptVersionId
     ? uuidSchema.parse(input.workbookPromptVersionId)
     : null;
@@ -951,6 +1246,11 @@ export async function saveWorkbookStudioCurriculumRevision(input: {
     .where(eq(workbookCurricula.id, curriculumId))
     .limit(1);
   if (!curriculum) throw new Error("Workbook curriculum not found.");
+  const plan = await materializeWorkbookCatalogCourses({
+    curriculumId,
+    plan: parsedPlan,
+    userId: input.userId,
+  });
   return db.transaction(async (tx) => {
     const [numberRow] = await tx
       .select({
@@ -964,7 +1264,7 @@ export async function saveWorkbookStudioCurriculumRevision(input: {
         curriculumId,
         revisionNumber: numberRow?.next ?? 1,
         source: "manual",
-        planJson: { schemaVersion: 1, workbookPromptVersionId, ...plan },
+        planJson: { ...plan, workbookPromptVersionId },
         validationJson: { issues: [] },
         createdByUserId: input.userId,
       })
@@ -1088,7 +1388,7 @@ export async function queueWorkbookCurriculumGeneration(input: {
   const [batch] = await db
     .insert(workbookGenerationBatches)
     .values({
-      kind: "curriculum",
+      kind: "curriculum_fanout",
       status: "queued",
       curriculumId,
       gradeLevel: row.curriculum.gradeLevel,
@@ -1104,55 +1404,82 @@ export async function queueWorkbookCurriculumGeneration(input: {
   const createdProjectIds: string[] = [];
   const existingProjectIds: string[] = [];
   try {
-    for (const planned of plan.workbooks) {
-      const [existingProject] = await db
-        .select({ id: workbookProjects.id })
-        .from(workbookProjects)
+    for (const plannedCourse of plan.courses) {
+      if (plannedCourse.status === "retired") continue;
+      const [course] = await db
+        .select()
+        .from(workbookCourses)
         .where(
           and(
-            eq(workbookProjects.curriculumId, curriculumId),
-            eq(workbookProjects.catalogPlanKey, planned.stableKey),
+            eq(workbookCourses.curriculumId, curriculumId),
+            eq(workbookCourses.stableKey, plannedCourse.stableKey),
           ),
         )
         .limit(1);
-      if (existingProject) {
-        existingProjectIds.push(existingProject.id);
-        continue;
+      if (!course) {
+        throw new Error(
+          `Save the curriculum again to materialize ${plannedCourse.subjectLabel}.`,
+        );
       }
-      const created = await createWorkbookStudioProject({
-        userId: input.userId,
-        curriculumId,
-        catalogPlanKey: planned.stableKey,
-        title: planned.title,
-        subjectKey: planned.subjectKey,
-        subjectLabel: planned.subjectLabel,
-        gradeMin: row.curriculum.gradeLevel,
-        gradeMax: row.curriculum.gradeLevel,
-        languageCode: planned.languageCode,
-        localeCode: planned.localeCode,
-        layoutProfile: planned.layoutProfile,
-        scriptProfile: planned.scriptProfile,
-        authoringMode: "generate",
-        generationPromptVersionId: workbookPromptVersionId,
-        generationScope: {
+      const coursePromptVersionId = await courseWorkflowPromptVersionId(
+        plannedCourse.pipelineKey,
+        workbookPromptVersionId,
+      );
+      for (const planned of plannedCourse.workbooks) {
+        const [existingProject] = await db
+          .select({ id: workbookProjects.id })
+          .from(workbookProjects)
+          .where(
+            and(
+              eq(workbookProjects.courseId, course.id),
+              eq(workbookProjects.catalogPlanKey, planned.stableKey),
+            ),
+          )
+          .limit(1);
+        if (existingProject) {
+          existingProjectIds.push(existingProject.id);
+          continue;
+        }
+        const created = await createWorkbookStudioProject({
+          userId: input.userId,
+          courseId: course.id,
           catalogPlanKey: planned.stableKey,
-          domains: planned.domains,
-          curriculumName: row.curriculum.name,
-          standardCode: row.curriculum.standardCode,
-          standardLabel: row.curriculum.standardLabel,
-        },
-      });
-      if (!created.generationRun)
-        throw new Error("The workbook generation run was not created.");
-      createdProjectIds.push(created.project.id);
-      await db
-        .update(workbookGenerationRuns)
-        .set({ batchId: batch.id })
-        .where(eq(workbookGenerationRuns.id, created.generationRun.id));
-      await db
-        .update(workbookStudioJobs)
-        .set({ batchId: batch.id })
-        .where(eq(workbookStudioJobs.runId, created.generationRun.id));
+          title: planned.title,
+          languageCode: planned.languageCode,
+          localeCode: planned.localeCode,
+          layoutProfile: planned.layoutProfile,
+          scriptProfile: planned.scriptProfile,
+          authoringMode: "generate",
+          generationPromptVersionId: coursePromptVersionId,
+          generationScope: {
+            catalogPlanKey: planned.stableKey,
+            domains: planned.domains,
+            curriculumName: row.curriculum.name,
+            courseStableKey: plannedCourse.stableKey,
+            courseStatus: plannedCourse.status,
+            boundaryNotes: plannedCourse.boundaryNotes,
+            coverageNotes: plannedCourse.coverageNotes,
+            standardCode:
+              plannedCourse.standardCode ?? row.curriculum.standardCode,
+            standardLabel:
+              plannedCourse.standardLabel ?? row.curriculum.standardLabel,
+            academicStandardKey:
+              plannedCourse.academicStandardOverrideKey ??
+              row.curriculum.academicStandardKey,
+          },
+        });
+        if (!created.generationRun)
+          throw new Error("The workbook generation run was not created.");
+        createdProjectIds.push(created.project.id);
+        await db
+          .update(workbookGenerationRuns)
+          .set({ batchId: batch.id })
+          .where(eq(workbookGenerationRuns.id, created.generationRun.id));
+        await db
+          .update(workbookStudioJobs)
+          .set({ batchId: batch.id })
+          .where(eq(workbookStudioJobs.runId, created.generationRun.id));
+      }
     }
     const [countRow] = await db
       .select({ count: sql<number>`count(*)::integer` })
@@ -1195,7 +1522,7 @@ export async function saveWorkbookGenerationPrompt(input: {
     .enum([
       "workflow",
       "catalog_plan",
-      "curriculum",
+      "workbook_brief",
       "outline",
       "lesson_content",
       "subject_overlay",
@@ -1624,9 +1951,11 @@ export async function setWorkbookCurriculumTheme(input: {
       nativeWorkbookId: workbookProjects.nativeWorkbookId,
     })
     .from(workbookProjects)
+    .innerJoin(workbookCourses, eq(workbookCourses.id, workbookProjects.courseId))
     .where(
       and(
-        eq(workbookProjects.curriculumId, curriculumId),
+        eq(workbookCourses.curriculumId, curriculumId),
+        isNull(workbookCourses.themeOverrideVersionId),
         isNull(workbookProjects.themeOverrideVersionId),
         sql`${workbookProjects.status} <> 'archived'`,
       ),
@@ -1662,6 +1991,98 @@ export async function setWorkbookCurriculumTheme(input: {
         jobType: "theme_cascade" as const,
         sequenceNumber: index,
         payloadJson: { themeVersionId },
+      })),
+    );
+    return { batchId: batch.id, affectedProjects: projects.length };
+  });
+}
+
+export async function setWorkbookCourseTheme(input: {
+  userId: string;
+  courseId: string;
+  themeVersionId: string | null;
+}) {
+  await requireAdmin(input.userId);
+  const courseId = uuidSchema.parse(input.courseId);
+  const themeVersionId = input.themeVersionId
+    ? uuidSchema.parse(input.themeVersionId)
+    : null;
+  if (themeVersionId) await assertPublishedThemeVersion(themeVersionId);
+  const [course] = await db
+    .select()
+    .from(workbookCourses)
+    .where(eq(workbookCourses.id, courseId))
+    .limit(1);
+  if (!course) throw new Error("Workbook course not found.");
+  if (course.themeOverrideVersionId === themeVersionId) {
+    return { batchId: null, affectedProjects: 0 };
+  }
+  const [curriculum] = await db
+    .select({ defaultThemeVersionId: workbookCurricula.defaultThemeVersionId })
+    .from(workbookCurricula)
+    .where(eq(workbookCurricula.id, course.curriculumId))
+    .limit(1);
+  if (!curriculum) throw new Error("Workbook curriculum not found.");
+  const currentEffectiveThemeVersionId =
+    course.themeOverrideVersionId ?? curriculum.defaultThemeVersionId;
+  const targetThemeVersionId =
+    themeVersionId ?? curriculum.defaultThemeVersionId;
+  if (currentEffectiveThemeVersionId === targetThemeVersionId) {
+    await db
+      .update(workbookCourses)
+      .set({
+        themeOverrideVersionId: themeVersionId,
+        updatedByUserId: input.userId,
+        updatedAt: new Date(),
+      })
+      .where(eq(workbookCourses.id, courseId));
+    return { batchId: null, affectedProjects: 0 };
+  }
+  const projects = await db
+    .select({
+      id: workbookProjects.id,
+      nativeWorkbookId: workbookProjects.nativeWorkbookId,
+    })
+    .from(workbookProjects)
+    .where(
+      and(
+        eq(workbookProjects.courseId, courseId),
+        isNull(workbookProjects.themeOverrideVersionId),
+        sql`${workbookProjects.status} <> 'archived'`,
+      ),
+    );
+  return db.transaction(async (tx) => {
+    await tx
+      .update(workbookCourses)
+      .set({
+        themeOverrideVersionId: themeVersionId,
+        updatedByUserId: input.userId,
+        updatedAt: new Date(),
+      })
+      .where(eq(workbookCourses.id, courseId));
+    const releasable = projects.filter((project) => project.nativeWorkbookId);
+    if (!releasable.length) {
+      return { batchId: null, affectedProjects: projects.length };
+    }
+    const [batch] = await tx
+      .insert(workbookGenerationBatches)
+      .values({
+        kind: "theme_cascade",
+        status: "queued",
+        curriculumId: course.curriculumId,
+        targetThemeVersionId,
+        totalJobs: releasable.length,
+        inputJson: { reason: "course_theme_change", courseId },
+        requestedByUserId: input.userId,
+      })
+      .returning();
+    await tx.insert(workbookStudioJobs).values(
+      releasable.map((project, index) => ({
+        batchId: batch.id,
+        projectId: project.id,
+        jobType: "theme_cascade" as const,
+        sequenceNumber: index,
+        payloadJson: { themeVersionId: targetThemeVersionId },
       })),
     );
     return { batchId: batch.id, affectedProjects: projects.length };

@@ -31,7 +31,7 @@ const outlineSchema = z.object({
 
 export type WorkbookOutline = z.infer<typeof outlineSchema>;
 
-const workbookCurriculumBriefSchema = z.object({
+const workbookBriefSchema = z.object({
   title: z.string().trim().min(1),
   audience: z.string().trim().min(1),
   learningGoals: z.array(z.string().trim().min(1)).min(1),
@@ -48,40 +48,68 @@ const workbookCurriculumBriefSchema = z.object({
   vocabulary: z.array(z.string()).default([]),
 });
 
-export type WorkbookCurriculumBrief = z.infer<
-  typeof workbookCurriculumBriefSchema
->;
+export type WorkbookBrief = z.infer<typeof workbookBriefSchema>;
+
+const workbookVariantPlanSchema = z.object({
+  stableKey: z.string().trim().min(1),
+  title: z.string().trim().min(1),
+  domains: z.array(z.string().trim().min(1)).min(1),
+  languageCode: z.string().trim().min(2),
+  localeCode: z.string().trim().min(1).nullable(),
+  layoutProfile: z.enum(["standard", "reader"]),
+  scriptProfile: z.enum(["latin", "japanese"]),
+});
+
+const workbookCoursePlanSchema = z.object({
+  stableKey: z.string().trim().min(1),
+  curriculumSubjectId: z.string().uuid().nullable().optional(),
+  subjectKey: z.string().trim().min(1),
+  subjectLabel: z.string().trim().min(1),
+  status: z.enum(["inherited", "modified", "new", "retired"]),
+  academicStandardOverrideKey: z.string().trim().min(1).nullable(),
+  standardCode: z.string().trim().min(1).nullable(),
+  standardLabel: z.string().trim().min(1).nullable(),
+  themeOverrideVersionId: z.string().uuid().nullable().optional(),
+  boundaryNotes: z.string(),
+  coverageNotes: z.string(),
+  pipelineKey: z.string().trim().min(1).nullable(),
+  workbooks: z.array(workbookVariantPlanSchema),
+});
 
 const workbookCatalogPlanSchema = z
   .object({
+    schemaVersion: z.literal(2).default(2),
     curriculumName: z.string().trim().min(1),
-    workbooks: z
-      .array(
-        z.object({
-          stableKey: z.string().trim().min(1),
-          title: z.string().trim().min(1),
-          subjectKey: z.string().trim().min(1),
-          subjectLabel: z.string().trim().min(1),
-          domains: z.array(z.string().trim().min(1)).min(1),
-          languageCode: z.string().trim().min(2),
-          localeCode: z.string().trim().min(1).nullable(),
-          layoutProfile: z.enum(["standard", "reader"]),
-          scriptProfile: z.enum(["latin", "japanese"]),
-        }),
-      )
-      .min(1),
+    courses: z.array(workbookCoursePlanSchema).min(1),
   })
   .superRefine((value, context) => {
-    const keys = new Set<string>();
-    value.workbooks.forEach((workbook, index) => {
-      if (keys.has(workbook.stableKey)) {
+    const courseKeys = new Set<string>();
+    const workbookKeys = new Set<string>();
+    value.courses.forEach((course, courseIndex) => {
+      if (courseKeys.has(course.stableKey)) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Duplicate workbook stableKey: ${workbook.stableKey}`,
-          path: ["workbooks", index, "stableKey"],
+          message: `Duplicate course stableKey: ${course.stableKey}`,
+          path: ["courses", courseIndex, "stableKey"],
         });
       }
-      keys.add(workbook.stableKey);
+      courseKeys.add(course.stableKey);
+      course.workbooks.forEach((workbook, workbookIndex) => {
+        if (workbookKeys.has(workbook.stableKey)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Duplicate workbook stableKey: ${workbook.stableKey}`,
+            path: [
+              "courses",
+              courseIndex,
+              "workbooks",
+              workbookIndex,
+              "stableKey",
+            ],
+          });
+        }
+        workbookKeys.add(workbook.stableKey);
+      });
     });
   });
 
@@ -237,7 +265,7 @@ const workbookJsonSchema = {
   },
 } as const;
 
-const curriculumBriefJsonSchema = {
+const workbookBriefJsonSchema = {
   type: "object",
   additionalProperties: false,
   required: ["title", "audience", "learningGoals", "domains", "vocabulary"],
@@ -267,10 +295,11 @@ const curriculumBriefJsonSchema = {
 const catalogPlanJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["curriculumName", "workbooks"],
+  required: ["schemaVersion", "curriculumName", "courses"],
   properties: {
+    schemaVersion: { type: "integer", enum: [2] },
     curriculumName: { type: "string" },
-    workbooks: {
+    courses: {
       type: "array",
       minItems: 1,
       items: {
@@ -278,25 +307,66 @@ const catalogPlanJsonSchema = {
         additionalProperties: false,
         required: [
           "stableKey",
-          "title",
           "subjectKey",
           "subjectLabel",
-          "domains",
-          "languageCode",
-          "localeCode",
-          "layoutProfile",
-          "scriptProfile",
+          "status",
+          "academicStandardOverrideKey",
+          "standardCode",
+          "standardLabel",
+          "boundaryNotes",
+          "coverageNotes",
+          "pipelineKey",
+          "workbooks",
         ],
         properties: {
           stableKey: { type: "string" },
-          title: { type: "string" },
           subjectKey: { type: "string" },
           subjectLabel: { type: "string" },
-          domains: { type: "array", minItems: 1, items: { type: "string" } },
-          languageCode: { type: "string" },
-          localeCode: { type: ["string", "null"] },
-          layoutProfile: { type: "string", enum: ["standard", "reader"] },
-          scriptProfile: { type: "string", enum: ["latin", "japanese"] },
+          status: {
+            type: "string",
+            enum: ["inherited", "modified", "new", "retired"],
+          },
+          academicStandardOverrideKey: { type: ["string", "null"] },
+          standardCode: { type: ["string", "null"] },
+          standardLabel: { type: ["string", "null"] },
+          boundaryNotes: { type: "string" },
+          coverageNotes: { type: "string" },
+          pipelineKey: { type: ["string", "null"] },
+          workbooks: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "stableKey",
+                "title",
+                "domains",
+                "languageCode",
+                "localeCode",
+                "layoutProfile",
+                "scriptProfile",
+              ],
+              properties: {
+                stableKey: { type: "string" },
+                title: { type: "string" },
+                domains: {
+                  type: "array",
+                  minItems: 1,
+                  items: { type: "string" },
+                },
+                languageCode: { type: "string" },
+                localeCode: { type: ["string", "null"] },
+                layoutProfile: {
+                  type: "string",
+                  enum: ["standard", "reader"],
+                },
+                scriptProfile: {
+                  type: "string",
+                  enum: ["latin", "japanese"],
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -307,7 +377,7 @@ export async function generateWorkbookCatalogPlan(input: {
   assembledPrompt: string;
 }) {
   const response = await callAnthropicTool({
-    prompt: `${input.assembledPrompt}\n\nPlan the complete grade-level workbook catalog now. Emit one workbooks entry per actual subject and locale variant. Keep stableKey deterministic, lowercase, and dash-separated. A locale variant is a separate entry, not a nested note.`,
+    prompt: `${input.assembledPrompt}\n\nPlan the complete grade curriculum now. Emit one course per required subject, then nest every actual workbook, reading level, split-series book, and locale variant beneath its course. Use status inherited, modified, new, or retired relative to the precedent grade. academicStandardOverrideKey changes the country or school system (for example japan); use standardCode and standardLabel for a framework inside that system (for example NGSS within us). Keep all stableKey values deterministic, lowercase, and dash-separated.`,
     toolName: "save_workbook_catalog_plan",
     toolDescription:
       "Save the grade-level catalog that will fan out into individual Workbook Studio projects.",
@@ -317,7 +387,7 @@ export async function generateWorkbookCatalogPlan(input: {
   return { ...response, plan: workbookCatalogPlanSchema.parse(response.value) };
 }
 
-export async function generateWorkbookCurriculumBrief(input: {
+export async function generateWorkbookBrief(input: {
   assembledPrompt: string;
 }) {
   const response = await callAnthropicTool({
@@ -325,12 +395,12 @@ export async function generateWorkbookCurriculumBrief(input: {
     toolName: "save_workbook_curriculum_brief",
     toolDescription:
       "Save the scoped curriculum brief that governs one workbook's outline.",
-    inputSchema: curriculumBriefJsonSchema,
+    inputSchema: workbookBriefJsonSchema,
     maxTokens: 12_000,
   });
   return {
     ...response,
-    curriculum: workbookCurriculumBriefSchema.parse(response.value),
+    workbookBrief: workbookBriefSchema.parse(response.value),
   };
 }
 

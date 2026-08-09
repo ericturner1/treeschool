@@ -1,11 +1,13 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
+  curriculumSubjects,
   nativeWorkbookEditions,
   nativeWorkbookVersions,
   nativeWorkbooks,
   profiles,
   workbookContentRevisions,
+  workbookCourses,
   workbookCurricula,
   workbookGenerationBatches,
   workbookGenerationRuns,
@@ -75,12 +77,31 @@ async function resolveReleasePlan(input: {
   contentRevisionId: string;
   forceNewEdition: boolean;
 }) {
-  const [project] = await db
-    .select()
+  const [projectRow] = await db
+    .select({
+      project: workbookProjects,
+      curriculumId: workbookCourses.curriculumId,
+      curriculumThemeVersionId: workbookCurricula.defaultThemeVersionId,
+      courseThemeVersionId: workbookCourses.themeOverrideVersionId,
+      academicStandardKey: sql<string>`coalesce(${workbookCourses.academicStandardOverrideKey}, ${workbookCurricula.academicStandardKey})`,
+      subjectKey: curriculumSubjects.key,
+      subjectLabel: curriculumSubjects.label,
+    })
     .from(workbookProjects)
+    .innerJoin(workbookCourses, eq(workbookCourses.id, workbookProjects.courseId))
+    .innerJoin(
+      workbookCurricula,
+      eq(workbookCurricula.id, workbookCourses.curriculumId),
+    )
+    .innerJoin(
+      curriculumSubjects,
+      eq(curriculumSubjects.id, workbookCourses.curriculumSubjectId),
+    )
     .where(eq(workbookProjects.id, input.projectId))
     .limit(1);
-  if (!project) throw new Error("Workbook project not found.");
+  if (!projectRow) throw new Error("Workbook project not found.");
+  const { project: projectRecord, ...projectContext } = projectRow;
+  const project = { ...projectRecord, ...projectContext };
   const [revision] = await db
     .select()
     .from(workbookContentRevisions)
@@ -132,15 +153,10 @@ async function resolveReleasePlan(input: {
         .where(eq(nativeWorkbooks.id, project.nativeWorkbookId))
         .limit(1)
     : [];
-  const [curriculum] = project.curriculumId
-    ? await db
-        .select({ themeVersionId: workbookCurricula.defaultThemeVersionId })
-        .from(workbookCurricula)
-        .where(eq(workbookCurricula.id, project.curriculumId))
-        .limit(1)
-    : [];
   const themeVersionId =
-    project.themeOverrideVersionId ?? curriculum?.themeVersionId;
+    project.themeOverrideVersionId ??
+    project.courseThemeVersionId ??
+    project.curriculumThemeVersionId;
   if (!themeVersionId)
     throw new Error("Choose a published theme before releasing this workbook.");
   const themeChanged = Boolean(
@@ -215,7 +231,7 @@ export async function queueWorkbookStudioRelease(input: {
       .values({
         kind: "single_workbook",
         status: "queued",
-        curriculumId: project.curriculumId,
+        curriculumId: plan.project.curriculumId,
         targetThemeVersionId: plan.themeVersionId,
         totalJobs: 3,
         inputJson: { operation: "release", mode: plan.mode },
@@ -309,10 +325,22 @@ export async function publishCompletedWorkbookStudioRender(input: {
   const [row] = await db
     .select({
       project: workbookProjects,
+      curriculumId: workbookCourses.curriculumId,
+      academicStandardKey: sql<string>`coalesce(${workbookCourses.academicStandardOverrideKey}, ${workbookCurricula.academicStandardKey})`,
+      subjectLabel: curriculumSubjects.label,
       render: workbookRenderRuns,
       revision: workbookContentRevisions,
     })
     .from(workbookProjects)
+    .innerJoin(workbookCourses, eq(workbookCourses.id, workbookProjects.courseId))
+    .innerJoin(
+      workbookCurricula,
+      eq(workbookCurricula.id, workbookCourses.curriculumId),
+    )
+    .innerJoin(
+      curriculumSubjects,
+      eq(curriculumSubjects.id, workbookCourses.curriculumSubjectId),
+    )
     .innerJoin(
       workbookRenderRuns,
       eq(workbookRenderRuns.projectId, workbookProjects.id),
@@ -341,20 +369,13 @@ export async function publishCompletedWorkbookStudioRender(input: {
   };
   const pdf = await downloadPrivateFile(row.render.pdfObjectPath);
   const filename = `${row.project.slug}-${input.editionLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
-  const [curriculumStandard] = row.project.curriculumId
-    ? await db.select({ academicStandardKey: workbookCurricula.academicStandardKey })
-        .from(workbookCurricula)
-        .where(eq(workbookCurricula.id, row.project.curriculumId))
-        .limit(1)
-    : [];
-
   if (input.releaseMode === "first_release") {
     const prepared = await prepareNativeWorkbookUpload({
       userId: input.userId,
       title: row.project.title,
-      subject: row.project.subjectLabel,
+      subject: row.subjectLabel,
       addSubjectToTaxonomy: true,
-      academicStandardKey: curriculumStandard?.academicStandardKey ?? "us",
+      academicStandardKey: row.academicStandardKey,
       curriculumAreaKey: catalog.curriculumAreaKey,
       gradeMin: row.project.gradeMin,
       gradeMax: row.project.gradeMax,

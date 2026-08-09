@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import type { WorkbookStudioSummary } from "../../../lib/workbook-studio/server";
 import { createWorkbookStudioProjectAction } from "./actions";
 
 type Choice = {
@@ -14,10 +15,12 @@ type Choice = {
 };
 
 export function StudioProjectCreator({
+  courses,
   curricula,
   prompts,
 }: {
-  curricula: Choice[];
+  courses: WorkbookStudioSummary["courses"];
+  curricula: WorkbookStudioSummary["curricula"];
   prompts: Choice[];
 }) {
   const router = useRouter();
@@ -107,17 +110,9 @@ export function StudioProjectCreator({
                 action={(formData) => {
                   setError("");
                   startTransition(async () => {
-                    const subjectLabel = String(
-                      formData.get("subjectLabel") ?? "",
-                    ).trim();
                     const result = await createWorkbookStudioProjectAction({
-                      curriculumId:
-                        String(formData.get("curriculumId") ?? "") || null,
+                      courseId: String(formData.get("courseId") ?? ""),
                       title: String(formData.get("title") ?? ""),
-                      subjectKey: subjectLabel,
-                      subjectLabel,
-                      gradeMin: Number(formData.get("gradeMin") ?? 1),
-                      gradeMax: Number(formData.get("gradeMax") ?? 1),
                       languageCode: String(
                         formData.get("languageCode") ?? "en",
                       ),
@@ -152,55 +147,27 @@ export function StudioProjectCreator({
                   />
                 </label>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1.5 text-sm font-bold">
-                    Subject
-                    <input
-                      name="subjectLabel"
-                      required
-                      className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
-                      placeholder="Math"
-                    />
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-bold">
-                    Curriculum
+                  <label className="grid gap-1.5 text-sm font-bold sm:col-span-2">
+                    Course
                     <select
-                      name="curriculumId"
+                      name="courseId"
+                      required
                       className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
                     >
-                      <option value="">Standalone workbook</option>
-                      {curricula.map((curriculum) => (
-                        <option key={curriculum.id} value={curriculum.id}>
-                          {curriculum.name}
-                          {curriculum.gradeLevel == null
-                            ? ""
-                            : ` · Grade ${curriculum.gradeLevel}`}
-                        </option>
-                      ))}
+                      <option value="">Choose a curriculum course</option>
+                      {courses
+                        .filter((course) => course.status !== "retired")
+                        .map((course) => {
+                          const curriculum = curricula.find(
+                            (candidate) => candidate.id === course.curriculumId,
+                          );
+                          return (
+                            <option key={course.id} value={course.id}>
+                              {curriculum?.name ?? "Curriculum"} · {course.subjectLabel}
+                            </option>
+                          );
+                        })}
                     </select>
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-bold">
-                    Starting grade
-                    <input
-                      name="gradeMin"
-                      type="number"
-                      min="0"
-                      max="20"
-                      defaultValue="1"
-                      required
-                      className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
-                    />
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-bold">
-                    Ending grade
-                    <input
-                      name="gradeMax"
-                      type="number"
-                      min="0"
-                      max="20"
-                      defaultValue="1"
-                      required
-                      className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
-                    />
                   </label>
                   <label className="grid gap-1.5 text-sm font-bold">
                     Language

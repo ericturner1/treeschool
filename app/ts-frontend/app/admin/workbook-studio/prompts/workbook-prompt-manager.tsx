@@ -125,6 +125,7 @@ export function WorkbookPromptManager({
             >
               <option value="workflow">Single-workbook workflow</option>
               <option value="catalog_plan">Grade catalog plan</option>
+              <option value="workbook_brief">Workbook brief stage</option>
               <option value="outline">Outline stage</option>
               <option value="lesson_content">Lesson content stage</option>
               <option value="subject_overlay">Subject overlay</option>

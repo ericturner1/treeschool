@@ -21,7 +21,7 @@ type PromptSeed = {
   kind: WorkbookGenerationPromptKind;
   paths: string[];
   stageSlugs?: Partial<
-    Record<"outline" | "lesson_content" | "curriculum" | "catalog_plan", string>
+    Record<"outline" | "lesson_content" | "workbook_brief" | "catalog_plan", string>
   >;
 };
 
@@ -38,7 +38,7 @@ const seeds: PromptSeed[] = [
     slug: "general-curriculum-stage",
     name: "General curriculum stage",
     description: "Creates the curriculum scope for one workbook.",
-    kind: "curriculum",
+    kind: "workbook_brief",
     paths: ["general_step1_curriculum_generation_prompt.md"],
   },
   {
@@ -62,7 +62,7 @@ const seeds: PromptSeed[] = [
     kind: "workflow",
     paths: ["general_orchestration_prompt.md"],
     stageSlugs: {
-      curriculum: "general-curriculum-stage",
+      workbook_brief: "general-curriculum-stage",
       outline: "general-outline-stage",
       lesson_content: "general-content-stage",
     },
@@ -75,7 +75,7 @@ const seeds: PromptSeed[] = [
     kind: "workflow",
     paths: ["math/math_workbook_orchestration_prompt.md"],
     stageSlugs: {
-      curriculum: "general-curriculum-stage",
+      workbook_brief: "general-curriculum-stage",
       outline: "general-outline-stage",
       lesson_content: "general-content-stage",
     },
@@ -88,7 +88,7 @@ const seeds: PromptSeed[] = [
     kind: "workflow",
     paths: ["music/music_workbook_orchestration_prompt.md"],
     stageSlugs: {
-      curriculum: "general-curriculum-stage",
+      workbook_brief: "general-curriculum-stage",
       outline: "general-outline-stage",
       lesson_content: "general-content-stage",
     },
@@ -102,7 +102,7 @@ const seeds: PromptSeed[] = [
       "foreign-language/foreign_language_workbook_orchestration_prompt.md",
     ],
     stageSlugs: {
-      curriculum: "general-curriculum-stage",
+      workbook_brief: "general-curriculum-stage",
       outline: "general-outline-stage",
       lesson_content: "general-content-stage",
     },
@@ -111,7 +111,7 @@ const seeds: PromptSeed[] = [
     slug: "reader-curriculum-stage",
     name: "Leveled reader curriculum stage",
     description: "Plans a leveled-reader curriculum.",
-    kind: "curriculum",
+    kind: "workbook_brief",
     paths: [
       "leveled_reader/leveled_reader_step1_curriculum_generation_prompt.md",
     ],
@@ -139,7 +139,7 @@ const seeds: PromptSeed[] = [
     kind: "workflow",
     paths: ["leveled_reader/leveled_reader_orchestration_prompt.md"],
     stageSlugs: {
-      curriculum: "reader-curriculum-stage",
+      workbook_brief: "reader-curriculum-stage",
       outline: "reader-outline-stage",
       lesson_content: "reader-content-stage",
     },
@@ -148,7 +148,7 @@ const seeds: PromptSeed[] = [
     slug: "japanese-curriculum-stage",
     name: "Japanese curriculum stage",
     description: "Plans Japanese and Kokugo curriculum scope.",
-    kind: "curriculum",
+    kind: "workbook_brief",
     paths: ["japanese/general_step1_curriculum_generation_prompt.md"],
   },
   {
@@ -177,7 +177,7 @@ const seeds: PromptSeed[] = [
       "japanese/kokugo_series_structure_addendum.md",
     ],
     stageSlugs: {
-      curriculum: "japanese-curriculum-stage",
+      workbook_brief: "japanese-curriculum-stage",
       outline: "japanese-outline-stage",
       lesson_content: "japanese-content-stage",
     },

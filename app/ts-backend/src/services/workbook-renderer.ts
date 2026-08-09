@@ -5,7 +5,9 @@ import { and, eq } from "drizzle-orm";
 import { PDFDocument } from "pdf-lib";
 import { chromium } from "playwright";
 import {
+  curriculumSubjects,
   workbookContentRevisions,
+  workbookCourses,
   workbookIllustrationTypes,
   workbookProjects,
   workbookRenderRuns,
@@ -578,6 +580,7 @@ export async function executeWorkbookRenderRun(renderRunId: string) {
     .select({
       run: workbookRenderRuns,
       project: workbookProjects,
+      subjectKey: curriculumSubjects.key,
       revision: workbookContentRevisions,
       theme: workbookThemeVersions,
     })
@@ -585,6 +588,11 @@ export async function executeWorkbookRenderRun(renderRunId: string) {
     .innerJoin(
       workbookProjects,
       eq(workbookProjects.id, workbookRenderRuns.projectId),
+    )
+    .innerJoin(workbookCourses, eq(workbookCourses.id, workbookProjects.courseId))
+    .innerJoin(
+      curriculumSubjects,
+      eq(curriculumSubjects.id, workbookCourses.curriculumSubjectId),
     )
     .innerJoin(
       workbookContentRevisions,
@@ -602,7 +610,10 @@ export async function executeWorkbookRenderRun(renderRunId: string) {
       "Only a published theme version can render a release artifact.",
     );
   const content = parseWorkbookContent(row.revision.contentJson);
-  const validationIssues = await validateWorkbookForScope(content, row.project);
+  const validationIssues = await validateWorkbookForScope(content, {
+    ...row.project,
+    subjectKey: row.subjectKey,
+  });
   const blockingIssues = validationIssues.filter(
     (issue) => issue.severity === "error",
   );
@@ -626,7 +637,7 @@ export async function executeWorkbookRenderRun(renderRunId: string) {
     const html = await buildWorkbookHtml({
       content,
       theme: themeTokensFromRow(row.theme),
-      subjectKey: row.project.subjectKey,
+      subjectKey: row.subjectKey,
       languageCode: row.project.languageCode,
       layoutProfile: row.project.layoutProfile,
       scriptProfile: row.project.scriptProfile,

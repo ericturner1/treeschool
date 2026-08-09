@@ -83,19 +83,20 @@ export const lessonGenerationJobStatusEnum = pgEnum("lesson_generation_job_statu
 
 export type WorkbookStudioRevisionSource = "manual" | "ai" | "imported";
 export type WorkbookStudioProjectStatus = "draft" | "generating" | "review" | "ready" | "released" | "archived";
+export type WorkbookCourseStatus = "inherited" | "modified" | "new" | "retired";
 export type WorkbookThemeVersionStatus = "draft" | "published" | "retired";
 export type WorkbookGenerationPromptKind =
   | "workflow"
   | "catalog_plan"
-  | "curriculum"
+  | "workbook_brief"
   | "outline"
   | "lesson_content"
   | "subject_overlay"
   | "layout_profile";
-export type WorkbookGenerationBatchKind = "single_workbook" | "grade_level" | "curriculum" | "theme_cascade";
+export type WorkbookGenerationBatchKind = "single_workbook" | "grade_level" | "curriculum_fanout" | "theme_cascade";
 export type WorkbookStudioJobType =
   | "catalog_plan"
-  | "curriculum"
+  | "workbook_brief"
   | "outline"
   | "lesson_content"
   | "validate"
@@ -1273,13 +1274,67 @@ export const workbookCurriculumRevisions = pgTable(
   }),
 );
 
+export const workbookCourses = pgTable(
+  "workbook_courses",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    curriculumId: uuid("curriculum_id")
+      .notNull()
+      .references(() => workbookCurricula.id, { onDelete: "cascade" }),
+    stableKey: text("stable_key").notNull(),
+    curriculumSubjectId: uuid("curriculum_subject_id")
+      .notNull()
+      .references(() => curriculumSubjects.id, { onDelete: "restrict" }),
+    status: text("status")
+      .$type<WorkbookCourseStatus>()
+      .notNull()
+      .default("new"),
+    academicStandardOverrideKey: text("academic_standard_override_key")
+      .references(() => academicStandards.key, { onDelete: "restrict" }),
+    standardCode: text("standard_code"),
+    standardLabel: text("standard_label"),
+    themeOverrideVersionId: uuid("theme_override_version_id").references(
+      () => workbookThemeVersions.id,
+      { onDelete: "restrict" },
+    ),
+    boundaryNotes: text("boundary_notes"),
+    coverageNotes: text("coverage_notes"),
+    pipelineKey: text("pipeline_key"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    curriculumStableKeyUnique: unique(
+      "workbook_courses_curriculum_stable_key_unique",
+    ).on(table.curriculumId, table.stableKey),
+    curriculumSubjectUnique: unique(
+      "workbook_courses_curriculum_subject_unique",
+    ).on(table.curriculumId, table.curriculumSubjectId),
+    curriculumStatusIndex: index("workbook_courses_curriculum_status_idx").on(
+      table.curriculumId,
+      table.status,
+      table.updatedAt,
+    ),
+  }),
+);
+
 export const workbookProjects = pgTable(
   "workbook_projects",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    curriculumId: uuid("curriculum_id").references(() => workbookCurricula.id, {
-      onDelete: "set null",
-    }),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => workbookCourses.id, { onDelete: "restrict" }),
     nativeWorkbookId: uuid("native_workbook_id").references(
       () => nativeWorkbooks.id,
       {
@@ -1289,8 +1344,6 @@ export const workbookProjects = pgTable(
     catalogPlanKey: text("catalog_plan_key"),
     slug: text("slug").notNull(),
     title: text("title").notNull(),
-    subjectKey: text("subject_key").notNull(),
-    subjectLabel: text("subject_label").notNull(),
     gradeMin: integer("grade_min").notNull(),
     gradeMax: integer("grade_max").notNull(),
     languageCode: text("language_code").notNull().default("en"),
@@ -1329,11 +1382,11 @@ export const workbookProjects = pgTable(
     nativeWorkbookUnique: unique("workbook_projects_native_workbook_unique").on(
       table.nativeWorkbookId,
     ),
-    curriculumCatalogPlanKeyUnique: unique(
-      "workbook_projects_curriculum_catalog_plan_key_unique",
-    ).on(table.curriculumId, table.catalogPlanKey),
-    curriculumStatusIndex: index("workbook_projects_curriculum_status_idx").on(
-      table.curriculumId,
+    courseCatalogPlanKeyUnique: unique(
+      "workbook_projects_course_catalog_plan_key_unique",
+    ).on(table.courseId, table.catalogPlanKey),
+    courseStatusIndex: index("workbook_projects_course_status_idx").on(
+      table.courseId,
       table.status,
       table.updatedAt,
     ),

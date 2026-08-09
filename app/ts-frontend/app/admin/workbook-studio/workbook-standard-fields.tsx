@@ -8,15 +8,11 @@ export function WorkbookStandardFields({
 }: {
   standards: WorkbookStudioSummary["academicStandards"];
 }) {
-  const initialStandard =
-    standards.find((standard) => standard.key === "us") ?? standards[0];
-  const [standardKey, setStandardKey] = useState(initialStandard?.key ?? "");
-  const [languageCode, setLanguageCode] = useState(
-    initialStandard?.defaultLanguageCode ?? "",
+  const [standardKey, setStandardKey] = useState("");
+  const [languageCode, setLanguageCode] = useState("");
+  const selectedStandard = standards.find(
+    (standard) => standard.key === standardKey,
   );
-  const selectedStandard =
-    standards.find((standard) => standard.key === standardKey) ??
-    initialStandard;
 
   return (
     <>
@@ -35,6 +31,7 @@ export function WorkbookStandardFields({
           }}
           className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
         >
+          <option value="">Choose an academic standard</option>
           {!standards.length ? (
             <option value="">No academic standards configured</option>
           ) : null}

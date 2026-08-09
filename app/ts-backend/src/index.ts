@@ -220,6 +220,7 @@ import {
   saveWorkbookGenerationRule,
   saveWorkbookStudioCurriculumRevision,
   saveWorkbookStudioRevision,
+  setWorkbookCourseTheme,
   setWorkbookCurriculumTheme,
   setWorkbookProjectThemeOverride
 } from "./services/workbook-studio";
@@ -457,6 +458,14 @@ const server = Bun.serve({
         return Response.json(await setWorkbookCurriculumTheme(await request.json() as Parameters<typeof setWorkbookCurriculumTheme>[0]));
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : "Could not change the curriculum theme." }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/course/theme" && request.method === "POST") {
+      try {
+        return Response.json(await setWorkbookCourseTheme(await request.json() as Parameters<typeof setWorkbookCourseTheme>[0]));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not change the course theme." }, { status: 400 });
       }
     }
 
