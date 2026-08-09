@@ -23,6 +23,8 @@ const validPlan = {
           stableKey: "2-math",
           title: "Grade 2 Mathematics",
           domains: ["Arithmetic", "Geometry"],
+          gradeMin: null,
+          gradeMax: null,
           languageCode: "en",
           localeCode: null,
           layoutProfile: "standard",
@@ -56,6 +58,27 @@ describe("Workbook Studio grade catalog plans", () => {
       ],
     });
     expect(parsed.courses[0]?.workbooks).toEqual([]);
+  });
+
+  test("preserves an explicit multi-grade workbook span", () => {
+    const parsed = parseWorkbookCatalogPlan({
+      ...validPlan,
+      courses: [
+        {
+          ...validPlan.courses[0],
+          workbooks: [
+            {
+              ...validPlan.courses[0].workbooks[0],
+              stableKey: "1to2-phonics-b",
+              gradeMin: 1,
+              gradeMax: 2,
+            },
+          ],
+        },
+      ],
+    });
+    expect(parsed.courses[0]?.workbooks[0]?.gradeMin).toBe(1);
+    expect(parsed.courses[0]?.workbooks[0]?.gradeMax).toBe(2);
   });
 
   test("rejects duplicate workbook keys across courses", () => {

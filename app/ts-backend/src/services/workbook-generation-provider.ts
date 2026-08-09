@@ -54,10 +54,31 @@ const workbookVariantPlanSchema = z.object({
   stableKey: z.string().trim().min(1),
   title: z.string().trim().min(1),
   domains: z.array(z.string().trim().min(1)).min(1),
+  gradeMin: z.number().int().min(0).max(20).nullable().default(null),
+  gradeMax: z.number().int().min(0).max(20).nullable().default(null),
   languageCode: z.string().trim().min(2),
   localeCode: z.string().trim().min(1).nullable(),
   layoutProfile: z.enum(["standard", "reader"]),
   scriptProfile: z.enum(["latin", "japanese"]),
+}).superRefine((value, context) => {
+  if ((value.gradeMin === null) !== (value.gradeMax === null)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Set both gradeMin and gradeMax, or leave both null.",
+      path: [value.gradeMin === null ? "gradeMin" : "gradeMax"],
+    });
+  }
+  if (
+    value.gradeMin !== null &&
+    value.gradeMax !== null &&
+    value.gradeMin > value.gradeMax
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "gradeMax must be greater than or equal to gradeMin.",
+      path: ["gradeMax"],
+    });
+  }
 });
 
 const workbookCoursePlanSchema = z.object({
@@ -341,6 +362,8 @@ const catalogPlanJsonSchema = {
                 "stableKey",
                 "title",
                 "domains",
+                "gradeMin",
+                "gradeMax",
                 "languageCode",
                 "localeCode",
                 "layoutProfile",
@@ -354,6 +377,8 @@ const catalogPlanJsonSchema = {
                   minItems: 1,
                   items: { type: "string" },
                 },
+                gradeMin: { type: ["integer", "null"], minimum: 0, maximum: 20 },
+                gradeMax: { type: ["integer", "null"], minimum: 0, maximum: 20 },
                 languageCode: { type: "string" },
                 localeCode: { type: ["string", "null"] },
                 layoutProfile: {
@@ -377,7 +402,7 @@ export async function generateWorkbookCatalogPlan(input: {
   assembledPrompt: string;
 }) {
   const response = await callAnthropicTool({
-    prompt: `${input.assembledPrompt}\n\nPlan the complete grade curriculum now. Emit one course per required subject, then nest every actual workbook, reading level, split-series book, and locale variant beneath its course. Use status inherited, modified, new, or retired relative to the precedent grade. academicStandardOverrideKey changes the country or school system (for example japan); use standardCode and standardLabel for a framework inside that system (for example NGSS within us). Keep all stableKey values deterministic, lowercase, and dash-separated.`,
+    prompt: `${input.assembledPrompt}\n\nPlan the complete grade curriculum now. Emit one course per required subject, then nest every actual workbook, reading level, split-series book, and locale variant beneath its course. Use status inherited, modified, new, or retired relative to the precedent grade. academicStandardOverrideKey changes the country or school system (for example japan); use standardCode and standardLabel for a framework inside that system (for example NGSS within us). Set workbook gradeMin and gradeMax to null when the workbook inherits the curriculum grade; set both explicitly for a multi-grade workbook. Keep all stableKey values deterministic, lowercase, and dash-separated.`,
     toolName: "save_workbook_catalog_plan",
     toolDescription:
       "Save the grade-level catalog that will fan out into individual Workbook Studio projects.",

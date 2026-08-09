@@ -346,6 +346,8 @@ export function CurriculumEditor({
                         stableKey: newPlanKey(course.subjectKey),
                         title: `New ${course.subjectLabel} workbook`,
                         domains: ["Domain"],
+                        gradeMin: null,
+                        gradeMax: null,
                         languageCode: detail.curriculum.languageCode,
                         localeCode: null,
                         layoutProfile: "standard",
@@ -371,6 +373,8 @@ export function CurriculumEditor({
                           <div className="mt-3 grid gap-3 sm:grid-cols-2">
                             <label className="grid gap-1 text-xs font-bold sm:col-span-2">Title<input value={workbook.title} onChange={(event) => mutate((draft) => { draft.courses[courseIndex].workbooks[workbookIndex].title = event.target.value; })} className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal" /></label>
                             <label className="grid gap-1 text-xs font-bold sm:col-span-2">Domains<input value={workbook.domains.join(", ")} onChange={(event) => mutate((draft) => { draft.courses[courseIndex].workbooks[workbookIndex].domains = event.target.value.split(",").map((value) => value.trim()).filter(Boolean); })} className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal" /></label>
+                            <label className="grid gap-1 text-xs font-bold">Starting grade<input type="number" min="0" max="20" value={workbook.gradeMin ?? detail.curriculum.gradeLevel} onChange={(event) => mutate((draft) => { draft.courses[courseIndex].workbooks[workbookIndex].gradeMin = event.target.value === "" ? null : Number(event.target.value); })} className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal" /></label>
+                            <label className="grid gap-1 text-xs font-bold">Ending grade<input type="number" min="0" max="20" value={workbook.gradeMax ?? detail.curriculum.gradeLevel} onChange={(event) => mutate((draft) => { draft.courses[courseIndex].workbooks[workbookIndex].gradeMax = event.target.value === "" ? null : Number(event.target.value); })} className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal" /></label>
                             <label className="grid gap-1 text-xs font-bold">Language<input value={workbook.languageCode} onChange={(event) => mutate((draft) => { draft.courses[courseIndex].workbooks[workbookIndex].languageCode = event.target.value; })} className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal" /></label>
                             <label className="grid gap-1 text-xs font-bold">Locale<input value={workbook.localeCode ?? ""} onChange={(event) => mutate((draft) => { draft.courses[courseIndex].workbooks[workbookIndex].localeCode = event.target.value || null; })} placeholder="None" className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal" /></label>
                             <label className="grid gap-1 text-xs font-bold">Layout<select value={workbook.layoutProfile} onChange={(event) => mutate((draft) => { draft.courses[courseIndex].workbooks[workbookIndex].layoutProfile = event.target.value as "standard" | "reader"; })} className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"><option value="standard">Standard</option><option value="reader">Reader</option></select></label>

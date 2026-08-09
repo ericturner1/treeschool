@@ -54,6 +54,8 @@ const projectInputSchema = z
     courseId: uuidSchema,
     catalogPlanKey: z.string().trim().min(1).max(160).nullable().default(null),
     title: z.string().trim().min(1).max(180),
+    gradeMin: z.number().int().min(0).max(20).nullable().default(null),
+    gradeMax: z.number().int().min(0).max(20).nullable().default(null),
     languageCode: z.string().trim().min(2).max(20).default("en"),
     localeCode: z.string().trim().max(40).nullable().default(null),
     layoutProfile: z.string().trim().min(1).max(80).default("standard"),
@@ -68,6 +70,23 @@ const projectInputSchema = z
     {
       message: "Choose a workbook generation prompt.",
       path: ["generationPromptVersionId"],
+    },
+  )
+  .refine(
+    (value) => (value.gradeMin === null) === (value.gradeMax === null),
+    {
+      message: "Set both workbook grade bounds, or inherit both from the curriculum.",
+      path: ["gradeMax"],
+    },
+  )
+  .refine(
+    (value) =>
+      value.gradeMin === null ||
+      value.gradeMax === null ||
+      value.gradeMin <= value.gradeMax,
+    {
+      message: "Ending grade must not be below starting grade.",
+      path: ["gradeMax"],
     },
   );
 
@@ -606,8 +625,8 @@ export async function createWorkbookStudioProject(
         catalogPlanKey: input.catalogPlanKey,
         slug,
         title: input.title,
-        gradeMin: courseContext.curriculum.gradeLevel,
-        gradeMax: courseContext.curriculum.gradeLevel,
+        gradeMin: input.gradeMin ?? courseContext.curriculum.gradeLevel,
+        gradeMax: input.gradeMax ?? courseContext.curriculum.gradeLevel,
         languageCode: input.languageCode.toLowerCase(),
         localeCode: input.localeCode,
         layoutProfile: input.layoutProfile,
@@ -1445,6 +1464,8 @@ export async function queueWorkbookCurriculumGeneration(input: {
           courseId: course.id,
           catalogPlanKey: planned.stableKey,
           title: planned.title,
+          gradeMin: planned.gradeMin,
+          gradeMax: planned.gradeMax,
           languageCode: planned.languageCode,
           localeCode: planned.localeCode,
           layoutProfile: planned.layoutProfile,
@@ -1454,6 +1475,8 @@ export async function queueWorkbookCurriculumGeneration(input: {
           generationScope: {
             catalogPlanKey: planned.stableKey,
             domains: planned.domains,
+            gradeMin: planned.gradeMin ?? row.curriculum.gradeLevel,
+            gradeMax: planned.gradeMax ?? row.curriculum.gradeLevel,
             curriculumName: row.curriculum.name,
             courseStableKey: plannedCourse.stableKey,
             courseStatus: plannedCourse.status,

@@ -139,6 +139,8 @@ export type WorkbookCatalogPlan = {
       stableKey: string;
       title: string;
       domains: string[];
+      gradeMin: number | null;
+      gradeMax: number | null;
       languageCode: string;
       localeCode: string | null;
       layoutProfile: "standard" | "reader";
