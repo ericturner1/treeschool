@@ -44,7 +44,7 @@ describe("workbook PDF replacement compatibility", () => {
     expect(result.reasons).toEqual([]);
   });
 
-  test("rejects a changed page count", () => {
+  test("accepts a changed page count when the lessons are unchanged", () => {
     const result = checkWorkbookReplacementCompatibility({
       currentPageCount: 12,
       replacementPageCount: 13,
@@ -52,11 +52,11 @@ describe("workbook PDF replacement compatibility", () => {
       replacementAnalysis: published
     });
 
-    expect(result.compatible).toBe(false);
-    expect(result.reasons[0]).toContain("13 pages");
+    expect(result.compatible).toBe(true);
+    expect(result.reasons).toEqual([]);
   });
 
-  test("rejects moved lesson boundaries", () => {
+  test("accepts moved lesson boundaries when the lessons are unchanged", () => {
     const result = checkWorkbookReplacementCompatibility({
       currentPageCount: 12,
       replacementPageCount: 12,
@@ -73,8 +73,8 @@ describe("workbook PDF replacement compatibility", () => {
       ])
     });
 
-    expect(result.compatible).toBe(false);
-    expect(result.reasons).toContain("Lesson 1 no longer uses the same physical page range.");
+    expect(result.compatible).toBe(true);
+    expect(result.reasons).toEqual([]);
   });
 
   test("rejects reordered or renamed lessons", () => {
@@ -98,25 +98,15 @@ describe("workbook PDF replacement compatibility", () => {
     expect(result.reasons).toContain("Lesson 1 no longer has the same title or sequence position.");
   });
 
-  test("rejects materially changed lesson text even when its boundaries match", () => {
+  test("rejects an added or deleted lesson", () => {
     const result = checkWorkbookReplacementCompatibility({
       currentPageCount: 12,
       replacementPageCount: 12,
       currentAnalysis: published,
-      replacementAnalysis: published,
-      currentPageTexts: Array.from({ length: 12 }, (_, index) =>
-        index >= 4 && index <= 6
-          ? "Sound is made by vibrations. Observe and compare loud and quiet sounds."
-          : "Light travels and creates a shadow when an object blocks it."
-      ),
-      replacementPageTexts: Array.from({ length: 12 }, (_, index) =>
-        index >= 4 && index <= 6
-          ? "Plants need sunlight soil water roots stems flowers and leaves to grow."
-          : "Light travels and creates a shadow when an object blocks it."
-      )
+      replacementAnalysis: analysis([published.learningUnits[0]!])
     });
 
     expect(result.compatible).toBe(false);
-    expect(result.reasons.some((reason) => reason.includes("content changed too much"))).toBe(true);
+    expect(result.reasons.some((reason) => reason.includes("1 lessons"))).toBe(true);
   });
 });

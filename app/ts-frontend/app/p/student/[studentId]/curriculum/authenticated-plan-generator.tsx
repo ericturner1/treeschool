@@ -37,6 +37,7 @@ import {
   PLAN_GENERATOR_ACCEPTED_FILE_TYPES,
   PLAN_GENERATOR_MAX_INPUT_PAGE_COUNT
 } from "../../../../../lib/plan-generator-contract";
+import { QUALITY_CONTROL_RETRY_HELP } from "./plan-failure-copy";
 
 // MAINTAINER NOTE: This subscriber experience parallels the public marketing
 // funnel. Review docs/plan-generator-parity.md and run
@@ -756,7 +757,7 @@ export function AuthenticatedPlanGenerator({
             Add the school-year dates in the student profile before reviewing the curriculum.
           </p>
         ) : null}
-        {planningFailed && retryPlanningAction && !qualityControlFailed ? (
+        {planningFailed && retryPlanningAction ? (
           <div className={visiblePlanningProgress ? "mt-4" : ""}>
             <button
               type="submit"
@@ -764,17 +765,14 @@ export function AuthenticatedPlanGenerator({
               formNoValidate
               className="cta-button cta-button--light cta-button--small w-full sm:w-auto"
             >
-              Retry unfinished planning
+              {qualityControlFailed ? "Retry final review" : "Retry unfinished planning"}
             </button>
             <p className="mt-2 text-xs leading-relaxed text-ink/62">
-              Treeschool will keep every completed week and resume only the work that failed.
+              {qualityControlFailed
+                ? QUALITY_CONTROL_RETRY_HELP
+                : "Treeschool will keep every completed week and resume only the work that failed."}
             </p>
           </div>
-        ) : null}
-        {planningFailed && qualityControlFailed ? (
-          <p className="mt-4 rounded-[14px] border border-[#e0bd78] bg-white/65 px-4 py-3 text-xs font-semibold leading-5 text-[#805c22]">
-            Treeschool is correcting the scheduling problem automatically. You do not need to restart the plan or upload your materials again.
-          </p>
         ) : null}
         {showPlanningAction ? <div className={visiblePlanningProgress ? "mt-4" : ""}>
           <button

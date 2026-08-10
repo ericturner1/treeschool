@@ -101,8 +101,11 @@ const MAX_DOCUMENT_JOB_ATTEMPTS = 3;
 const MAX_WEEKLY_PLAN_JOB_ATTEMPTS = 3;
 const METADATA_QUALITY_ALGORITHM_VERSION = 2;
 const PDF_QUALITY_REPORT_VERSION = 2;
-const WEEKLY_PACKET_TEMPLATE_VERSION = 6;
-const DAY_PACKET_TEMPLATE_VERSION = 5;
+// Bump both whenever source-page assembly changes. Weekly packets are composed
+// from cached day packets, so changing only the weekly version would continue
+// copying already-broken day PDFs into a newly generated weekly PDF.
+const WEEKLY_PACKET_TEMPLATE_VERSION = 7;
+const DAY_PACKET_TEMPLATE_VERSION = 6;
 const MIN_RENDERED_PAGE_DARK_PIXEL_RATIO = 0.00075;
 const OVERSIZED_WEEK_SOURCE_PAGE_THRESHOLD = 20;
 const ALLOWED_ROLES = new Set(["student", "teacher", "answer_key", "mixed"]);
@@ -3822,8 +3825,12 @@ function validatePlanMetadata(input: {
     sourceUnitPartIndex?: number | null;
     sortOrder: number;
   }>;
+  schedulableDocumentIds?: string[];
 }) {
   const documentById = new Map(input.documents.map((document) => [document.id, document]));
+  const schedulableDocumentIds = new Set(
+    input.schedulableDocumentIds ?? input.documents.map((document) => document.id)
+  );
   const sourceIdentity = (documentId: string) => {
     const document = documentById.get(documentId);
     return document?.contentFingerprint ? `sha256:${document.contentFingerprint}` : `document:${documentId}`;
@@ -4066,12 +4073,20 @@ function validatePlanMetadata(input: {
   }
 
   for (const document of input.documents) {
+    if (!schedulableDocumentIds.has(document.id)) continue;
     if (!document.learningUnits) continue;
-    const documentItems = orderedItems.filter((item) => item.documentId === document.id);
+    const documentItems = orderedItems.filter(
+      (item) => sourceIdentity(item.documentId) === sourceIdentity(document.id)
+    );
     const excluded = excludedUnitIds(document);
     for (const unit of document.learningUnits) {
       if (excluded.has(unit.id)) continue;
-      const unitItems = documentItems.filter((item) => item.sourceUnitId === unit.id);
+      const unitItems = documentItems.filter((item) =>
+        item.sourceUnitId === unit.id || unit.components.some((component) =>
+          item.firstPageIndex === component.pdfPageStart - 1 &&
+          item.lastPageIndex === component.pdfPageEnd - 1
+        )
+      );
       const coveredByLegacyPreservedWeek = unitItems.length === 0 &&
         (input.preservedItems ?? []).some((item) =>
           item.documentId === document.id &&
@@ -4223,6 +4238,7 @@ function validatePlanMetadata(input: {
   }
 
   for (const document of input.documents) {
+    if (!schedulableDocumentIds.has(document.id)) continue;
     if (!document.classifiedRanges) continue;
     const assignedRanges = orderedItems
       .filter((item) => sourceIdentity(item.documentId) === sourceIdentity(document.id))
@@ -4313,7 +4329,7 @@ function validatePlanMetadata(input: {
   };
 }
 
-function repairStagedPlanMetadata(input: {
+export function repairStagedPlanMetadata(input: {
   weeks: NormalizedGeneratedWeek[];
   teachingDaysPerWeek: number | null;
   subjectPreferences: Array<{
@@ -4342,6 +4358,7 @@ function repairStagedPlanMetadata(input: {
     sourceUnitId?: string | null;
     sourceUnitPartIndex?: number | null;
   }>;
+  schedulableDocumentIds?: string[];
 }) {
   const atomicDocuments = input.documents.map((document, documentIndex) => {
     const excludedSourceUnitIds = new Set(document.excludedSourceUnitIds ?? []);
@@ -4352,25 +4369,47 @@ function repairStagedPlanMetadata(input: {
         ?.filter((unit) => !excludedSourceUnitIds.has(unit.id)) ?? null
     };
   });
-  if (atomicDocuments.length > 0 && atomicDocuments.every((entry) => entry.learningUnits)) {
+  const schedulableDocumentIds = new Set(
+    input.schedulableDocumentIds ?? input.documents.map((document) => document.id)
+  );
+  const schedulableAtomicDocuments = atomicDocuments.filter(
+    (entry) => schedulableDocumentIds.has(entry.document.id)
+  );
+  if (
+    schedulableAtomicDocuments.length > 0 &&
+    schedulableAtomicDocuments.every((entry) => entry.learningUnits)
+  ) {
     const availableWeeks = [...input.weeks].sort((left, right) => left.weekNumber - right.weekNumber);
     if (availableWeeks.length === 0) return { weeks: input.weeks, repairs: [] };
     const documentById = new Map(atomicDocuments.map((entry) => [entry.document.id, entry]));
+    const sourceIdentity = (entry: typeof atomicDocuments[number]) =>
+      entry.document.contentFingerprint
+        ? `sha256:${entry.document.contentFingerprint}`
+        : `document:${entry.document.id}`;
 
     const preservedUnitKeys = new Set<string>();
     for (const item of input.preservedItems) {
       const entry = documentById.get(item.documentId);
-      if (!entry?.learningUnits) continue;
-      const unit = item.sourceUnitId
-        ? entry.learningUnits.find((candidate) => candidate.id === item.sourceUnitId)
-        : entry.learningUnits.find((candidate) => candidate.components.some((component) =>
+      if (!entry) continue;
+      for (const candidateEntry of schedulableAtomicDocuments) {
+        if (
+          !candidateEntry.learningUnits ||
+          sourceIdentity(candidateEntry) !== sourceIdentity(entry)
+        ) continue;
+        const units = candidateEntry.learningUnits.filter((candidate) =>
+          (item.sourceUnitId != null && candidate.id === item.sourceUnitId) ||
+          candidate.components.some((component) =>
             item.lastPageIndex >= component.pdfPageStart - 1 &&
             item.firstPageIndex <= component.pdfPageEnd - 1
-          ));
-      if (unit) preservedUnitKeys.add(`${item.documentId}:${unit.id}`);
+          )
+        );
+        for (const unit of units) {
+          preservedUnitKeys.add(`${candidateEntry.document.id}:${unit.id}`);
+        }
+      }
     }
 
-    const bundles = atomicDocuments.flatMap((entry) =>
+    const bundles = schedulableAtomicDocuments.flatMap((entry) =>
       (entry.learningUnits ?? []).map((unit) => {
         const materialSetId = entry.document.materialSetId ?? entry.document.id;
         const deferredSourceUnitIds = new Set(entry.document.deferredSourceUnitIds ?? []);
@@ -4385,11 +4424,11 @@ function repairStagedPlanMetadata(input: {
       })
     ).filter((bundle) => !preservedUnitKeys.has(bundle.key));
     const materialOrder = new Map<string, number>();
-    for (const entry of atomicDocuments) {
+    for (const entry of schedulableAtomicDocuments) {
       const materialSetId = entry.document.materialSetId ?? entry.document.id;
       if (!materialOrder.has(materialSetId)) materialOrder.set(materialSetId, materialOrder.size);
     }
-    for (const document of input.documents) {
+    for (const document of input.documents.filter((candidate) => schedulableDocumentIds.has(candidate.id))) {
       const prerequisiteMaterialSetId = document.prerequisiteMaterialSetId ?? null;
       if (prerequisiteMaterialSetId && !materialOrder.has(prerequisiteMaterialSetId)) {
         materialOrder.set(prerequisiteMaterialSetId, materialOrder.size);
@@ -4400,7 +4439,8 @@ function repairStagedPlanMetadata(input: {
       teachingDaysPerWeek: input.teachingDaysPerWeek,
       materials: Array.from(materialOrder.entries()).map(([materialSetId, sortOrder]) => {
         const document = input.documents.find(
-          (candidate) => (candidate.materialSetId ?? candidate.id) === materialSetId
+          (candidate) => schedulableDocumentIds.has(candidate.id) &&
+            (candidate.materialSetId ?? candidate.id) === materialSetId
         );
         return {
           id: materialSetId,
@@ -5741,7 +5781,8 @@ async function finalizePlanVersionIfReady(learningYearId: string, planVersionId:
       teachingDaysPerWeek: year.teachingDaysPerWeek,
       subjectPreferences,
       documents: qualityDocuments,
-      preservedItems
+      preservedItems,
+      schedulableDocumentIds: revision.sourceDocumentIds
     });
     stagedWeeks = repairResult.weeks;
     metadataQualityReport = {
@@ -5750,7 +5791,8 @@ async function finalizePlanVersionIfReady(learningYearId: string, planVersionId:
       teachingDaysPerWeek: year.teachingDaysPerWeek,
       weeks: stagedWeeks,
       documents: qualityDocuments,
-      preservedItems
+      preservedItems,
+      schedulableDocumentIds: revision.sourceDocumentIds
       }),
       repairs: Array.from(new Set([...auditRepairs, ...repairResult.repairs])),
       qualityControlAlgorithmVersion: METADATA_QUALITY_ALGORITHM_VERSION,
@@ -8646,6 +8688,24 @@ async function appendVectorFittedPdfPages(
     // The workbook's MediaBox is the complete physical page. Ignore a smaller
     // CropBox here so no publisher-defined crop can remove original content.
     normalizedPage.setCropBox(mediaBox.x, mediaBox.y, mediaBox.width, mediaBox.height);
+    if (pdfPageSizeMatchesTarget(mediaBox, targetPageSize)) {
+      // Keep same-size workbook pages as real pages instead of wrapping them in
+      // a Form XObject. Some writing-grid PDFs use tiling patterns whose
+      // matrices are page-relative; embedding the page changes that coordinate
+      // space and moves the quadrant guide lines in some PDF viewers.
+      const [directPage] = await packet.copyPages(normalizedSource, [0]);
+      if (!directPage) throw new Error(`Could not preserve source PDF page ${pageIndex + 1}.`);
+      const directMediaBox = directPage.getMediaBox();
+      directPage.setCropBox(
+        directMediaBox.x,
+        directMediaBox.y,
+        directMediaBox.width,
+        directMediaBox.height
+      );
+      packet.addPage(directPage);
+      appendedPageCount += 1;
+      continue;
+    }
     const embeddedPage = await packet.embedPage(normalizedPage);
     const pageWidth = targetPageSize[0];
     const pageHeight = targetPageSize[1];
@@ -8669,7 +8729,16 @@ async function appendVectorFittedPdfPages(
   return appendedPageCount;
 }
 
-async function appendPdfPageRange(
+export function pdfPageSizeMatchesTarget(
+  pageSize: { width: number; height: number },
+  targetPageSize: readonly [number, number],
+  tolerancePoints = 0.5
+) {
+  return Math.abs(pageSize.width - targetPageSize[0]) <= tolerancePoints &&
+    Math.abs(pageSize.height - targetPageSize[1]) <= tolerancePoints;
+}
+
+export async function appendPdfPageRange(
   packet: PDFDocument,
   sourceBytes: Uint8Array,
   firstPageIndex: number,

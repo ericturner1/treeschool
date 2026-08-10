@@ -27,6 +27,10 @@ import { PlanDayCard } from "./plan-day-card";
 import { PlanDaySubjectCard } from "./plan-day-subject-card";
 import { weekSubjectSummaries, workbookLessonSummary } from "./week-subject-summaries";
 import {
+  QUALITY_CONTROL_FAILURE_LABEL,
+  qualityControlFailureDetail
+} from "./plan-failure-copy";
+import {
   WeekPlanDetails,
   WeekProgressProvider,
   WeekProgressSummary,
@@ -300,15 +304,15 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
         : planningFailed && plan.planning.total > 0
           ? {
               stage: plan.planning.qualityControlFailed ? "quality_review" : "planning",
-              state: plan.planning.qualityControlFailed ? "recovering" as const : "attention" as const,
+              state: "attention" as const,
               percent: plan.planning.qualityControlFailed
                 ? 99
                 : Math.min(99, 45 + (plan.planning.completed / plan.planning.total) * 54),
               label: plan.planning.qualityControlFailed
-                ? "Treeschool found a scheduling issue and is correcting it automatically."
+                ? QUALITY_CONTROL_FAILURE_LABEL
                 : `${plan.planning.failed} ${plan.planning.failed === 1 ? "week needs" : "weeks need"} another attempt.`,
               detail: plan.planning.qualityControlFailed
-                ? `Your materials and all ${plan.planning.total} generated weeks are safe. No action is required; this page will update when the corrected plan is ready.`
+                ? qualityControlFailureDetail(plan.planning.total)
                 : `${plan.planning.completed}/${plan.planning.total} weeks finished. That completed work is safe; retrying will resume only ${plan.planning.failed === 1 ? "the unfinished week" : "the unfinished weeks"}.`
             }
         : null;
@@ -318,7 +322,7 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
         ? `Quality checking ${plan.planning.completed}/${plan.planning.total} weekly manifests`
         : `${plan.planning.completed}/${plan.planning.total} weeks planned`
       : plan.planning.qualityControlFailed
-        ? "Final review is being corrected"
+        ? "Final review needs attention"
         : plan.planning.failed > 0
         ? `${plan.planning.failed} planning job${plan.planning.failed === 1 ? "" : "s"} need attention`
         : plan.weeks.length > 0
@@ -441,7 +445,7 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
         studentIdentityInContent
       >
         <AutoRefresh
-          enabled={activeDocumentCount > 0 || planningActive || (planningFailed && plan.planning.qualityControlFailed)}
+          enabled={activeDocumentCount > 0 || planningActive}
           intervalMs={4000}
         />
         <div className="space-y-6">

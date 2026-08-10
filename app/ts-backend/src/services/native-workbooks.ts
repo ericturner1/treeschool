@@ -50,7 +50,6 @@ import {
 import {
   analyzePdf,
   applyNativeWorkbookCoverageToLearningYearCache,
-  extractPdfPageTexts,
   generateNativeWorkbookCatalogDescription,
   getPdfPageCount,
   startLearningYearPlanning
@@ -223,6 +222,22 @@ class WorkbookReplacementCompatibilityError extends Error {
     super(message);
     this.name = "WorkbookReplacementCompatibilityError";
   }
+}
+
+class WorkbookIdenticalEditionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WorkbookIdenticalEditionError";
+  }
+}
+
+export function isByteIdenticalWorkbookUpload(input: {
+  candidateFingerprint: string | null | undefined;
+  publishedFingerprint: string | null | undefined;
+}) {
+  const candidate = input.candidateFingerprint?.trim().toLowerCase() ?? "";
+  const published = input.publishedFingerprint?.trim().toLowerCase() ?? "";
+  return candidate.length > 0 && candidate === published;
 }
 
 type NativeWorkbookJobRow = {
@@ -3326,20 +3341,12 @@ async function promoteCompatibleWorkbookReplacement(input: {
           : ["A lesson was added, removed, or replaced; publish this change as a new edition."]
       };
     })()
-    : await (async () => {
-      const [currentPageTexts, replacementPageTexts] = await Promise.all([
-        downloadPrivateFile(publishedVersion.objectPath).then(extractPdfPageTexts),
-        extractPdfPageTexts(input.bytes)
-      ]);
-      return checkWorkbookReplacementCompatibility({
+    : checkWorkbookReplacementCompatibility({
         currentPageCount: publishedVersion.pageCount,
         replacementPageCount: input.pageCount,
         currentAnalysis: publishedVersion.analysisJson,
-        replacementAnalysis: input.candidateAnalysis,
-        currentPageTexts,
-        replacementPageTexts
+        replacementAnalysis: input.candidateAnalysis
       });
-    })();
   if (!compatibility.compatible) {
     throw new WorkbookReplacementCompatibilityError(
       `Replacement rejected: ${compatibility.reasons.join(" ")} The published PDF and all customer data were left unchanged.`
@@ -3628,16 +3635,36 @@ export async function runNextNativeWorkbookJob(workerId: string) {
       throw new Error("This workbook is too large to process as one item.");
     }
     const replacement = readWorkbookReplacementState(version.analysisJson);
-    if (
-      replacement?.requiresCompatibilityCheck &&
-      replacement.expectedPageCount != null &&
-      replacement.expectedPageCount !== pageCount
-    ) {
-      throw new WorkbookReplacementCompatibilityError(
-        `Replacement rejected: the replacement has ${pageCount} pages; the published workbook has ${replacement.expectedPageCount}. The published PDF and all customer data were left unchanged.`
-      );
-    }
     const fingerprint = createHash("sha256").update(bytes).digest("hex");
+    const comparisonVersionId = replacement?.previousVersionId ?? editionRelease?.previousVersionId;
+    if (comparisonVersionId && comparisonVersionId !== version.id) {
+      const [publishedVersion] = await db.select({
+        contentFingerprint: nativeWorkbookVersions.contentFingerprint,
+        analysisJson: nativeWorkbookVersions.analysisJson
+      }).from(nativeWorkbookVersions)
+        .where(eq(nativeWorkbookVersions.id, comparisonVersionId))
+        .limit(1);
+      const publishedFingerprint = publishedVersion?.contentFingerprint ?? (
+        typeof publishedVersion?.analysisJson?.contentFingerprint === "string"
+          ? publishedVersion.analysisJson.contentFingerprint
+          : null
+      );
+      if (isByteIdenticalWorkbookUpload({
+        candidateFingerprint: fingerprint,
+        publishedFingerprint
+      })) {
+        if (replacement?.requiresCompatibilityCheck) {
+          throw new WorkbookReplacementCompatibilityError(
+            "Replacement canceled: the uploaded PDF is byte-for-byte identical to the published PDF. " +
+            "The published workbook and all customer data were left unchanged."
+          );
+        }
+        throw new WorkbookIdenticalEditionError(
+          "This PDF is byte-for-byte identical to the published edition, so it was not indexed again. " +
+          "Discard this draft edition; the published edition is unchanged."
+        );
+      }
+    }
     const analysis = await analyzePdf({
       bytes,
       label: version.title,
@@ -3801,6 +3828,9 @@ export async function runNextNativeWorkbookJob(workerId: string) {
     const compatibilityRejected =
       error instanceof WorkbookReplacementCompatibilityError &&
       replacement?.requiresCompatibilityCheck === true;
+    const identicalEditionRejected =
+      error instanceof WorkbookIdenticalEditionError &&
+      editionRelease != null;
     console.error(
       `[${errorReference}] Native workbook indexing failed for workbook ${version.workbookId}, version ${version.id}, job ${job.id}:`,
       error
@@ -3821,6 +3851,30 @@ export async function runNextNativeWorkbookJob(workerId: string) {
       });
       await deletePrivateFile(version.objectPath).catch((cleanupError) => {
         console.warn(`Could not delete rejected workbook replacement ${version.objectPath}:`, cleanupError);
+      });
+      return {
+        jobId: job.id,
+        versionId: version.id,
+        outcome: "rejected",
+        error: message
+      };
+    }
+    if (identicalEditionRejected) {
+      await db.transaction(async (tx) => {
+        await tx.update(nativeWorkbookJobs).set({
+          status: "failed",
+          attemptCount: MAX_NATIVE_WORKBOOK_JOB_ATTEMPTS,
+          claimedAt: null,
+          heartbeatAt: null,
+          workerId,
+          lastError: message,
+          updatedAt: new Date()
+        }).where(eq(nativeWorkbookJobs.id, job.id));
+        await tx.update(nativeWorkbookVersions).set({
+          analysisStatus: "failed",
+          contentFingerprint: null,
+          lastError: message
+        }).where(eq(nativeWorkbookVersions.id, version.id));
       });
       return {
         jobId: job.id,

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { PDFDocument, StandardFonts } from "pdf-lib";
-import { imposeTwoUpPdf } from "./paper-plans";
+import {
+  appendPdfPageRange,
+  imposeTwoUpPdf,
+  pdfPageSizeMatchesTarget
+} from "./paper-plans";
 
 describe("two-up lesson-plan PDFs", () => {
   test("places two portrait pages on each landscape page without dropping an odd final page", async () => {
@@ -46,5 +50,31 @@ describe("two-up lesson-plan PDFs", () => {
     expect(compact.getPageCount()).toBe(1);
     expect(compact.getPage(0).getWidth()).toBe(842);
     expect(compact.getPage(0).getHeight()).toBe(595);
+  });
+});
+
+describe("workbook page preservation", () => {
+  test("recognizes near-identical A4 dimensions", () => {
+    expect(pdfPageSizeMatchesTarget(
+      { width: 595.276, height: 841.89 },
+      [595.28, 841.89]
+    )).toBe(true);
+    expect(pdfPageSizeMatchesTarget(
+      { width: 612, height: 792 },
+      [595.28, 841.89]
+    )).toBe(false);
+  });
+
+  test("copies a same-size source page directly instead of fitting it into a form", async () => {
+    const source = await PDFDocument.create();
+    source.addPage([595, 842]);
+    const packet = await PDFDocument.create();
+
+    await appendPdfPageRange(packet, await source.save(), 0, 0, [595.28, 841.89]);
+
+    const output = await PDFDocument.load(await packet.save());
+    expect(output.getPageCount()).toBe(1);
+    expect(output.getPage(0).getWidth()).toBe(595);
+    expect(output.getPage(0).getHeight()).toBe(842);
   });
 });
