@@ -6,13 +6,14 @@ import { getRequestDictionary } from "../../lib/i18n/server";
 import { startCoreSubscriptionCheckoutAction } from "../billing-actions";
 
 type AfterPurchasePageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     lang?: string;
     checkout?: string;
-  };
+  }>;
 };
 
-export default async function AfterPurchasePage({ searchParams }: AfterPurchasePageProps) {
+export default async function AfterPurchasePage(props: AfterPurchasePageProps) {
+  const searchParams = await props.searchParams;
   const { dictionary } = await getRequestDictionary(searchParams?.lang);
   const { home } = dictionary;
   const currentUser = await getCurrentUser();

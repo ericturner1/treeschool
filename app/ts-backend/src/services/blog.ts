@@ -290,11 +290,17 @@ async function latestRevisionRows(postIds?: string[]) {
 }
 
 function presentPost(row: { post: typeof blogPosts.$inferSelect; revision: typeof blogPostRevisions.$inferSelect }, taxonomy?: { categories: Array<{ name: string; slug: string }>; tags: Array<{ name: string; slug: string }> }, authorName?: string) {
+  // Sanitize again on read so legacy rows created before the write-time guard
+  // cannot become an executable payload in the public article or admin editor.
+  const contentHtml = sanitizeBlogHtml(row.revision.contentHtml);
+  const contentText = htmlToText(contentHtml);
   return {
     ...row.post,
     revision: {
       ...row.revision,
-      ...readingMinutes(row.revision.contentText)
+      contentHtml,
+      contentText,
+      ...readingMinutes(contentText)
     },
     categories: taxonomy?.categories ?? [],
     tags: taxonomy?.tags ?? [],

@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, type UnsafeUnwrappedCookies } from "next/headers";
 import { getDictionary } from "./dictionaries";
 import {
   DEFAULT_LOCALE,
@@ -8,7 +8,7 @@ import {
 } from "./config";
 
 export function getRequestLocale(searchLang?: string): SupportedLocale {
-  const cookieLocale = cookies().get(LOCALE_COOKIE_NAME)?.value;
+  const cookieLocale = (cookies() as unknown as UnsafeUnwrappedCookies).get(LOCALE_COOKIE_NAME)?.value;
 
   return resolveLocale(searchLang ?? cookieLocale ?? DEFAULT_LOCALE);
 }

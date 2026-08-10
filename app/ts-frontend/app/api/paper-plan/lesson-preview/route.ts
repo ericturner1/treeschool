@@ -1,4 +1,5 @@
 import { getCurrentUser } from "../../../../lib/auth/server";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 import { downloadPaperPlanLessonPreview } from "../../../../lib/paper-plans/server";
 
 export async function GET(request: Request) {
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to build the lesson preview." },
+      { error: publicErrorMessage(error, "Failed to build the lesson preview.") },
       { status: 400 }
     );
   }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../../lib/auth/server";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 import { setPlanDaySubjectCompletion } from "../../../../lib/attendance/server";
 import { savePaperPlanDaySubjectGrade } from "../../../../lib/paper-plans/server";
 
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ saved: true, score: body.score ?? null, completed: body.score != null });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not save the grade." },
+      { error: publicErrorMessage(error, "Could not save the grade.") },
       { status: 400 }
     );
   }

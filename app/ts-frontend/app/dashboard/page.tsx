@@ -14,11 +14,11 @@ import { QuickAddPoints } from "./quick-add-points";
 import { ParentShell } from "../p/parent-shell";
 
 type DashboardPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     lang?: string;
     error?: string;
     message?: string;
-  };
+  }>;
 };
 
 function frequentAwardReasons(points: StudentPointsPayload) {
@@ -33,7 +33,8 @@ function frequentAwardReasons(points: StudentPointsPayload) {
     .map(([reason]) => reason);
 }
 
-export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+export default async function DashboardPage(props: DashboardPageProps) {
+  const searchParams = await props.searchParams;
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { dashboard, home } = dictionary;
   const user = await getCurrentUser();

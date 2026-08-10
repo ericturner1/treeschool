@@ -104,14 +104,15 @@ async function countSelectedPdfPages(files: File[]) {
   for (const file of pdfFiles) {
     try {
       if (!pdfjs) throw new Error("PDF.js unavailable");
-      const pdf = await pdfjs.getDocument({
+      const loadingTask = pdfjs.getDocument({
         data: new Uint8Array(await file.arrayBuffer()),
         stopAtErrors: false
-      }).promise;
+      });
+      const pdf = await loadingTask.promise;
       try {
         pageCount += pdf.numPages;
       } finally {
-        await pdf.destroy();
+        await loadingTask.destroy();
       }
     } catch {
       try {

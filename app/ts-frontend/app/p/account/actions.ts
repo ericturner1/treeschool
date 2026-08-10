@@ -1,6 +1,5 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   createAccountInvitation,
@@ -12,6 +11,7 @@ import {
   requestCurrentUserEmailChange,
   sendMagicLink
 } from "../../../lib/auth/server";
+import { getPublicAppOrigin } from "../../../lib/security/public-origin";
 
 function field(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -27,12 +27,7 @@ function accountPath(input: { lang?: string; error?: string; message?: string })
 }
 
 function requestOrigin() {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
-  if (configured) return configured;
-  const requestHeaders = headers();
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3100";
-  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.includes("localhost") ? "http" : "https");
-  return `${protocol}://${host}`;
+  return getPublicAppOrigin();
 }
 
 export async function requestEmailChangeAction(formData: FormData) {

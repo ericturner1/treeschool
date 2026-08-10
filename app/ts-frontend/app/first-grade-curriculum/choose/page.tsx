@@ -41,11 +41,12 @@ function safeReturnPath(value?: string) {
     : "/first-grade-curriculum";
 }
 
-export default async function FirstGradeCurriculumChoicePage({
-  searchParams
-}: {
-  searchParams?: SearchParams;
-}) {
+export default async function FirstGradeCurriculumChoicePage(
+  props: {
+    searchParams?: Promise<SearchParams>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const user = await getCurrentUser();
   const { workbooks } = await listNativeWorkbookCatalog({
     userId: user?.id,

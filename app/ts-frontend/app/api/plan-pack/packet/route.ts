@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { downloadPlanPackPacket } from "../../../../lib/plan-pack/server";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to download weekly PDF." },
+      { error: publicErrorMessage(error, "Failed to download weekly PDF.") },
       { status: 400 }
     );
   }

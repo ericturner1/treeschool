@@ -12,12 +12,12 @@ export const metadata: Metadata = {
 };
 
 type PricingPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     lang?: string;
     checkout?: string;
     error?: string;
     message?: string;
-  };
+  }>;
 };
 
 const membershipFeatures = [
@@ -118,7 +118,8 @@ function formatError(error?: string) {
   return decodeURIComponent(error);
 }
 
-export default async function PricingPage({ searchParams }: PricingPageProps) {
+export default async function PricingPage(props: PricingPageProps) {
+  const searchParams = await props.searchParams;
   const [currentUser, { dictionary }] = await Promise.all([
     getCurrentUser(),
     getRequestDictionary(searchParams?.lang)

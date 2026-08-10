@@ -21,15 +21,15 @@ import { PointsBalanceChart } from "./points-balance-chart";
 import { PointsSubmitButton } from "./points-submit-button";
 
 type Props = {
-  params: { studentId?: string };
-  searchParams?: {
+  params: Promise<{ studentId?: string }>;
+  searchParams?: Promise<{
     lang?: string;
     message?: string;
     error?: string;
     historyPage?: string;
     resetForm?: string;
     resetToken?: string;
-  };
+  }>;
 };
 
 function unitName(amount: number, singularName: string, pluralName: string) {
@@ -41,7 +41,9 @@ function formatInterestDate(value: string) {
     .format(new Date(`${value}T00:00:00.000Z`));
 }
 
-export default async function StudentPointsPage({ params, searchParams }: Props) {
+export default async function StudentPointsPage(props: Props) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { dashboard, home, currentUser, student, studentRouteSegment } = await getParentStudentPageData(
     params.studentId,
     searchParams?.lang

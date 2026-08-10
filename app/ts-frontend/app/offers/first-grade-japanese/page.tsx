@@ -7,11 +7,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false }
 };
 
-export default async function FirstGradeJapaneseOfferPage({
-  searchParams
-}: {
-  searchParams: { session_id?: string };
-}) {
+export default async function FirstGradeJapaneseOfferPage(
+  props: {
+    searchParams: Promise<{ session_id?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const sessionId = String(searchParams.session_id ?? "");
   if (!sessionId) redirect("/");
   redirect(

@@ -8,13 +8,13 @@ import { ParentModeGuard } from "../../../../parent-mode-guard";
 import { StandardLessonPanel } from "../../standard-lesson-panel";
 
 type ParentCurriculumSubjectDetailPageProps = {
-  params: {
+  params: Promise<{
     curriculumSlug: string;
     subjectSlug: string;
-  };
-  searchParams?: {
+  }>;
+  searchParams?: Promise<{
     lang?: string;
-  };
+  }>;
 };
 
 type TreeNode = Awaited<ReturnType<typeof getParentCurriculumTree>>[number];
@@ -31,10 +31,9 @@ function buildNodeMap(nodes: TreeNode[]) {
   return byParent;
 }
 
-export default async function ParentCurriculumSubjectDetailPage({
-  params,
-  searchParams
-}: ParentCurriculumSubjectDetailPageProps) {
+export default async function ParentCurriculumSubjectDetailPage(props: ParentCurriculumSubjectDetailPageProps) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { home, dashboard } = dictionary;
   const currentUser = await getCurrentUser();

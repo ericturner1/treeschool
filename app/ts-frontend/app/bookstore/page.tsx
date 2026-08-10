@@ -11,9 +11,10 @@ export const metadata: Metadata = {
   description: "Browse printable elementary homeschool workbooks for grades K–4 by grade and subject, designed for Treeschool's paper-first homeschooling program."
 };
 
-type Props = { searchParams?: { grade?: string; subject?: string; checkout?: string; error?: string } };
+type Props = { searchParams?: Promise<{ grade?: string; subject?: string; checkout?: string; error?: string }> };
 
-export default async function BookstorePage({ searchParams }: Props) {
+export default async function BookstorePage(props: Props) {
+  const searchParams = await props.searchParams;
   const user = await getCurrentUser();
   const rawGrade = searchParams?.grade;
   const grade = rawGrade == null || rawGrade === "" ? null : Number(rawGrade);

@@ -1,17 +1,19 @@
 import { redirect } from "next/navigation";
 
 type StudentManagementPageProps = {
-  params: {
+  params: Promise<{
     profileId?: string;
-  };
-  searchParams?: {
+  }>;
+  searchParams?: Promise<{
     lang?: string;
     error?: string;
     message?: string;
-  };
+  }>;
 };
 
-export default function StudentManagementPage({ params, searchParams }: StudentManagementPageProps) {
+export default async function StudentManagementPage(props: StudentManagementPageProps) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const profileId = params.profileId;
 
   if (!profileId) {

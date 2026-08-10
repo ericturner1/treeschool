@@ -50,14 +50,15 @@ function getProgramDisplayName(program: { title: string; gradeTitles: string[] }
 }
 
 type ParentCurriculumsPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     lang?: string;
     error?: string;
     message?: string;
-  };
+  }>;
 };
 
-export default async function ParentCurriculumsPage({ searchParams }: ParentCurriculumsPageProps) {
+export default async function ParentCurriculumsPage(props: ParentCurriculumsPageProps) {
+  const searchParams = await props.searchParams;
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { home, dashboard } = dictionary;
   const currentUser = await getCurrentUser();

@@ -1,6 +1,6 @@
 "use server";
 
-import { getCurrentUser } from "../../../../lib/auth/server";
+import { getCurrentStudentAccess } from "../../../../lib/auth/student-access";
 import { submitLessonQuiz } from "../../../../lib/lessons/server";
 import { initialLessonQuizState, type LessonQuizState } from "./quiz-state";
 
@@ -8,15 +8,6 @@ export async function submitLessonQuizAction(
   _prevState: LessonQuizState,
   formData: FormData
 ): Promise<LessonQuizState> {
-  const currentUser = await getCurrentUser();
-
-  if (!currentUser?.id) {
-    return {
-      ...initialLessonQuizState,
-      error: "Please sign in again."
-    };
-  }
-
   const profileId = String(formData.get("profileId") ?? "").trim();
   const lessonId = String(formData.get("lessonId") ?? "").trim();
 
@@ -24,6 +15,14 @@ export async function submitLessonQuizAction(
     return {
       ...initialLessonQuizState,
       error: "Lesson details are missing."
+    };
+  }
+
+  const access = await getCurrentStudentAccess(profileId);
+  if (!access) {
+    return {
+      ...initialLessonQuizState,
+      error: "Please reopen this lesson from the student classroom."
     };
   }
 
@@ -44,7 +43,7 @@ export async function submitLessonQuizAction(
 
   try {
     const result = await submitLessonQuiz({
-      profileId,
+      profileId: access.student.id,
       lessonId,
       answers
     });

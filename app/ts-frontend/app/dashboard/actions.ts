@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   createStudentHouseholdProfile,
@@ -13,6 +12,7 @@ import {
   setActiveProfileCookie
 } from "../../lib/accounts/active-profile";
 import { getCurrentUser, verifyPassword } from "../../lib/auth/server";
+import { getPublicAppOrigin } from "../../lib/security/public-origin";
 
 function getField(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -60,13 +60,7 @@ function getSafeRedirectTarget(input: string) {
 }
 
 function getRequestOrigin() {
-  const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
-  if (configuredOrigin) return configuredOrigin;
-  const headerStore = headers();
-  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host") ?? "localhost:3100";
-  const protocol = headerStore.get("x-forwarded-proto") ??
-    (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
-  return `${protocol}://${host}`;
+  return getPublicAppOrigin();
 }
 
 async function requireCurrentUser() {

@@ -3,16 +3,11 @@ import {
   FUNNEL_ATTRIBUTION_COOKIE,
   parseFunnelAttribution
 } from "../../../../lib/funnels/attribution";
+import { getPublicAppOrigin } from "../../../../lib/security/public-origin";
 
 function safeDestination(request: Request, rawTarget: string | null) {
   const requestUrl = new URL(request.url);
-  const forwardedHost =
-    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
-  const forwardedProtocol =
-    request.headers.get("x-forwarded-proto") ?? requestUrl.protocol.replace(":", "");
-  const publicOrigin = forwardedHost
-    ? `${forwardedProtocol}://${forwardedHost}`
-    : requestUrl.origin;
+  const publicOrigin = getPublicAppOrigin(requestUrl);
 
   if (!rawTarget) return new URL("/", publicOrigin);
   if (rawTarget.startsWith("/") && !rawTarget.startsWith("//")) {

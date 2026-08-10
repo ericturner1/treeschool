@@ -3,7 +3,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { getPublishedBlogPost } from "../../../lib/blog/server";
 import { BlogArticle } from "../blog-article";
 
-type Props = { params: { slug: string } };
+type Props = { params: Promise<{ slug: string }> };
 const SITE_URL = "https://www.treehomeschool.com";
 
 function absoluteImageUrl(value: string | null) {
@@ -11,7 +11,8 @@ function absoluteImageUrl(value: string | null) {
   return value.startsWith("/") ? `${SITE_URL}${value}` : value;
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
   const result = await getPublishedBlogPost(params.slug).catch(() => null);
   const post = result?.post;
   if (!post) return { title: "Homeschool Resources | Treeschool" };
@@ -31,7 +32,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function BlogPostPage({ params }: Props) {
+export default async function BlogPostPage(props: Props) {
+  const params = await props.params;
   const result = await getPublishedBlogPost(params.slug).catch(() => null);
   if (!result) notFound();
   if (result.redirectTo) permanentRedirect(`/blog/${result.redirectTo}`);

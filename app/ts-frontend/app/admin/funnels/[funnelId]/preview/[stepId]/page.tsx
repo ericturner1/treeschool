@@ -14,13 +14,14 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false }
 };
 
-export default async function AdminManagedFunnelPagePreview({
-  params,
-  searchParams
-}: {
-  params: { funnelId: string; stepId: string };
-  searchParams?: { page?: string };
-}) {
+export default async function AdminManagedFunnelPagePreview(
+  props: {
+    params: Promise<{ funnelId: string; stepId: string }>;
+    searchParams?: Promise<{ page?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const backHref =
     `/admin/funnels/${encodeURIComponent(params.funnelId)}?step=${encodeURIComponent(params.stepId)}` +
     (searchParams?.page ? `&page=${encodeURIComponent(searchParams.page)}` : "");

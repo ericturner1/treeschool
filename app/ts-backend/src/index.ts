@@ -1,6 +1,11 @@
 import { healthCheck } from "ts-db";
-import { timingSafeEqual } from "node:crypto";
 import { env, db } from "./db";
+import {
+  authorizeInternalRequest,
+  checkPublicRateLimit,
+  checkPublicRequestSize,
+  publicErrorMessage
+} from "./http-security";
 import {
   addCurriculumToStudent,
   completeStudentProfilePhotoUpload,
@@ -272,14 +277,17 @@ const server = Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
 
-    if (url.pathname.startsWith("/internal/") && env.INTERNAL_API_SECRET) {
-      const suppliedSecret = request.headers.get("x-treeschool-internal-secret") ?? "";
-      const expected = Buffer.from(env.INTERNAL_API_SECRET);
-      const supplied = Buffer.from(suppliedSecret);
-      if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
-        return Response.json({ error: "Unauthorized internal request." }, { status: 401 });
-      }
-    }
+    const internalAuthorizationFailure = authorizeInternalRequest(
+      request,
+      env.INTERNAL_API_SECRET
+    );
+    if (internalAuthorizationFailure) return internalAuthorizationFailure;
+
+    const publicRequestSizeFailure = checkPublicRequestSize(request);
+    if (publicRequestSizeFailure) return publicRequestSizeFailure;
+
+    const publicRateLimitFailure = checkPublicRateLimit(request);
+    if (publicRateLimitFailure) return publicRateLimitFailure;
 
     if (url.pathname === "/health") {
       const [{ now }] = await db.execute(healthCheck);
@@ -297,9 +305,7 @@ const server = Bun.serve({
       } catch (error) {
         return Response.json(
           {
-            error: error instanceof Error
-              ? error.message
-              : "Could not record the authentication diagnostic."
+            error: publicErrorMessage(error, "Could not record the authentication diagnostic.")
           },
           { status: 400 }
         );
@@ -335,7 +341,7 @@ const server = Bun.serve({
       try {
         return Response.json({ faqs: await listPublishedSalesFaqs() });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load FAQs." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load FAQs.") }, { status: 400 });
       }
     }
 
@@ -345,7 +351,7 @@ const server = Bun.serve({
         if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
         return Response.json(await getAdminDashboardMetrics(userId));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load admin metrics." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load admin metrics.") }, { status: 400 });
       }
     }
 
@@ -355,7 +361,7 @@ const server = Bun.serve({
         if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
         return Response.json(await listAdminWorkbookStudio(userId));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load Workbook Studio." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load Workbook Studio.") }, { status: 400 });
       }
     }
 
@@ -366,7 +372,7 @@ const server = Bun.serve({
         if (!userId || !projectId) return Response.json({ error: "userId and projectId are required." }, { status: 400 });
         return Response.json(await getAdminWorkbookStudioProject({ userId, projectId }));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load the workbook project." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load the workbook project.") }, { status: 400 });
       }
     }
 
@@ -377,7 +383,7 @@ const server = Bun.serve({
         if (!userId || !curriculumId) return Response.json({ error: "userId and curriculumId are required." }, { status: 400 });
         return Response.json(await getAdminWorkbookStudioCurriculum({ userId, curriculumId }));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load the curriculum." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load the curriculum.") }, { status: 400 });
       }
     }
 
@@ -385,7 +391,7 @@ const server = Bun.serve({
       try {
         return Response.json(await createWorkbookStudioProject(await request.json() as Parameters<typeof createWorkbookStudioProject>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not create the workbook project." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not create the workbook project.") }, { status: 400 });
       }
     }
 
@@ -393,7 +399,7 @@ const server = Bun.serve({
       try {
         return Response.json(await queueWorkbookGradeLevelGeneration(await request.json() as Parameters<typeof queueWorkbookGradeLevelGeneration>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not queue grade-level generation." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not queue grade-level generation.") }, { status: 400 });
       }
     }
 
@@ -401,7 +407,7 @@ const server = Bun.serve({
       try {
         return Response.json(await saveWorkbookStudioRevision(await request.json() as Parameters<typeof saveWorkbookStudioRevision>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the workbook revision." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the workbook revision.") }, { status: 400 });
       }
     }
 
@@ -409,7 +415,7 @@ const server = Bun.serve({
       try {
         return Response.json(await queueWorkbookStudioRender(await request.json() as Parameters<typeof queueWorkbookStudioRender>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not queue the workbook render." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not queue the workbook render.") }, { status: 400 });
       }
     }
 
@@ -417,7 +423,7 @@ const server = Bun.serve({
       try {
         return Response.json(await queueWorkbookStudioRelease(await request.json() as Parameters<typeof queueWorkbookStudioRelease>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not queue the workbook release." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not queue the workbook release.") }, { status: 400 });
       }
     }
 
@@ -425,7 +431,7 @@ const server = Bun.serve({
       try {
         return Response.json(await createWorkbookStudioCurriculum(await request.json() as Parameters<typeof createWorkbookStudioCurriculum>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not create the curriculum." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not create the curriculum.") }, { status: 400 });
       }
     }
 
@@ -433,7 +439,7 @@ const server = Bun.serve({
       try {
         return Response.json(await saveWorkbookStudioCurriculumRevision(await request.json() as Parameters<typeof saveWorkbookStudioCurriculumRevision>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the curriculum." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the curriculum.") }, { status: 400 });
       }
     }
 
@@ -441,7 +447,7 @@ const server = Bun.serve({
       try {
         return Response.json(await publishWorkbookStudioCurriculum(await request.json() as Parameters<typeof publishWorkbookStudioCurriculum>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not publish the curriculum." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not publish the curriculum.") }, { status: 400 });
       }
     }
 
@@ -449,7 +455,7 @@ const server = Bun.serve({
       try {
         return Response.json(await queueWorkbookCurriculumGeneration(await request.json() as Parameters<typeof queueWorkbookCurriculumGeneration>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not generate curriculum workbooks." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not generate curriculum workbooks.") }, { status: 400 });
       }
     }
 
@@ -457,7 +463,7 @@ const server = Bun.serve({
       try {
         return Response.json(await setWorkbookCurriculumTheme(await request.json() as Parameters<typeof setWorkbookCurriculumTheme>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not change the curriculum theme." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not change the curriculum theme.") }, { status: 400 });
       }
     }
 
@@ -465,7 +471,7 @@ const server = Bun.serve({
       try {
         return Response.json(await setWorkbookCourseTheme(await request.json() as Parameters<typeof setWorkbookCourseTheme>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not change the course theme." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not change the course theme.") }, { status: 400 });
       }
     }
 
@@ -473,7 +479,7 @@ const server = Bun.serve({
       try {
         return Response.json(await setWorkbookProjectThemeOverride(await request.json() as Parameters<typeof setWorkbookProjectThemeOverride>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not change the workbook theme." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not change the workbook theme.") }, { status: 400 });
       }
     }
 
@@ -481,7 +487,7 @@ const server = Bun.serve({
       try {
         return Response.json(await saveWorkbookGenerationPrompt(await request.json() as Parameters<typeof saveWorkbookGenerationPrompt>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the generation prompt." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the generation prompt.") }, { status: 400 });
       }
     }
 
@@ -489,7 +495,7 @@ const server = Bun.serve({
       try {
         return Response.json(await saveWorkbookGenerationRule(await request.json() as Parameters<typeof saveWorkbookGenerationRule>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the generation rule." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the generation rule.") }, { status: 400 });
       }
     }
 
@@ -497,7 +503,7 @@ const server = Bun.serve({
       try {
         return Response.json(await createWorkbookThemeVersion(await request.json() as Parameters<typeof createWorkbookThemeVersion>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the workbook theme." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the workbook theme.") }, { status: 400 });
       }
     }
 
@@ -507,7 +513,7 @@ const server = Bun.serve({
         if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
         return Response.json(await listAdminFunnels(userId));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load funnel administration." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load funnel administration.") }, { status: 400 });
       }
     }
 
@@ -520,7 +526,7 @@ const server = Bun.serve({
         }
         return Response.json(await getAdminFunnel({ userId, idOrSlug }));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load the funnel." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load the funnel.") }, { status: 400 });
       }
     }
 
@@ -534,7 +540,7 @@ const server = Bun.serve({
         }
         return Response.json(await getAdminFunnelPathAvailability({ userId, path, excludeStepId }));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not check the URL path." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not check the URL path.") }, { status: 400 });
       }
     }
 
@@ -547,7 +553,7 @@ const server = Bun.serve({
         }
         return Response.json(await getAdminFunnelOperations({ userId, funnelId }));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load funnel operations." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load funnel operations.") }, { status: 400 });
       }
     }
 
@@ -560,7 +566,7 @@ const server = Bun.serve({
           query: url.searchParams.get("query")
         }));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load contacts." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load contacts.") }, { status: 400 });
       }
     }
 
@@ -571,7 +577,7 @@ const server = Bun.serve({
         if (!userId || !contactId) return Response.json({ error: "userId and contactId are required." }, { status: 400 });
         return Response.json(await getAdminFunnelContact({ userId, contactId }));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load the contact." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load the contact.") }, { status: 400 });
       }
     }
 
@@ -581,7 +587,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof saveAdminFunnelContact>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the contact." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the contact.") }, { status: 400 });
       }
     }
 
@@ -591,7 +597,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof saveAdminFunnelAutomation>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the automation." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the automation.") }, { status: 400 });
       }
     }
 
@@ -601,7 +607,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof deleteAdminFunnelAutomation>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not delete the automation." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not delete the automation.") }, { status: 400 });
       }
     }
 
@@ -611,7 +617,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof createAdminFunnelTestSale>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not record the test sale." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not record the test sale.") }, { status: 400 });
       }
     }
 
@@ -619,7 +625,7 @@ const server = Bun.serve({
       try {
         return Response.json(await saveAdminFunnel(await request.json() as Parameters<typeof saveAdminFunnel>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the funnel." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the funnel.") }, { status: 400 });
       }
     }
 
@@ -629,7 +635,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof deleteAdminFunnel>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not delete the funnel." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not delete the funnel.") }, { status: 400 });
       }
     }
 
@@ -637,7 +643,7 @@ const server = Bun.serve({
       try {
         return Response.json(await saveAdminFunnelStep(await request.json() as Parameters<typeof saveAdminFunnelStep>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the funnel step." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the funnel step.") }, { status: 400 });
       }
     }
 
@@ -645,7 +651,7 @@ const server = Bun.serve({
       try {
         return Response.json(await reorderAdminFunnelSteps(await request.json() as Parameters<typeof reorderAdminFunnelSteps>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not reorder the funnel." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not reorder the funnel.") }, { status: 400 });
       }
     }
 
@@ -653,7 +659,7 @@ const server = Bun.serve({
       try {
         return Response.json(await duplicateAdminFunnelStep(await request.json() as Parameters<typeof duplicateAdminFunnelStep>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not duplicate the funnel step." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not duplicate the funnel step.") }, { status: 400 });
       }
     }
 
@@ -661,7 +667,7 @@ const server = Bun.serve({
       try {
         return Response.json(await deleteAdminFunnelStep(await request.json() as Parameters<typeof deleteAdminFunnelStep>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not delete the funnel step." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not delete the funnel step.") }, { status: 400 });
       }
     }
 
@@ -691,7 +697,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof prepareAdminFunnelAssetUpload>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not prepare the funnel image upload." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not prepare the funnel image upload.") }, { status: 400 });
       }
     }
 
@@ -701,7 +707,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof completeAdminFunnelAssetUpload>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the funnel image." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the funnel image.") }, { status: 400 });
       }
     }
 
@@ -711,7 +717,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof discardAdminFunnelAssetUpload>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not discard the funnel image." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not discard the funnel image.") }, { status: 400 });
       }
     }
 
@@ -726,7 +732,7 @@ const server = Bun.serve({
         }
         return Response.json(await getAdminFunnelPage({ userId, funnelId, stepId, pageId }));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load the managed page." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load the managed page.") }, { status: 400 });
       }
     }
 
@@ -736,7 +742,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof saveAdminFunnelPageDraft>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the page draft." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the page draft.") }, { status: 400 });
       }
     }
 
@@ -746,7 +752,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof publishAdminFunnelPage>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not publish the page." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not publish the page.") }, { status: 400 });
       }
     }
 
@@ -756,7 +762,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof unpublishAdminFunnelPage>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not unpublish the page." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not unpublish the page.") }, { status: 400 });
       }
     }
 
@@ -766,7 +772,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof createAdminFunnelPageVariant>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not create the page variant." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not create the page variant.") }, { status: 400 });
       }
     }
 
@@ -776,7 +782,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof generateAdminFunnelPageDraft>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not generate the page draft." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not generate the page draft.") }, { status: 400 });
       }
     }
 
@@ -786,7 +792,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof startAdminFunnelExperiment>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not start the experiment." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not start the experiment.") }, { status: 400 });
       }
     }
 
@@ -796,7 +802,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof completeAdminFunnelExperiment>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not complete the experiment." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not complete the experiment.") }, { status: 400 });
       }
     }
 
@@ -806,7 +812,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof promoteAdminFunnelExperimentWinner>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not promote the winning page." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not promote the winning page.") }, { status: 400 });
       }
     }
 
@@ -816,7 +822,7 @@ const server = Bun.serve({
           await request.json() as Parameters<typeof updateAdminCodeFunnelExperiment>[0]
         ));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not update the experiment." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not update the experiment.") }, { status: 400 });
       }
     }
 
@@ -904,7 +910,7 @@ const server = Bun.serve({
         if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
         return Response.json(await listAdminSalesFaqs(userId));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load FAQ administration." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load FAQ administration.") }, { status: 400 });
       }
     }
 
@@ -912,7 +918,7 @@ const server = Bun.serve({
       try {
         return Response.json(await saveSalesFaq(await request.json() as Parameters<typeof saveSalesFaq>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the FAQ." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the FAQ.") }, { status: 400 });
       }
     }
 
@@ -920,7 +926,7 @@ const server = Bun.serve({
       try {
         return Response.json(await reorderSalesFaqs(await request.json() as Parameters<typeof reorderSalesFaqs>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not reorder the FAQs." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not reorder the FAQs.") }, { status: 400 });
       }
     }
 
@@ -928,7 +934,7 @@ const server = Bun.serve({
       try {
         return Response.json(await deleteSalesFaq(await request.json() as Parameters<typeof deleteSalesFaq>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not delete the FAQ." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not delete the FAQ.") }, { status: 400 });
       }
     }
 
@@ -939,7 +945,7 @@ const server = Bun.serve({
           limit: Number(url.searchParams.get("limit") || 50)
         }) });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load blog posts." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load blog posts.") }, { status: 400 });
       }
     }
 
@@ -957,7 +963,7 @@ const server = Bun.serve({
           }
         });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Blog image not found." }, { status: 404 });
+        return Response.json({ error: publicErrorMessage(error, "Blog image not found.") }, { status: 404 });
       }
     }
 
@@ -968,7 +974,7 @@ const server = Bun.serve({
         const post = await getPublishedBlogPost(slug);
         return post ? Response.json(post) : Response.json({ error: "Blog post not found." }, { status: 404 });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load the blog post." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load the blog post.") }, { status: 400 });
       }
     }
 
@@ -978,7 +984,7 @@ const server = Bun.serve({
         if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
         return Response.json(await listAdminBlogPosts(userId));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load blog administration." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load blog administration.") }, { status: 400 });
       }
     }
 
@@ -989,7 +995,7 @@ const server = Bun.serve({
         if (!userId || !postId) return Response.json({ error: "userId and postId are required." }, { status: 400 });
         return Response.json(await getAdminBlogPost({ userId, postId }));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load the blog post." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load the blog post.") }, { status: 400 });
       }
     }
 
@@ -1000,7 +1006,7 @@ const server = Bun.serve({
         if (!userId || !postId) return Response.json({ error: "userId and postId are required." }, { status: 400 });
         return Response.json({ post: await getAdminBlogPreview({ userId, postId }) });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not preview the blog post." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not preview the blog post.") }, { status: 400 });
       }
     }
 
@@ -1008,7 +1014,7 @@ const server = Bun.serve({
       try {
         return Response.json(await createManualBlogPost(await request.json() as Parameters<typeof createManualBlogPost>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not create the blog post." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not create the blog post.") }, { status: 400 });
       }
     }
 
@@ -1016,7 +1022,7 @@ const server = Bun.serve({
       try {
         return Response.json(await saveBlogPostRevision(await request.json() as Parameters<typeof saveBlogPostRevision>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the blog post." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the blog post.") }, { status: 400 });
       }
     }
 
@@ -1024,7 +1030,7 @@ const server = Bun.serve({
       try {
         return Response.json(await generateBlogDraft(await request.json() as Parameters<typeof generateBlogDraft>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not generate the blog draft." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not generate the blog draft.") }, { status: 400 });
       }
     }
 
@@ -1032,7 +1038,7 @@ const server = Bun.serve({
       try {
         return Response.json(await unpublishBlogPost(await request.json() as Parameters<typeof unpublishBlogPost>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not unpublish the blog post." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not unpublish the blog post.") }, { status: 400 });
       }
     }
 
@@ -1040,7 +1046,7 @@ const server = Bun.serve({
       try {
         return Response.json(await deleteBlogPost(await request.json() as Parameters<typeof deleteBlogPost>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not delete the blog post." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not delete the blog post.") }, { status: 400 });
       }
     }
 
@@ -1048,7 +1054,7 @@ const server = Bun.serve({
       try {
         return Response.json(await prepareBlogImageUpload(await request.json() as Parameters<typeof prepareBlogImageUpload>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not prepare the blog image upload." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not prepare the blog image upload.") }, { status: 400 });
       }
     }
 
@@ -1056,7 +1062,7 @@ const server = Bun.serve({
       try {
         return Response.json(await completeBlogImageUpload(await request.json() as Parameters<typeof completeBlogImageUpload>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not save the blog image." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not save the blog image.") }, { status: 400 });
       }
     }
 
@@ -1064,7 +1070,7 @@ const server = Bun.serve({
       try {
         return Response.json(await discardBlogImageUpload(await request.json() as Parameters<typeof discardBlogImageUpload>[0]));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not discard the blog image upload." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not discard the blog image upload.") }, { status: 400 });
       }
     }
 
@@ -1074,7 +1080,7 @@ const server = Bun.serve({
         if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
         return Response.json(await getNativeWorkbookNavigation(userId));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load navigation." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load navigation.") }, { status: 400 });
       }
     }
 
@@ -1090,7 +1096,7 @@ const server = Bun.serve({
           })
         });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load the bookstore." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load the bookstore.") }, { status: 400 });
       }
     }
 
@@ -1100,7 +1106,7 @@ const server = Bun.serve({
         if (!slug) return Response.json({ error: "slug is required." }, { status: 400 });
         return Response.json(await getNativeWorkbookProduct({ slug, userId: url.searchParams.get("userId") }));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not load the workbook.";
+        const message = publicErrorMessage(error, "Could not load the workbook.");
         return Response.json({ error: message }, { status: ["Workbook not found.", "Catalog item not found."].includes(message) ? 404 : 400 });
       }
     }
@@ -1116,7 +1122,7 @@ const server = Bun.serve({
         return Response.json(await getNativeWorkbookPlanningPreview({ userId, learningYearId, documentId }));
       } catch (error) {
         return Response.json({
-          error: error instanceof Error ? error.message : "Could not load the indexed workbook lessons."
+          error: publicErrorMessage(error, "Could not load the indexed workbook lessons.")
         }, { status: 400 });
       }
     }
@@ -1140,7 +1146,7 @@ const server = Bun.serve({
         });
       } catch (error) {
         return Response.json({
-          error: error instanceof Error ? error.message : "Could not build the indexed lesson preview."
+          error: publicErrorMessage(error, "Could not build the indexed lesson preview.")
         }, { status: 400 });
       }
     }
@@ -1151,7 +1157,7 @@ const server = Bun.serve({
         if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
         return Response.json({ workbooks: await listPurchasedNativeWorkbooks(userId) });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not load purchased workbooks." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not load purchased workbooks.") }, { status: 400 });
       }
     }
 
@@ -1167,7 +1173,7 @@ const server = Bun.serve({
         ]);
         return Response.json({ workbooks, bundles, subjects, academicStandards });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not load workbook administration.";
+        const message = publicErrorMessage(error, "Could not load workbook administration.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1177,7 +1183,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof prepareNativeWorkbookUpload>[0];
         return Response.json(await prepareNativeWorkbookUpload(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not prepare the workbook upload.";
+        const message = publicErrorMessage(error, "Could not prepare the workbook upload.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1187,7 +1193,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof prepareNativeWorkbookBundle>[0];
         return Response.json(await prepareNativeWorkbookBundle(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not prepare the workbook bundle.";
+        const message = publicErrorMessage(error, "Could not prepare the workbook bundle.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1197,7 +1203,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof completeNativeWorkbookBundle>[0];
         return Response.json(await completeNativeWorkbookBundle(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not complete the workbook bundle.";
+        const message = publicErrorMessage(error, "Could not complete the workbook bundle.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1207,7 +1213,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof prepareNativeWorkbookBundleThumbnail>[0];
         return Response.json(await prepareNativeWorkbookBundleThumbnail(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not prepare the replacement bundle thumbnail.";
+        const message = publicErrorMessage(error, "Could not prepare the replacement bundle thumbnail.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1217,7 +1223,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof discardNativeWorkbookBundleThumbnail>[0];
         return Response.json(await discardNativeWorkbookBundleThumbnail(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not discard the replacement bundle thumbnail.";
+        const message = publicErrorMessage(error, "Could not discard the replacement bundle thumbnail.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1227,7 +1233,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof updateNativeWorkbookBundle>[0];
         return Response.json(await updateNativeWorkbookBundle(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not update the workbook bundle.";
+        const message = publicErrorMessage(error, "Could not update the workbook bundle.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1237,7 +1243,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof discardNativeWorkbookBundle>[0];
         return Response.json(await discardNativeWorkbookBundle(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not discard the workbook bundle.";
+        const message = publicErrorMessage(error, "Could not discard the workbook bundle.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1247,7 +1253,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof setNativeWorkbookBundlePublished>[0];
         return Response.json(await setNativeWorkbookBundlePublished(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not update workbook bundle visibility.";
+        const message = publicErrorMessage(error, "Could not update workbook bundle visibility.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1257,7 +1263,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof setNativeWorkbookBundleRecommended>[0];
         return Response.json(await setNativeWorkbookBundleRecommended(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not update the recommended curriculum.";
+        const message = publicErrorMessage(error, "Could not update the recommended curriculum.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1269,7 +1275,7 @@ const server = Bun.serve({
         await triggerProcessorJob().catch((error) => console.error("Could not start native workbook processor:", error));
         return Response.json(result);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not complete the workbook upload.";
+        const message = publicErrorMessage(error, "Could not complete the workbook upload.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1279,7 +1285,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof discardNativeWorkbookUpload>[0];
         return Response.json(await discardNativeWorkbookUpload(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not discard the incomplete workbook upload.";
+        const message = publicErrorMessage(error, "Could not discard the incomplete workbook upload.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1289,7 +1295,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof prepareNativeWorkbookReplacement>[0];
         return Response.json(await prepareNativeWorkbookReplacement(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not prepare the replacement PDF upload.";
+        const message = publicErrorMessage(error, "Could not prepare the replacement PDF upload.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1301,7 +1307,7 @@ const server = Bun.serve({
         await triggerProcessorJob().catch((error) => console.error("Could not start native workbook processor:", error));
         return Response.json(result);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not complete the replacement PDF upload.";
+        const message = publicErrorMessage(error, "Could not complete the replacement PDF upload.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1311,7 +1317,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof discardNativeWorkbookReplacement>[0];
         return Response.json(await discardNativeWorkbookReplacement(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not discard the replacement PDF upload.";
+        const message = publicErrorMessage(error, "Could not discard the replacement PDF upload.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1321,7 +1327,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof prepareNativeWorkbookEdition>[0];
         return Response.json(await prepareNativeWorkbookEdition(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not prepare the new edition.";
+        const message = publicErrorMessage(error, "Could not prepare the new edition.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1333,7 +1339,7 @@ const server = Bun.serve({
         await triggerProcessorJob().catch((error) => console.error("Could not start native workbook processor:", error));
         return Response.json(result);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not complete the new-edition upload.";
+        const message = publicErrorMessage(error, "Could not complete the new-edition upload.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1343,7 +1349,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof discardNativeWorkbookEdition>[0];
         return Response.json(await discardNativeWorkbookEdition(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not discard the new-edition upload.";
+        const message = publicErrorMessage(error, "Could not discard the new-edition upload.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1353,7 +1359,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof deleteNativeWorkbook>[0];
         return Response.json(await deleteNativeWorkbook(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not delete the workbook.";
+        const message = publicErrorMessage(error, "Could not delete the workbook.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1364,7 +1370,7 @@ const server = Bun.serve({
         return Response.json(await upgradeNativeWorkbookEditionForLearningYear(body));
       } catch (error) {
         return Response.json({
-          error: error instanceof Error ? error.message : "Could not update the workbook edition."
+          error: publicErrorMessage(error, "Could not update the workbook edition.")
         }, { status: 400 });
       }
     }
@@ -1374,7 +1380,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof updateNativeWorkbookDetails>[0];
         return Response.json(await updateNativeWorkbookDetails(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not update the workbook details.";
+        const message = publicErrorMessage(error, "Could not update the workbook details.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1386,7 +1392,7 @@ const server = Bun.serve({
         await triggerProcessorJob().catch((error) => console.error("Could not start native workbook processor:", error));
         return Response.json(result);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not retry workbook indexing.";
+        const message = publicErrorMessage(error, "Could not retry workbook indexing.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1396,7 +1402,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof publishNativeWorkbook>[0];
         return Response.json(await publishNativeWorkbook(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not publish the workbook.";
+        const message = publicErrorMessage(error, "Could not publish the workbook.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1406,7 +1412,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof setNativeWorkbookPublished>[0];
         return Response.json(await setNativeWorkbookPublished(body));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not update workbook visibility.";
+        const message = publicErrorMessage(error, "Could not update workbook visibility.");
         return Response.json({ error: message }, { status: message === "Administrator access is required." ? 403 : 400 });
       }
     }
@@ -1416,7 +1422,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof attachNativeCatalogItemToLearningYear>[0];
         return Response.json(await attachNativeCatalogItemToLearningYear(body));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not add the workbook." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not add the workbook.") }, { status: 400 });
       }
     }
 
@@ -1425,7 +1431,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof createNativeWorkbookCheckout>[0];
         return Response.json(await createNativeWorkbookCheckout(body));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not start workbook checkout." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not start workbook checkout.") }, { status: 400 });
       }
     }
 
@@ -1434,7 +1440,7 @@ const server = Bun.serve({
         const body = await request.json() as Parameters<typeof createNativeWorkbookCartCheckout>[0];
         return Response.json(await createNativeWorkbookCartCheckout(body));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not start cart checkout." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not start cart checkout.") }, { status: 400 });
       }
     }
 
@@ -1457,7 +1463,7 @@ const server = Bun.serve({
           }
         });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not download the workbook." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not download the workbook.") }, { status: 400 });
       }
     }
 
@@ -1512,7 +1518,7 @@ const server = Bun.serve({
         });
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Could not review curriculum completeness." },
+          { error: publicErrorMessage(error, "Could not review curriculum completeness.") },
           { status: 400 }
         );
       }
@@ -1528,7 +1534,7 @@ const server = Bun.serve({
         return Response.json(await getPaperPlan(parentUserId, profileId));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to load the learning plan." },
+          { error: publicErrorMessage(error, "Failed to load the learning plan.") },
           { status: 400 }
         );
       }
@@ -1543,7 +1549,7 @@ const server = Bun.serve({
       try {
         return Response.json(await getWeeklyPlanManifest(parentUserId, weeklyPlanId));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to build the weekly plan manifest.";
+        const message = publicErrorMessage(error, "Failed to build the weekly plan manifest.");
         return Response.json(
           { error: message },
           { status: message === "Administrator access is required." ? 403 : 400 }
@@ -1585,7 +1591,7 @@ const server = Bun.serve({
         );
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to create learning year." },
+          { error: publicErrorMessage(error, "Failed to create learning year.") },
           { status: 400 }
         );
       }
@@ -1620,7 +1626,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to update learning year." },
+          { error: publicErrorMessage(error, "Failed to update learning year.") },
           { status: 400 }
         );
       }
@@ -1692,7 +1698,7 @@ const server = Bun.serve({
         );
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to upload curriculum files." },
+          { error: publicErrorMessage(error, "Failed to upload curriculum files.") },
           { status: 400 }
         );
       }
@@ -1714,7 +1720,7 @@ const server = Bun.serve({
         return Response.json(await deleteContentDocument(body.parentUserId, body.documentId));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to remove file." },
+          { error: publicErrorMessage(error, "Failed to remove file.") },
           { status: 400 }
         );
       }
@@ -1749,7 +1755,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to update material." },
+          { error: publicErrorMessage(error, "Failed to update material.") },
           { status: 400 }
         );
       }
@@ -1765,7 +1771,7 @@ const server = Bun.serve({
         return Response.json(await restorePreviousPlanVersion(body.parentUserId, body.learningYearId));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to restore the previous plan." },
+          { error: publicErrorMessage(error, "Failed to restore the previous plan.") },
           { status: 400 }
         );
       }
@@ -1792,7 +1798,7 @@ const server = Bun.serve({
         return Response.json({ ...result, processor });
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to start planning." },
+          { error: publicErrorMessage(error, "Failed to start planning.") },
           { status: 400 }
         );
       }
@@ -1818,7 +1824,7 @@ const server = Bun.serve({
         return Response.json(result);
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to retry planning." },
+          { error: publicErrorMessage(error, "Failed to retry planning.") },
           { status: 400 }
         );
       }
@@ -1845,7 +1851,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to adjust weekly practice pages." },
+          { error: publicErrorMessage(error, "Failed to adjust weekly practice pages.") },
           { status: 400 }
         );
       }
@@ -1871,7 +1877,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to update the lesson." },
+          { error: publicErrorMessage(error, "Failed to update the lesson.") },
           { status: 400 }
         );
       }
@@ -1902,7 +1908,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to save grade." },
+          { error: publicErrorMessage(error, "Failed to save grade.") },
           { status: 400 }
         );
       }
@@ -1939,7 +1945,7 @@ const server = Bun.serve({
         });
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to build the lesson preview." },
+          { error: publicErrorMessage(error, "Failed to build the lesson preview.") },
           { status: 400 }
         );
       }
@@ -2010,7 +2016,7 @@ const server = Bun.serve({
         return Response.json(await getWeeklyPlanQrDestination(parentUserId, weeklyPlanId));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to open this lesson-plan day." },
+          { error: publicErrorMessage(error, "Failed to open this lesson-plan day.") },
           { status: 400 }
         );
       }
@@ -2069,7 +2075,7 @@ const server = Bun.serve({
         );
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to create plan pack intake." },
+          { error: publicErrorMessage(error, "Failed to create plan pack intake.") },
           { status: 400 }
         );
       }
@@ -2080,7 +2086,7 @@ const server = Bun.serve({
         return Response.json(await getPlanGeneratorPricing());
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to load generator pricing." },
+          { error: publicErrorMessage(error, "Failed to load generator pricing.") },
           { status: 400 }
         );
       }
@@ -2112,7 +2118,7 @@ const server = Bun.serve({
         );
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to create checkout session." },
+          { error: publicErrorMessage(error, "Failed to create checkout session.") },
           { status: 400 }
         );
       }
@@ -2133,7 +2139,7 @@ const server = Bun.serve({
         return Response.json(await getPlanPackIntakeStatus({ intakeId, checkoutSessionId }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to load plan pack status." },
+          { error: publicErrorMessage(error, "Failed to load plan pack status.") },
           { status: 400 }
         );
       }
@@ -2166,7 +2172,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Could not review the curriculum." },
+          { error: publicErrorMessage(error, "Could not review the curriculum.") },
           { status: 400 }
         );
       }
@@ -2188,7 +2194,7 @@ const server = Bun.serve({
           workbookId: body.workbookId
         }));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not add the workbook." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not add the workbook.") }, { status: 400 });
       }
     }
 
@@ -2205,7 +2211,7 @@ const server = Bun.serve({
         return Response.json(result);
       } catch (error) {
         return Response.json({
-          error: error instanceof Error ? error.message : "Could not retry this plan pack."
+          error: publicErrorMessage(error, "Could not retry this plan pack.")
         }, { status: 400 });
       }
     }
@@ -2232,7 +2238,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to adjust weekly practice pages." },
+          { error: publicErrorMessage(error, "Failed to adjust weekly practice pages.") },
           { status: 400 }
         );
       }
@@ -2267,7 +2273,7 @@ const server = Bun.serve({
         });
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to build weekly PDF." },
+          { error: publicErrorMessage(error, "Failed to build weekly PDF.") },
           { status: 400 }
         );
       }
@@ -2353,7 +2359,7 @@ const server = Bun.serve({
         });
         return Response.json({ ...result, processor });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to complete plan pack.";
+        const message = publicErrorMessage(error, "Failed to complete plan pack.");
         if (intakeId) {
           await markPlanPackIntakeFailed({ intakeId, error: message }).catch(() => undefined);
         }
@@ -2377,7 +2383,7 @@ const server = Bun.serve({
           files: body.files ?? []
         }));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not prepare uploads." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not prepare uploads.") }, { status: 400 });
       }
     }
 
@@ -2391,7 +2397,7 @@ const server = Bun.serve({
         });
         return Response.json({ ...result, processor });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Could not complete uploads." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Could not complete uploads.") }, { status: 400 });
       }
     }
 
@@ -2463,7 +2469,7 @@ const server = Bun.serve({
         return Response.json(await getAccountPreferences(userId));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to load account preferences." },
+          { error: publicErrorMessage(error, "Failed to load account preferences.") },
           { status: 400 }
         );
       }
@@ -2483,7 +2489,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to update account preferences." },
+          { error: publicErrorMessage(error, "Failed to update account preferences.") },
           { status: 400 }
         );
       }
@@ -2514,7 +2520,7 @@ const server = Bun.serve({
         return Response.json(await listAccountPeople(userId));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to load account members." },
+          { error: publicErrorMessage(error, "Failed to load account members.") },
           { status: 400 }
         );
       }
@@ -2533,7 +2539,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to load teacher activity." },
+          { error: publicErrorMessage(error, "Failed to load teacher activity.") },
           { status: 400 }
         );
       }
@@ -2549,7 +2555,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to update your name." },
+          { error: publicErrorMessage(error, "Failed to update your name.") },
           { status: 400 }
         );
       }
@@ -2566,7 +2572,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to create the invitation." },
+          { error: publicErrorMessage(error, "Failed to create the invitation.") },
           { status: 400 }
         );
       }
@@ -2589,7 +2595,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to update the account role." },
+          { error: publicErrorMessage(error, "Failed to update the account role.") },
           { status: 400 }
         );
       }
@@ -2649,7 +2655,7 @@ const server = Bun.serve({
       } catch (error) {
         return Response.json(
           {
-            error: error instanceof Error ? error.message : "Failed to create Stripe checkout session."
+            error: publicErrorMessage(error, "Failed to create Stripe checkout session.")
           },
           { status: 400 }
         );
@@ -2688,7 +2694,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to create Stripe checkout session." },
+          { error: publicErrorMessage(error, "Failed to create Stripe checkout session.") },
           { status: 400 }
         );
       }
@@ -2703,7 +2709,7 @@ const server = Bun.serve({
         return Response.json(await completePublicCoreSubscriptionCheckout(body.sessionId));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to finish checkout." },
+          { error: publicErrorMessage(error, "Failed to finish checkout.") },
           { status: 400 }
         );
       }
@@ -2718,7 +2724,7 @@ const server = Bun.serve({
         return Response.json(await getFirstGradePostCheckoutOffer(sessionId));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Could not load the offer." },
+          { error: publicErrorMessage(error, "Could not load the offer.") },
           { status: 400 }
         );
       }
@@ -2746,7 +2752,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Could not update the offer." },
+          { error: publicErrorMessage(error, "Could not update the offer.") },
           { status: 400 }
         );
       }
@@ -2774,7 +2780,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Could not add the offer." },
+          { error: publicErrorMessage(error, "Could not add the offer.") },
           { status: 400 }
         );
       }
@@ -2807,7 +2813,7 @@ const server = Bun.serve({
       } catch (error) {
         return Response.json(
           {
-            error: error instanceof Error ? error.message : "Failed to create Stripe checkout session."
+            error: publicErrorMessage(error, "Failed to create Stripe checkout session.")
           },
           { status: 400 }
         );
@@ -2839,7 +2845,7 @@ const server = Bun.serve({
       } catch (error) {
         return Response.json(
           {
-            error: error instanceof Error ? error.message : "Failed to create Stripe customer portal session."
+            error: publicErrorMessage(error, "Failed to create Stripe customer portal session.")
           },
           { status: 400 }
         );
@@ -2866,7 +2872,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to change membership plan." },
+          { error: publicErrorMessage(error, "Failed to change membership plan.") },
           { status: 400 }
         );
       }
@@ -2883,7 +2889,7 @@ const server = Bun.serve({
       } catch (error) {
         return Response.json(
           {
-            error: error instanceof Error ? error.message : "Failed to process Stripe webhook."
+            error: publicErrorMessage(error, "Failed to process Stripe webhook.")
           },
           { status: 400 }
         );
@@ -2971,7 +2977,7 @@ const server = Bun.serve({
         return Response.json(result, { status: result.kind === "created" ? 201 : 200 });
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to add the student." },
+          { error: publicErrorMessage(error, "Failed to add the student.") },
           { status: 400 }
         );
       }
@@ -3005,7 +3011,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to update student profile." },
+          { error: publicErrorMessage(error, "Failed to update student profile.") },
           { status: 400 }
         );
       }
@@ -3017,7 +3023,7 @@ const server = Bun.serve({
         return Response.json(await prepareStudentProfilePhotoUpload(body));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Could not prepare the student photo upload." },
+          { error: publicErrorMessage(error, "Could not prepare the student photo upload.") },
           { status: 400 }
         );
       }
@@ -3029,7 +3035,7 @@ const server = Bun.serve({
         return Response.json(await completeStudentProfilePhotoUpload(body));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Could not save the student photo." },
+          { error: publicErrorMessage(error, "Could not save the student photo.") },
           { status: 400 }
         );
       }
@@ -3041,7 +3047,7 @@ const server = Bun.serve({
         return Response.json(await discardStudentProfilePhotoUpload(body));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Could not discard the student photo upload." },
+          { error: publicErrorMessage(error, "Could not discard the student photo upload.") },
           { status: 400 }
         );
       }
@@ -3133,7 +3139,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to load the school calendar." },
+          { error: publicErrorMessage(error, "Failed to load the school calendar.") },
           { status: 400 }
         );
       }
@@ -3159,7 +3165,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to load student points." },
+          { error: publicErrorMessage(error, "Failed to load student points.") },
           { status: 400 }
         );
       }
@@ -3228,7 +3234,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to update student points." },
+          { error: publicErrorMessage(error, "Failed to update student points.") },
           { status: 400 }
         );
       }
@@ -3240,7 +3246,7 @@ const server = Bun.serve({
         return Response.json(await prepareStudentPointIconUpload(body));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Could not prepare the custom point icon upload." },
+          { error: publicErrorMessage(error, "Could not prepare the custom point icon upload.") },
           { status: 400 }
         );
       }
@@ -3252,7 +3258,7 @@ const server = Bun.serve({
         return Response.json(await completeStudentPointIconUpload(body));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Could not save the custom point icon." },
+          { error: publicErrorMessage(error, "Could not save the custom point icon.") },
           { status: 400 }
         );
       }
@@ -3264,7 +3270,7 @@ const server = Bun.serve({
         return Response.json(await discardStudentPointIconUpload(body));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Could not discard the custom point icon upload." },
+          { error: publicErrorMessage(error, "Could not discard the custom point icon upload.") },
           { status: 400 }
         );
       }
@@ -3292,7 +3298,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to update the school calendar." },
+          { error: publicErrorMessage(error, "Failed to update the school calendar.") },
           { status: 400 }
         );
       }
@@ -3324,7 +3330,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to add the calendar entry." },
+          { error: publicErrorMessage(error, "Failed to add the calendar entry.") },
           { status: 400 }
         );
       }
@@ -3350,7 +3356,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to remove the calendar entry." },
+          { error: publicErrorMessage(error, "Failed to remove the calendar entry.") },
           { status: 400 }
         );
       }
@@ -3461,7 +3467,7 @@ const server = Bun.serve({
           extraCreditPoints: body.extraCreditPoints
         }), { status: 201 });
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Failed to record attendance." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Failed to record attendance.") }, { status: 400 });
       }
     }
 
@@ -3477,7 +3483,7 @@ const server = Bun.serve({
           entryId: body.entryId
         }));
       } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "Failed to remove attendance." }, { status: 400 });
+        return Response.json({ error: publicErrorMessage(error, "Failed to remove attendance.") }, { status: 400 });
       }
     }
 
@@ -3522,7 +3528,7 @@ const server = Bun.serve({
         }));
       } catch (error) {
         return Response.json(
-          { error: error instanceof Error ? error.message : "Failed to update attendance." },
+          { error: publicErrorMessage(error, "Failed to update attendance.") },
           { status: 400 }
         );
       }

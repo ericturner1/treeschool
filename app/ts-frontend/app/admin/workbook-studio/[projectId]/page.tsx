@@ -8,11 +8,12 @@ import {
 import { PackAutoRefresh } from "../../../pack/upload/auto-refresh";
 import { WorkbookStudioEditor } from "./workbook-studio-editor";
 
-export default async function WorkbookStudioProjectPage({
-  params,
-}: {
-  params: { projectId: string };
-}) {
+export default async function WorkbookStudioProjectPage(
+  props: {
+    params: Promise<{ projectId: string }>;
+  }
+) {
+  const params = await props.params;
   const user = await getCurrentUser();
   if (!user?.id)
     redirect(`/p/signin?next=/admin/workbook-studio/${params.projectId}`);

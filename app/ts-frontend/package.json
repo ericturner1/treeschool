@@ -2,28 +2,28 @@
   "name": "ts-frontend",
   "private": true,
   "scripts": {
-    "dev": "bunx --bun next dev --port 3100",
-    "build": "NEXT_DIST_DIR=.next-build bunx --bun next build",
-    "start": "NEXT_DIST_DIR=.next-build bunx --bun next start --port 3100",
-    "lint": "bunx --bun next lint",
+    "dev": "bun ../../node_modules/next/dist/bin/next dev --port 3100",
+    "build": "NEXT_DIST_DIR=.next-build bun ../../node_modules/next/dist/bin/next build",
+    "start": "NEXT_DIST_DIR=.next-build bun ../../node_modules/next/dist/bin/next start --port 3100",
+    "lint": "bun ../../node_modules/next/dist/bin/next lint",
     "test:revenue": "playwright test --config=playwright.revenue.config.ts",
     "test:plan-generators": "bun test lib/plan-generator-parity.test.ts",
     "verify:plan-generators": "bun run test:plan-generators && bun run build"
   },
   "dependencies": {
-    "next": "^14.2.25",
+    "next": "15.5.21",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "5.7.284",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "pdfjs-dist": "6.2.108",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
-    "eslint-config-next": "^14.2.25",
+    "eslint-config-next": "15.5.21",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.2"

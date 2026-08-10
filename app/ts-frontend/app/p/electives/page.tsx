@@ -8,9 +8,9 @@ import { ParentModeGuard } from "../parent-mode-guard";
 import { ParentShell } from "../parent-shell";
 
 type ParentElectivesPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     lang?: string;
-  };
+  }>;
 };
 
 function formatMoney(input: { amountInCents: number; currencyCode: string; locale: string }) {
@@ -20,7 +20,8 @@ function formatMoney(input: { amountInCents: number; currencyCode: string; local
   }).format(input.amountInCents / 100);
 }
 
-export default async function ParentElectivesPage({ searchParams }: ParentElectivesPageProps) {
+export default async function ParentElectivesPage(props: ParentElectivesPageProps) {
+  const searchParams = await props.searchParams;
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { dashboard, home } = dictionary;
   const currentUser = await getCurrentUser();

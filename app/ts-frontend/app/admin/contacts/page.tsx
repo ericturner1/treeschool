@@ -9,7 +9,8 @@ function money(currency: string, cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
 }
 
-export default async function ContactsPage({ searchParams }: { searchParams?: { q?: string } }) {
+export default async function ContactsPage(props: { searchParams?: Promise<{ q?: string }> }) {
+  const searchParams = await props.searchParams;
   const user = await getCurrentUser();
   if (!user?.id) redirect("/p/signin?next=/admin/contacts");
   const access = await getNativeWorkbookNavigation(user.id).catch(() => null);

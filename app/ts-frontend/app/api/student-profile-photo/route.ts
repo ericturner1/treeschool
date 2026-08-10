@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../lib/auth/server";
+import { publicErrorMessage } from "../../../lib/security/request-guards";
 import {
   completeStudentProfilePhotoUpload,
   discardStudentProfilePhotoUpload,
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
     }));
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not prepare the student photo upload." },
+      { error: publicErrorMessage(error, "Could not prepare the student photo upload.") },
       { status: 400 }
     );
   }
@@ -46,7 +47,7 @@ export async function PATCH(request: Request) {
     }));
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not save the student photo." },
+      { error: publicErrorMessage(error, "Could not save the student photo.") },
       { status: 400 }
     );
   }
@@ -67,7 +68,7 @@ export async function DELETE(request: Request) {
     }));
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not discard the student photo upload." },
+      { error: publicErrorMessage(error, "Could not discard the student photo upload.") },
       { status: 400 }
     );
   }

@@ -4,16 +4,11 @@ import { setActiveProfileCookie } from "../../../lib/accounts/active-profile";
 import {
   getUserForAccessToken,
   setSessionCookies,
+  type AuthUser,
   type SupabaseSession
 } from "../../../lib/auth/server";
 
-async function setParentAsActiveAccount(accessToken: string) {
-  const user = await getUserForAccessToken(accessToken);
-
-  if (!user?.id || !user.email) {
-    return;
-  }
-
+async function prepareParentAccount(user: AuthUser & { id: string; email: string }) {
   await bootstrapParentAccount({
     userId: user.id,
     email: user.email,
@@ -24,20 +19,34 @@ async function setParentAsActiveAccount(accessToken: string) {
   const parentProfile = householdProfiles.find((profile) => profile.role === "PARENT");
 
   if (!parentProfile) {
-    return;
+    throw new Error("Parent profile not found after account bootstrap.");
   }
-
-  setActiveProfileCookie({
-    id: parentProfile.id,
-    role: parentProfile.role
-  });
+  return parentProfile;
 }
 
 export async function POST(request: Request) {
-  const payload = (await request.json()) as Partial<SupabaseSession>;
+  const payload = await request.json().catch(() => null) as Partial<SupabaseSession> | null;
 
-  if (!payload.access_token || !payload.refresh_token) {
+  if (!payload?.access_token || !payload.refresh_token) {
     return NextResponse.json({ error: "Missing auth tokens." }, { status: 400 });
+  }
+
+  const user = await getUserForAccessToken(payload.access_token);
+  if (!user?.id || !user.email) {
+    return NextResponse.json(
+      { error: "The authentication session is invalid or expired." },
+      { status: 401, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
+  let parentProfile;
+  try {
+    parentProfile = await prepareParentAccount(user as AuthUser & { id: string; email: string });
+  } catch {
+    return NextResponse.json(
+      { error: "Could not finish setting up the account." },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   const traceId = setSessionCookies({
@@ -46,13 +55,18 @@ export async function POST(request: Request) {
     expires_in: payload.expires_in,
     user: payload.user
   });
-
-  await setParentAsActiveAccount(payload.access_token);
+  setActiveProfileCookie({
+    id: parentProfile.id,
+    role: parentProfile.role
+  });
   console.info(JSON.stringify({
     event: "auth_session_established",
     traceId,
     entryPoint: "browser_session_callback"
   }));
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(
+    { ok: true },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }

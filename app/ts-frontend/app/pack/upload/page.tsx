@@ -9,13 +9,13 @@ import { PlanCreationProgress, type PlanCreationProgressValue } from "../../../c
 import { WeeklyPdfButton } from "../../../components/weekly-pdf-button";
 
 type UploadPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     intakeId?: string;
     session_id?: string;
     draftKey?: string;
     error?: string;
     message?: string;
-  };
+  }>;
 };
 
 const ACCEPTED_CURRICULUM_FILES =
@@ -44,7 +44,8 @@ function documentStatusLabel(status: string) {
   return status;
 }
 
-export default async function PackUploadPage({ searchParams }: UploadPageProps) {
+export default async function PackUploadPage(props: UploadPageProps) {
+  const searchParams = await props.searchParams;
   const intakeId = searchParams?.intakeId ?? "";
   const checkoutSessionId = searchParams?.session_id ?? "";
   const draftKey = searchParams?.draftKey ?? "";

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getActiveProfileCookie } from "../../../../lib/accounts/active-profile";
-import { getCurrentUser } from "../../../../lib/auth/server";
+import { getCurrentStudentAccess } from "../../../../lib/auth/student-access";
 import { getParentBillingOverview } from "../../../../lib/billing/server";
 import { getRequestDictionary } from "../../../../lib/i18n/server";
 import { getLesson } from "../../../../lib/lessons/server";
@@ -9,33 +8,27 @@ import { LessonExperience } from "./lesson-experience";
 import { PendingLessonStatus } from "./pending-lesson-status";
 
 type StudentLessonPageProps = {
-  params: {
+  params: Promise<{
     lessonId: string;
-  };
-  searchParams?: {
+  }>;
+  searchParams?: Promise<{
     lang?: string;
-  };
+  }>;
 };
 
-export default async function StudentLessonPage({
-  params,
-  searchParams
-}: StudentLessonPageProps) {
+export default async function StudentLessonPage(props: StudentLessonPageProps) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { student } = dictionary;
-  const currentUser = await getCurrentUser();
-  const activeProfile = getActiveProfileCookie();
+  const access = await getCurrentStudentAccess();
 
-  if (!currentUser?.id || !currentUser.email) {
+  if (!access?.user.id || !access.user.email) {
     redirect(`/signin?lang=${locale}&message=Please sign in again.`);
   }
 
-  if (!activeProfile || activeProfile.role !== "STUDENT") {
-    redirect(`/p/dashboard?lang=${locale}&error=Open a child record from the parent dashboard first.`);
-  }
-
   const billing = await getParentBillingOverview({
-    userId: currentUser.id
+    userId: access.user.id
   });
 
   if (billing.accessRestricted) {
@@ -45,7 +38,7 @@ export default async function StudentLessonPage({
   }
 
   const lesson = await getLesson({
-    profileId: activeProfile.id,
+    profileId: access.student.id,
     lessonId: params.lessonId
   });
 
@@ -85,7 +78,7 @@ export default async function StudentLessonPage({
             />
           ) : (
             <LessonExperience
-              profileId={activeProfile.id}
+              profileId={access.student.id}
               lessonId={lesson.id}
               lessonTitle={lesson.title}
               slides={slideDeckStage.slideDeck.slides}

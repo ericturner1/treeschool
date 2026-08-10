@@ -4,9 +4,10 @@ import { getCurrentUser } from "../../../../lib/auth/server";
 import { listAdminBlogPosts } from "../../../../lib/blog/server";
 import { BlogStartForm } from "./blog-start-form";
 
-type Props = { searchParams?: { error?: string } };
+type Props = { searchParams?: Promise<{ error?: string }> };
 
-export default async function NewBlogPostPage({ searchParams }: Props) {
+export default async function NewBlogPostPage(props: Props) {
+  const searchParams = await props.searchParams;
   const user = await getCurrentUser();
   if (!user?.id) redirect("/p/signin?next=/admin/blog/new");
   try { await listAdminBlogPosts(user.id); } catch (error) {

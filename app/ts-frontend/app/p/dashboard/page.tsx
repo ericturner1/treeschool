@@ -2,15 +2,16 @@ import DashboardPage from "../../dashboard/page";
 import { ParentModeGuard } from "../parent-mode-guard";
 
 type ParentDashboardPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     lang?: string;
     error?: string;
     message?: string;
     student_checkout?: string;
-  };
+  }>;
 };
 
-export default function ParentDashboardPage({ searchParams }: ParentDashboardPageProps) {
+export default async function ParentDashboardPage(props: ParentDashboardPageProps) {
+  const searchParams = await props.searchParams;
   const query = new URLSearchParams();
   const resolvedSearchParams = {
     ...searchParams,
@@ -38,7 +39,7 @@ export default function ParentDashboardPage({ searchParams }: ParentDashboardPag
 
   return (
     <ParentModeGuard lang={searchParams?.lang} redirectTo={redirectTo}>
-      <DashboardPage searchParams={resolvedSearchParams} />
+      <DashboardPage searchParams={Promise.resolve(resolvedSearchParams)} />
     </ParentModeGuard>
   );
 }

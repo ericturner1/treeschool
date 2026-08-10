@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../../lib/auth/server";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 import { awardStudentPoints } from "../../../../lib/points/server";
 
 export async function POST(request: Request) {
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not award points." },
+      { error: publicErrorMessage(error, "Could not award points.") },
       { status: 400 }
     );
   }

@@ -3,6 +3,7 @@ import {
   completePlanPackUpload,
   type PlanPackDraft
 } from "../../../../lib/plan-pack/server";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 
 function isSupportedCurriculumFile(file: File) {
   const name = file.name.toLowerCase();
@@ -63,7 +64,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to upload curriculum files." },
+      { error: publicErrorMessage(error, "Failed to upload curriculum files.") },
       { status: 400 }
     );
   }

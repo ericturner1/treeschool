@@ -22,6 +22,11 @@ import {
   normalizeFunnelVisitorId,
   variantForVisitorId
 } from "./lib/first-grade-curriculum/experiment";
+import {
+  checkRequestRateLimit,
+  hasTrustedRequestOrigin,
+  oversizedRequestBody
+} from "./lib/security/request-guards";
 
 const ACCESS_TOKEN_COOKIE_NAME = "treeschool_access_token";
 const REFRESH_TOKEN_COOKIE_NAME = "treeschool_refresh_token";
@@ -57,6 +62,42 @@ function tokenExpiresSoon(token: string) {
 }
 
 export async function middleware(request: NextRequest) {
+  if (!hasTrustedRequestOrigin(request, request.nextUrl.pathname)) {
+    return NextResponse.json(
+      { error: "Cross-site request rejected." },
+      { status: 403, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
+  const oversizedBody = oversizedRequestBody(request, request.nextUrl.pathname);
+  if (oversizedBody) {
+    return NextResponse.json(
+      { error: "Request body is too large." },
+      {
+        status: 413,
+        headers: {
+          "Cache-Control": "no-store",
+          "X-Max-Body-Bytes": String(oversizedBody.limit)
+        }
+      }
+    );
+  }
+
+  const rateLimit = checkRequestRateLimit(request, request.nextUrl.pathname);
+  if (rateLimit) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait and try again." },
+      {
+        status: 429,
+        headers: {
+          "Cache-Control": "no-store",
+          "Retry-After": String(rateLimit.retryAfterSeconds),
+          "X-RateLimit-Limit": String(rateLimit.limit)
+        }
+      }
+    );
+  }
+
   const legacyStudentPlanMatch = request.nextUrl.pathname.match(
     /^\/parent\/student\/([^/]+)\/curriculum(\/.*)?$/
   );

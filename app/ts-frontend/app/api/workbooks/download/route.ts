@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getCurrentUser } from "../../../../lib/auth/server";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 import { proxyNativeWorkbookDownload } from "../../../../lib/native-workbooks/server";
 
 export async function GET(request: NextRequest) {
@@ -18,6 +19,6 @@ export async function GET(request: NextRequest) {
     }
     return new Response(upstream.body, { status: upstream.status, headers });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Could not download the workbook." }, { status: 400 });
+    return Response.json({ error: publicErrorMessage(error, "Could not download the workbook.") }, { status: 400 });
   }
 }

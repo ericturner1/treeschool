@@ -10,18 +10,19 @@ import { listNativeWorkbookCatalog } from "../../lib/native-workbooks/server";
 import { getPlanPackPricing } from "../../lib/plan-pack/server";
 
 export type GeneratorFunnelPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     checkout?: string;
     error?: string;
     message?: string;
-  };
+  }>;
 };
 
 function decodeParam(value?: string) {
   return value ? decodeURIComponent(value) : null;
 }
 
-export default async function GeneratorFunnelPage({ searchParams }: GeneratorFunnelPageProps) {
+export default async function GeneratorFunnelPage(props: GeneratorFunnelPageProps) {
+  const searchParams = await props.searchParams;
   const error = decodeParam(searchParams?.error);
   const currentUser = await getCurrentUser();
   const [preferences, billing, catalogResult, pricing] = await Promise.all([
@@ -39,7 +40,7 @@ export default async function GeneratorFunnelPage({ searchParams }: GeneratorFun
     redirect("/p/dashboard");
   }
 
-  const requestHeaders = headers();
+  const requestHeaders = await headers();
   const suggestedPrintPageSize = preferences?.preferredPrintPageSize
     ? null
     : inferPrintPageSizeFromHeaders(requestHeaders);

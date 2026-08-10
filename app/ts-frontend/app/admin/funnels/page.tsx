@@ -7,11 +7,12 @@ import { getNativeWorkbookNavigation } from "../../../lib/native-workbooks/serve
 import { saveFunnelAction } from "./actions";
 import { FunnelSubmitButton } from "./funnel-submit-button";
 
-export default async function AdminFunnelsPage({
-  searchParams
-}: {
-  searchParams?: { error?: string; message?: string };
-}) {
+export default async function AdminFunnelsPage(
+  props: {
+    searchParams?: Promise<{ error?: string; message?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const user = await getCurrentUser();
   if (!user?.id) redirect("/p/signin?next=/admin/funnels");
   const access = await getNativeWorkbookNavigation(user.id).catch(() => null);

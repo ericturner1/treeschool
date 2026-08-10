@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../../lib/auth/server";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 import { getAdminFunnelPathAvailability } from "../../../../lib/funnels/server";
 
 export async function GET(request: Request) {
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
     ));
   } catch (error) {
     return NextResponse.json({
-      error: error instanceof Error ? error.message : "Could not check the URL path."
+      error: publicErrorMessage(error, "Could not check the URL path.")
     }, { status: 400 });
   }
 }

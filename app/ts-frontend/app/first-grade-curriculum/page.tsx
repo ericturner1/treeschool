@@ -104,12 +104,13 @@ type ExperimentContext = {
   previewMode: boolean;
 };
 
-export default async function FirstGradeCurriculumExperimentPage({
-  searchParams
-}: {
-  searchParams?: PageSearchParams;
-}) {
-  const requestHeaders = headers();
+export default async function FirstGradeCurriculumExperimentPage(
+  props: {
+    searchParams?: Promise<PageSearchParams>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const requestHeaders = await headers();
   const previewVariant = normalizeFirstGradeCurriculumVariant(
     searchParams?.preview_variant
   );

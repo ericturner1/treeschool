@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, type UnsafeUnwrappedCookies } from "next/headers";
 import {
   AUTH_SESSION_ACTIVITY_COOKIE_NAME,
   AUTH_SESSION_COOKIE_MAX_AGE_SECONDS,
@@ -391,7 +391,7 @@ export async function verifyPassword(email: string, password: string) {
 }
 
 export function setSessionCookies(session: SupabaseSession) {
-  const cookieStore = cookies();
+  const cookieStore = (cookies() as unknown as UnsafeUnwrappedCookies);
   const traceId = createAuthSessionTraceId();
 
   cookieStore.set(ACCESS_TOKEN_COOKIE_NAME, session.access_token, {
@@ -441,7 +441,7 @@ export function setSessionCookies(session: SupabaseSession) {
 }
 
 export function clearSessionCookies(reason = "explicit_signout") {
-  const cookieStore = cookies();
+  const cookieStore = (cookies() as unknown as UnsafeUnwrappedCookies);
   const traceId = cookieStore.get(AUTH_SESSION_TRACE_COOKIE_NAME)?.value;
 
   cookieStore.delete(ACCESS_TOKEN_COOKIE_NAME);
@@ -503,7 +503,7 @@ export async function getUserForAccessToken(accessToken: string) {
 }
 
 export async function getCurrentUser() {
-  const accessToken = cookies().get(ACCESS_TOKEN_COOKIE_NAME)?.value;
+  const accessToken = (await cookies()).get(ACCESS_TOKEN_COOKIE_NAME)?.value;
 
   if (!accessToken) {
     return null;
@@ -516,7 +516,7 @@ export async function requestCurrentUserEmailChange(
   newEmail: string,
   emailRedirectTo?: string
 ): Promise<AuthResult> {
-  const accessToken = cookies().get(ACCESS_TOKEN_COOKIE_NAME)?.value;
+  const accessToken = (await cookies()).get(ACCESS_TOKEN_COOKIE_NAME)?.value;
   const config = getSupabaseConfig();
 
   if (!accessToken) {

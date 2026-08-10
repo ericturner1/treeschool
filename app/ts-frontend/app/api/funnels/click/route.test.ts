@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { getPublicAppOrigin } from "../../../../lib/security/public-origin";
 import { GET } from "./route";
 
 const attribution = JSON.stringify({
@@ -24,20 +25,22 @@ function request(target: string) {
 }
 
 describe("managed funnel click redirect", () => {
-  test("uses the public proxy origin for first-party destinations", () => {
-    const response = GET(request("/pricing"));
+  test("does not trust forwarded hosts for first-party destinations", () => {
+    const input = request("/pricing");
+    const response = GET(input);
 
     expect(response.headers.get("location")).toBe(
-      "https://dev.treehomeschool.com/pricing"
+      `${getPublicAppOrigin(input.url)}/pricing`
     );
     expect(response.cookies.get("treeschool_funnel_attribution")?.value).toBeTruthy();
   });
 
   test("rejects untrusted redirect destinations", () => {
-    const response = GET(request("https://example.invalid/steal"));
+    const input = request("https://example.invalid/steal");
+    const response = GET(input);
 
     expect(response.headers.get("location")).toBe(
-      "https://dev.treehomeschool.com/"
+      `${getPublicAppOrigin(input.url)}/`
     );
   });
 });

@@ -6,7 +6,8 @@ import { BlogArticle } from "../../../../blog/blog-article";
 
 export const metadata: Metadata = { title: "Blog draft preview | Treeschool", robots: { index: false, follow: false } };
 
-export default async function AdminBlogPreviewPage({ params }: { params: { postId: string } }) {
+export default async function AdminBlogPreviewPage(props: { params: Promise<{ postId: string }> }) {
+  const params = await props.params;
   const user = await getCurrentUser();
   if (!user?.id) redirect(`/p/signin?next=${encodeURIComponent(`/admin/blog/${params.postId}/preview`)}`);
   let post;

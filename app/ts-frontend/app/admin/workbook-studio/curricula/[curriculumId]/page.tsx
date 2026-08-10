@@ -8,11 +8,12 @@ import {
 import { PackAutoRefresh } from "../../../../pack/upload/auto-refresh";
 import { CurriculumEditor } from "./curriculum-editor";
 
-export default async function WorkbookCurriculumPage({
-  params,
-}: {
-  params: { curriculumId: string };
-}) {
+export default async function WorkbookCurriculumPage(
+  props: {
+    params: Promise<{ curriculumId: string }>;
+  }
+) {
+  const params = await props.params;
   const user = await getCurrentUser();
   if (!user?.id)
     redirect(

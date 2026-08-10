@@ -1668,11 +1668,12 @@ export async function discoverPdfStructure(
   usageContext: ModelUsageContext = {}
 ) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const document = await pdfjs.getDocument({
+  const loadingTask = pdfjs.getDocument({
     // PDF.js transfers/detaches its input buffer. Keep the original intact in case
     // we need to fall back to Gemini's full-document analysis.
     data: bytes.slice()
-  }).promise;
+  });
+  const document = await loadingTask.promise;
 
   try {
     const labels = await document.getPageLabels();
@@ -1719,7 +1720,7 @@ export async function discoverPdfStructure(
       pages
     };
   } finally {
-    await document.destroy();
+    await loadingTask.destroy();
   }
 }
 
@@ -1732,7 +1733,8 @@ async function detectPageNumberMappingWithVisualOcr(
     import("@napi-rs/canvas"),
     import("pdfjs-dist/legacy/build/pdf.mjs")
   ]);
-  const document = await pdfjs.getDocument({ data: bytes.slice(), stopAtErrors: false }).promise;
+  const loadingTask = pdfjs.getDocument({ data: bytes.slice(), stopAtErrors: false });
+  const document = await loadingTask.promise;
   const sampledPdfPages = Array.from(new Set([
     ...Array.from({ length: Math.min(8, pageCount) }, (_, index) => index + 1),
     Math.max(1, Math.round(pageCount * 0.25)),
@@ -1813,7 +1815,7 @@ Omit uncertain observations. Physical PDF page numbers are supplied before each 
       }
     };
   } finally {
-    await document.destroy();
+    await loadingTask.destroy();
   }
 }
 
@@ -1822,7 +1824,8 @@ async function detectVisuallyBlankPdfPages(bytes: Uint8Array) {
     import("@napi-rs/canvas"),
     import("pdfjs-dist/legacy/build/pdf.mjs")
   ]);
-  const document = await pdfjs.getDocument({ data: bytes.slice(), stopAtErrors: false }).promise;
+  const loadingTask = pdfjs.getDocument({ data: bytes.slice(), stopAtErrors: false });
+  const document = await loadingTask.promise;
   const blankPages = new Set<number>();
   try {
     for (let pdfPageNumber = 1; pdfPageNumber <= document.numPages; pdfPageNumber += 1) {
@@ -1845,7 +1848,7 @@ async function detectVisuallyBlankPdfPages(bytes: Uint8Array) {
     }
     return blankPages;
   } finally {
-    await document.destroy();
+    await loadingTask.destroy();
   }
 }
 
@@ -2187,17 +2190,18 @@ export function buildLearningUnitMetadata(input: {
 export async function getPdfPageCount(bytes: Uint8Array) {
   try {
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    const document = await pdfjs.getDocument({
+    const loadingTask = pdfjs.getDocument({
       // PDF.js is more tolerant of owner-encrypted or oddly-structured PDFs
       // than pdf-lib, and it does not detach the caller's original buffer when
       // given a sliced copy.
       data: bytes.slice(),
       stopAtErrors: false
-    }).promise;
+    });
+    const document = await loadingTask.promise;
     try {
       return document.numPages;
     } finally {
-      await document.destroy();
+      await loadingTask.destroy();
     }
   } catch {
     return (await PDFDocument.load(bytes, { ignoreEncryption: true })).getPageCount();
@@ -2206,14 +2210,15 @@ export async function getPdfPageCount(bytes: Uint8Array) {
 
 export async function extractPdfPageTexts(bytes: Uint8Array) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const document = await pdfjs.getDocument({
+  const loadingTask = pdfjs.getDocument({
     data: bytes.slice(),
     stopAtErrors: false
-  }).promise;
+  });
+  const document = await loadingTask.promise;
   try {
     return (await extractPageText(document)).map((page) => page.text);
   } finally {
-    await document.destroy();
+    await loadingTask.destroy();
   }
 }
 
@@ -2234,12 +2239,13 @@ async function inferAcademicLevelFromPdf(
       : {
           text: await (async () => {
             const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-            const document = await pdfjs.getDocument({ data: bytes.slice(), stopAtErrors: false }).promise;
+            const loadingTask = pdfjs.getDocument({ data: bytes.slice(), stopAtErrors: false });
+            const document = await loadingTask.promise;
             try {
               const pages = await extractPageText(document, 12);
               return pages.map((page) => `PDF PAGE ${page.pageIndex + 1}\n${page.text}`).join("\n\n").slice(0, 60_000);
             } finally {
-              await document.destroy();
+              await loadingTask.destroy();
             }
           })()
         };

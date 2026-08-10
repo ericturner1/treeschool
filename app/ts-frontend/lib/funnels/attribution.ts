@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, type UnsafeUnwrappedCookies } from "next/headers";
 import type { ManagedFunnelAttribution } from "./server";
 
 export const FUNNEL_ATTRIBUTION_COOKIE = "treeschool_funnel_attribution";
@@ -39,5 +39,5 @@ export function parseFunnelAttribution(value?: string | null): ManagedFunnelAttr
 }
 
 export function getFunnelAttributionFromCookies() {
-  return parseFunnelAttribution(cookies().get(FUNNEL_ATTRIBUTION_COOKIE)?.value);
+  return parseFunnelAttribution((cookies() as unknown as UnsafeUnwrappedCookies).get(FUNNEL_ATTRIBUTION_COOKIE)?.value);
 }

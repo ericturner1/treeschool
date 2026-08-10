@@ -1,11 +1,12 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { sendMagicLink } from "../../../lib/auth/server";
+import { getPublicAppOrigin } from "../../../lib/security/public-origin";
 import { completePublicParentBillingCheckout } from "../../../lib/billing/server";
 
 export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get("session_id")?.trim();
-  const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? request.nextUrl.origin;
+  const origin = getPublicAppOrigin(request.nextUrl);
 
   if (!sessionId) {
     return NextResponse.redirect(new URL(

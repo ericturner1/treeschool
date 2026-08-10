@@ -13,12 +13,12 @@ import {
 } from "../../billing-actions";
 
 type ParentBillingPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     lang?: string;
     checkout?: string;
     error?: string;
     planChanged?: string;
-  };
+  }>;
 };
 
 function formatDate(value: string, locale: string) {
@@ -29,7 +29,8 @@ function formatDate(value: string, locale: string) {
   }).format(new Date(value));
 }
 
-export default async function ParentBillingPage({ searchParams }: ParentBillingPageProps) {
+export default async function ParentBillingPage(props: ParentBillingPageProps) {
+  const searchParams = await props.searchParams;
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { dashboard, home } = dictionary;
   const currentUser = await getCurrentUser();

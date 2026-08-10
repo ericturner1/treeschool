@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../../lib/auth/server";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 import { attachNativeWorkbook } from "../../../../lib/native-workbooks/server";
 import { attachPlanPackNativeWorkbook } from "../../../../lib/plan-pack/server";
 
@@ -29,6 +30,6 @@ export async function POST(request: Request) {
       learningYearId: body.learningYearId
     }));
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not add the workbook." }, { status: 400 });
+    return NextResponse.json({ error: publicErrorMessage(error, "Could not add the workbook.") }, { status: 400 });
   }
 }

@@ -1,25 +1,21 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createPlanPackCheckout } from "../../../lib/plan-pack/server";
+import { getPublicAppOrigin } from "../../../lib/security/public-origin";
 
 type ResumePageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     intakeId?: string;
     draftKey?: string;
     checkoutKind?: string;
-  };
+  }>;
 };
 
 function requestOrigin() {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
-  if (configured) return configured;
-  const headerStore = headers();
-  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host") ?? "localhost:3100";
-  const protocol = headerStore.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${protocol}://${host}`;
+  return getPublicAppOrigin();
 }
 
-export default async function ResumePlanPackCheckoutPage({ searchParams }: ResumePageProps) {
+export default async function ResumePlanPackCheckoutPage(props: ResumePageProps) {
+  const searchParams = await props.searchParams;
   const intakeId = String(searchParams?.intakeId ?? "").trim();
   const draftKey = String(searchParams?.draftKey ?? "").trim();
   // Explicit legacy links retain their one-time checkout. New or incomplete links

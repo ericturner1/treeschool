@@ -14,6 +14,7 @@ import {
   clearActiveProfileCookie,
   setActiveProfileCookie
 } from "../../lib/accounts/active-profile";
+import { getPublicAppOrigin } from "../../lib/security/public-origin";
 
 async function setParentAsActiveAccount(accessToken: string) {
   const user = await getUserForAccessToken(accessToken);
@@ -100,7 +101,6 @@ export async function requestPasswordlessSignInAction(formData: FormData) {
   const email = getField(formData, "email").toLowerCase();
   const lang = getField(formData, "lang") || undefined;
   const next = safeNext(getField(formData, "next") || undefined);
-  const origin = getField(formData, "origin").replace(/\/$/, "");
 
   if (!email || !email.includes("@")) {
     redirect(buildPath("/signin", { lang, next, error: "Enter a valid email address." }));
@@ -121,7 +121,7 @@ export async function requestPasswordlessSignInAction(formData: FormData) {
     redirect(buildPath("/signin", { lang, next, email, account: "missing" }));
   }
 
-  const callback = `${origin || process.env.NEXT_PUBLIC_APP_URL || ""}/auth/confirm?next=${encodeURIComponent(next)}`;
+  const callback = `${getPublicAppOrigin()}/auth/confirm?next=${encodeURIComponent(next)}`;
   const result = await sendMagicLink(email, callback, { createUser: false });
   if (!result.ok) {
     redirect(buildPath("/signin", { lang, next, email, error: result.error }));

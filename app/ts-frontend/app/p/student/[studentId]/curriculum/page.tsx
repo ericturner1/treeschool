@@ -54,8 +54,8 @@ import {
 } from "./actions";
 
 type PageProps = {
-  params: { studentId?: string };
-  searchParams?: {
+  params: Promise<{ studentId?: string }>;
+  searchParams?: Promise<{
     lang?: string;
     error?: string;
     message?: string;
@@ -65,7 +65,7 @@ type PageProps = {
     weeklyPlanId?: string;
     week?: string;
     day?: string;
-  };
+  }>;
 };
 
 function formatBytes(bytes: number) {
@@ -177,7 +177,9 @@ function estimatedPacketPageCount(items: Array<{
   return 1 + daySummaryPages + weekSourcePageCount(includedItems);
 }
 
-export default async function PaperPlanPage({ params, searchParams }: PageProps) {
+export default async function PaperPlanPage(props: PageProps) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { dashboard, home, currentUser, parentProfile, student, studentRouteSegment } = await getParentStudentPageData(
     params.studentId,
     searchParams?.lang
@@ -201,7 +203,7 @@ export default async function PaperPlanPage({ params, searchParams }: PageProps)
   ]);
   const suggestedPrintPageSize = preferences.preferredPrintPageSize
     ? null
-    : inferPrintPageSizeFromHeaders(headers());
+    : inferPrintPageSizeFromHeaders(await headers());
   const isAdmin = parentProfile?.isAdmin === true;
   const canManagePlan = plan.permissions.canManagePlan;
   const recommendedNativeCurriculum = student.gradeLevel == null

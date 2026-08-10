@@ -15,13 +15,14 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false }
 };
 
-export default async function FunnelPageEditorRoute({
-  params,
-  searchParams
-}: {
-  params: { funnelId: string; stepId: string };
-  searchParams?: { page?: string };
-}) {
+export default async function FunnelPageEditorRoute(
+  props: {
+    params: Promise<{ funnelId: string; stepId: string }>;
+    searchParams?: Promise<{ page?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const next = `/admin/funnels/${encodeURIComponent(params.funnelId)}/pages/${encodeURIComponent(params.stepId)}/edit${searchParams?.page ? `?page=${encodeURIComponent(searchParams.page)}` : ""}`;
   const user = await getCurrentUser();
   if (!user?.id) redirect(`/p/signin?next=${encodeURIComponent(next)}`);

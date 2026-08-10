@@ -20,14 +20,15 @@ import { EmailChangeSubmitButton } from "./email-change-submit-button";
 import { InviteTeacherForm } from "./invite-teacher-form";
 
 type ParentAccountPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     lang?: string;
     error?: string;
     message?: string;
-  };
+  }>;
 };
 
-export default async function ParentAccountPage({ searchParams }: ParentAccountPageProps) {
+export default async function ParentAccountPage(props: ParentAccountPageProps) {
+  const searchParams = await props.searchParams;
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { dashboard, home } = dictionary;
   const user = await getCurrentUser();

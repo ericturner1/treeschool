@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../../lib/auth/server";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 import {
   publishAdminFunnelPage,
   saveAdminFunnelPageDraft,
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
     revalidatePath("/admin/funnels");
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not save the page draft.";
+    const message = publicErrorMessage(error, "Could not save the page draft.");
     return NextResponse.json({ error: message }, { status: message === "Please sign in again." ? 401 : 400 });
   }
 }
@@ -33,7 +34,7 @@ export async function PATCH(request: Request) {
     if (result.publicPath) revalidatePath(result.publicPath);
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not publish the page.";
+    const message = publicErrorMessage(error, "Could not publish the page.");
     return NextResponse.json({ error: message }, { status: message === "Please sign in again." ? 401 : 400 });
   }
 }
@@ -45,7 +46,7 @@ export async function DELETE(request: Request) {
     revalidatePath("/admin/funnels");
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not unpublish the page.";
+    const message = publicErrorMessage(error, "Could not unpublish the page.");
     return NextResponse.json({ error: message }, { status: message === "Please sign in again." ? 401 : 400 });
   }
 }

@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
@@ -9,7 +8,7 @@ import { getRequestDictionary } from "../../lib/i18n/server";
 import { getCurrentUser } from "../../lib/auth/server";
 
 type SigninPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     lang?: string;
     email?: string;
     account?: string;
@@ -17,7 +16,7 @@ type SigninPageProps = {
     message?: string;
     next?: string;
     sent?: string;
-  };
+  }>;
 };
 
 function safeNext(value?: string) {
@@ -26,7 +25,8 @@ function safeNext(value?: string) {
     : "/p/dashboard";
 }
 
-export default async function SigninPage({ searchParams }: SigninPageProps) {
+export default async function SigninPage(props: SigninPageProps) {
+  const searchParams = await props.searchParams;
   const currentUser = await getCurrentUser();
 
   if (currentUser) {
@@ -35,10 +35,6 @@ export default async function SigninPage({ searchParams }: SigninPageProps) {
 
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { auth, home } = dictionary;
-  const headerStore = headers();
-  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host") ?? "localhost:3100";
-  const protocol = headerStore.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const origin = `${protocol}://${host}`;
   const email = searchParams?.email?.trim() ?? "";
   const next = safeNext(searchParams?.next);
   const sent = searchParams?.sent === "1" && Boolean(email);
@@ -106,7 +102,6 @@ export default async function SigninPage({ searchParams }: SigninPageProps) {
                 <input type="hidden" name="lang" value={locale} />
                 <input type="hidden" name="email" value={email} />
                 <input type="hidden" name="next" value={next} />
-                <input type="hidden" name="origin" value={origin} />
                 <button type="submit" className="w-full text-sm font-semibold text-earth underline underline-offset-4">
                   Resend email
                 </button>
@@ -119,7 +114,6 @@ export default async function SigninPage({ searchParams }: SigninPageProps) {
             <form action={requestPasswordlessSignInAction} autoComplete="on" className="mt-5 space-y-4">
               <input type="hidden" name="lang" value={locale} />
               <input type="hidden" name="next" value={next} />
-              <input type="hidden" name="origin" value={origin} />
               <label htmlFor="email" className="block text-sm font-semibold text-ink">
                 {auth.fields.email}
                 <input

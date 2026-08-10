@@ -16,9 +16,10 @@ export const metadata: Metadata = {
   }
 };
 
-type Props = { searchParams?: { category?: string } };
+type Props = { searchParams?: Promise<{ category?: string }> };
 
-export default async function BlogIndexPage({ searchParams }: Props) {
+export default async function BlogIndexPage(props: Props) {
+  const searchParams = await props.searchParams;
   const { posts: allPosts } = await listPublishedBlogPosts({ limit: 60 }).catch(() => ({ posts: [] }));
   const categories = Array.from(
     new Map(

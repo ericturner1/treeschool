@@ -8,7 +8,8 @@ import { listPurchasedNativeWorkbooks } from "../../../lib/native-workbooks/serv
 import { ParentModeGuard } from "../parent-mode-guard";
 import { ParentShell } from "../parent-shell";
 
-export default async function PurchasedWorkbooksPage({ searchParams }: { searchParams?: { lang?: string } }) {
+export default async function PurchasedWorkbooksPage(props: { searchParams?: Promise<{ lang?: string }> }) {
+  const searchParams = await props.searchParams;
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { dashboard, home } = dictionary;
   const user = await getCurrentUser();

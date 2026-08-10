@@ -1,5 +1,6 @@
 import { getCurrentUser } from "../../../../lib/auth/server";
 import { downloadPaperPlanPacket } from "../../../../lib/paper-plans/server";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 
 export async function GET(request: Request) {
   const user = await getCurrentUser();
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to build weekly PDF." },
+      { error: publicErrorMessage(error, "Failed to build weekly PDF.") },
       { status: 400 }
     );
   }

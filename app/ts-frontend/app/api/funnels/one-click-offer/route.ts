@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decideManagedFunnelOneClickOffer } from "../../../../lib/billing/server";
+import { getPublicAppOrigin } from "../../../../lib/security/public-origin";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 
 function safeLocalPath(value: unknown) {
   return typeof value === "string" && value.startsWith("/") && !value.startsWith("//")
@@ -16,7 +18,7 @@ export async function POST(request: NextRequest) {
   if (!sourceCheckoutSessionId || !funnelStepId) {
     return NextResponse.json({ error: "This offer link is incomplete." }, { status: 400 });
   }
-  const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin).replace(/\/$/, "");
+  const appBaseUrl = getPublicAppOrigin(request.nextUrl);
   try {
     return NextResponse.json(await decideManagedFunnelOneClickOffer({
       sourceCheckoutSessionId,
@@ -26,7 +28,7 @@ export async function POST(request: NextRequest) {
     }));
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not add this offer." },
+      { error: publicErrorMessage(error, "Could not add this offer.") },
       { status: 400 }
     );
   }

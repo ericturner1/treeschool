@@ -4,9 +4,11 @@ import { getCurrentUser } from "../../../../lib/auth/server";
 import { getAdminBlogPost } from "../../../../lib/blog/server";
 import { BlogEditor } from "./blog-editor";
 
-type Props = { params: { postId: string }; searchParams?: { error?: string; message?: string; published?: string } };
+type Props = { params: Promise<{ postId: string }>; searchParams?: Promise<{ error?: string; message?: string; published?: string }> };
 
-export default async function EditBlogPostPage({ params, searchParams }: Props) {
+export default async function EditBlogPostPage(props: Props) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const user = await getCurrentUser();
   if (!user?.id) redirect(`/p/signin?next=${encodeURIComponent(`/admin/blog/${params.postId}`)}`);
   let data;

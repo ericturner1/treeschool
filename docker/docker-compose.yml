@@ -46,6 +46,7 @@ services:
       - ../app/ts-backend/.env
     environment:
       DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
+      INTERNAL_API_SECRET: local-dev-internal-secret-change-me
       MAINTENANCE_JOB_SECRET: local-dev-maintenance-secret
       MAINTENANCE_STALE_LESSON_MINUTES: 5
       MAINTENANCE_ERROR_RETRY_MINUTES: 5
@@ -62,10 +63,11 @@ services:
       [
         "sh",
         "-lc",
-        "while true; do curl -fsS -X POST http://ts-backend:3001/internal/maintenance/run -H \"x-maintenance-secret: $$MAINTENANCE_JOB_SECRET\" || true; sleep $${MAINTENANCE_INTERVAL_SECONDS:-300}; done"
+        "while true; do curl -fsS -X POST http://ts-backend:3001/internal/maintenance/run -H \"x-treeschool-internal-secret: $$INTERNAL_API_SECRET\" -H \"x-maintenance-secret: $$MAINTENANCE_JOB_SECRET\" || true; sleep $${MAINTENANCE_INTERVAL_SECONDS:-300}; done"
       ]
     environment:
       MAINTENANCE_JOB_SECRET: local-dev-maintenance-secret
+      INTERNAL_API_SECRET: local-dev-internal-secret-change-me
       MAINTENANCE_INTERVAL_SECONDS: 300
     depends_on:
       ts-backend:

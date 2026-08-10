@@ -1,38 +1,31 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getActiveProfileCookie } from "../../../lib/accounts/active-profile";
-import { getCurrentUser } from "../../../lib/auth/server";
+import { getCurrentStudentAccess } from "../../../lib/auth/student-access";
 import { getParentBillingOverview } from "../../../lib/billing/server";
 import { getRequestDictionary } from "../../../lib/i18n/server";
 import { getStudentClassroom } from "../../../lib/lessons/server";
 import { startLessonAction } from "./actions";
 
 type StudentClassroomPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     lang?: string;
     error?: string;
     message?: string;
-  };
+  }>;
 };
 
-export default async function StudentClassroomPage({
-  searchParams
-}: StudentClassroomPageProps) {
+export default async function StudentClassroomPage(props: StudentClassroomPageProps) {
+  const searchParams = await props.searchParams;
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { home, student } = dictionary;
-  const currentUser = await getCurrentUser();
-  const activeProfile = getActiveProfileCookie();
+  const access = await getCurrentStudentAccess();
 
-  if (!currentUser?.id || !currentUser.email) {
+  if (!access?.user.id || !access.user.email) {
     redirect(`/signin?lang=${locale}&message=Please sign in again.`);
   }
 
-  if (!activeProfile || activeProfile.role !== "STUDENT") {
-    redirect(`/p/dashboard?lang=${locale}&error=Open a child record from the parent dashboard first.`);
-  }
-
   const billing = await getParentBillingOverview({
-    userId: currentUser.id
+    userId: access.user.id
   });
 
   if (billing.accessRestricted) {
@@ -42,7 +35,7 @@ export default async function StudentClassroomPage({
   }
 
   const classroom = await getStudentClassroom({
-    profileId: activeProfile.id,
+    profileId: access.student.id,
     languageCode: locale
   });
 
@@ -163,7 +156,7 @@ export default async function StudentClassroomPage({
                         </div>
                       )}
                       <form action={startLessonAction} className="mt-4">
-                        <input type="hidden" name="profileId" value={activeProfile.id} />
+                        <input type="hidden" name="profileId" value={access.student.id} />
                         <input type="hidden" name="subjectId" value={subjectNode.id} />
                         <button type="submit" className="cta-button cta-button--light cta-button--small">
                           Open lesson

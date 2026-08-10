@@ -8,21 +8,20 @@ import {
   getFunnelDocumentTitle
 } from "../../../../lib/funnels/page-document";
 
+type PublicFunnelParams = { funnelSlug: string; stepSlug?: string[] };
+type PublicFunnelSearchParams = { source_session_id?: string | string[] };
 type PublicFunnelPageProps = {
-  params: {
-    funnelSlug: string;
-    stepSlug?: string[];
-  };
-  searchParams?: { source_session_id?: string | string[] };
+  params: Promise<PublicFunnelParams>;
+  searchParams?: Promise<PublicFunnelSearchParams>;
 };
 
-function sourceSessionId(searchParams: PublicFunnelPageProps["searchParams"]) {
+function sourceSessionId(searchParams?: PublicFunnelSearchParams) {
   const value = searchParams?.source_session_id;
   return (Array.isArray(value) ? value[0] : value)?.trim() || null;
 }
 
 async function loadPage(
-  params: PublicFunnelPageProps["params"],
+  params: PublicFunnelParams,
   visitorId?: string | null
 ) {
   if ((params.stepSlug?.length ?? 0) > 1) return null;
@@ -33,9 +32,8 @@ async function loadPage(
   ).catch(() => null);
 }
 
-export async function generateMetadata({
-  params
-}: PublicFunnelPageProps): Promise<Metadata> {
+export async function generateMetadata(props: PublicFunnelPageProps): Promise<Metadata> {
+  const params = await props.params;
   const data = await loadPage(params);
   if (!data) return {};
 
@@ -62,11 +60,10 @@ export async function generateMetadata({
   };
 }
 
-export default async function PublicManagedFunnelPage({
-  params,
-  searchParams
-}: PublicFunnelPageProps) {
-  const visitorId = headers().get("x-treeschool-funnel-visitor-id");
+export default async function PublicManagedFunnelPage(props: PublicFunnelPageProps) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
+  const visitorId = (await headers()).get("x-treeschool-funnel-visitor-id");
   const data = await loadPage(params, visitorId);
   if (!data) notFound();
   return <ManagedFunnelPageView data={data} visitorId={visitorId} sourceCheckoutSessionId={sourceSessionId(searchParams)} />;

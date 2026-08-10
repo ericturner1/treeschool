@@ -3,14 +3,15 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "../../../lib/auth/server";
 import { listAdminBlogPosts } from "../../../lib/blog/server";
 
-type Props = { searchParams?: { error?: string; message?: string } };
+type Props = { searchParams?: Promise<{ error?: string; message?: string }> };
 
 function formatDate(value: string | null) {
   if (!value) return "Not published";
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(new Date(value));
 }
 
-export default async function AdminBlogPage({ searchParams }: Props) {
+export default async function AdminBlogPage(props: Props) {
+  const searchParams = await props.searchParams;
   const user = await getCurrentUser();
   if (!user?.id) redirect("/p/signin?next=/admin/blog");
   let data;

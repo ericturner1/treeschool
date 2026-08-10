@@ -76,7 +76,7 @@ services:
       [
         "sh",
         "-lc",
-        "while true; do curl -fsS -X POST http://ts-backend:3001/internal/maintenance/run -H \"x-maintenance-secret: $$MAINTENANCE_JOB_SECRET\" || true; sleep $${MAINTENANCE_INTERVAL_SECONDS:-300}; done"
+        "while true; do curl -fsS -X POST http://ts-backend:3001/internal/maintenance/run -H \"x-treeschool-internal-secret: $$INTERNAL_API_SECRET\" -H \"x-maintenance-secret: $$MAINTENANCE_JOB_SECRET\" || true; sleep $${MAINTENANCE_INTERVAL_SECONDS:-300}; done"
       ]
     env_file:
       - ../app/ts-backend/.env

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../../lib/auth/server";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 import {
   createPlanDayAttendance,
   setPlanDaySubjectCompletion
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ saved: true, completedSubjectKeys: subjectKeys });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not update the lesson." },
+      { error: publicErrorMessage(error, "Could not update the lesson.") },
       { status: 400 }
     );
   }

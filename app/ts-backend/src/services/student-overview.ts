@@ -20,6 +20,10 @@ import { averageWithExtraCredit } from "./grade-average";
 import { translateScoreToGrade } from "./grades";
 import { planSubjectKey } from "./plan-subject-key";
 import { calculateSchoolYearPacing } from "./school-year-pacing";
+import {
+  continuingWeekAction,
+  shouldPromptForWeeklyPlanDownload
+} from "./student-overview-next-action";
 
 const DAY_MS = 86_400_000;
 
@@ -368,7 +372,11 @@ export async function getStudentOverviewMetrics(input: {
       description: "Your teaching materials changed since this plan was created.",
       href: lessonPlanHref
     };
-  } else if (nextWeek && !downloadedWeekIds.has(nextWeek.id)) {
+  } else if (nextWeek && shouldPromptForWeeklyPlanDownload({
+    weekStatus: nextWeek.status,
+    progressPercent: nextWeekProgress,
+    hasDownloadRecord: downloadedWeekIds.has(nextWeek.id)
+  })) {
     nextAction = {
       kind: "download",
       label: `Download Week ${nextWeek.weekNumber} lesson plan`,
@@ -376,12 +384,13 @@ export async function getStudentOverviewMetrics(input: {
       href: `${lessonPlanHref}#week-${nextWeek.weekNumber}`
     };
   } else if (nextWeek) {
+    const continuingAction = continuingWeekAction({
+      weekNumber: nextWeek.weekNumber,
+      progressPercent: nextWeekProgress
+    });
     nextAction = {
       kind: "attendance",
-      label: `Keep working on Week ${nextWeek.weekNumber} (${nextWeekProgress}% done)`,
-      description: nextWeekProgress > 0
-        ? "Keep the week moving by marking completed lessons and days."
-        : "This week's lesson plan is downloaded and ready to begin.",
+      ...continuingAction,
       href: `${lessonPlanHref}#week-${nextWeek.weekNumber}`
     };
   } else {

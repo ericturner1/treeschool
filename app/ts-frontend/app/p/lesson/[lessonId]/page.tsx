@@ -10,14 +10,14 @@ import { PendingLessonStatus } from "../../../student/lesson/[lessonId]/pending-
 import { ParentModeGuard } from "../../parent-mode-guard";
 
 type ParentLessonPreviewPageProps = {
-  params: {
+  params: Promise<{
     lessonId: string;
-  };
-  searchParams?: {
+  }>;
+  searchParams?: Promise<{
     lang?: string;
     profileId?: string;
     returnTo?: string;
-  };
+  }>;
 };
 
 function getSafeReturnTo(input: string | undefined) {
@@ -60,10 +60,9 @@ async function getHouseholdLessonById(input: {
   return null;
 }
 
-export default async function ParentLessonPreviewPage({
-  params,
-  searchParams
-}: ParentLessonPreviewPageProps) {
+export default async function ParentLessonPreviewPage(props: ParentLessonPreviewPageProps) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { student, home, dashboard } = dictionary;
   const currentUser = await getCurrentUser();

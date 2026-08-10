@@ -15,14 +15,14 @@ import { StudentLearningProfileCard, StudentLearningProfileSummary } from "./stu
 import { StudentSchoolYearSettingsTrigger } from "./student-profile-photo-trigger";
 
 type ParentStudentOverviewPageProps = {
-  params: {
+  params: Promise<{
     studentId?: string;
-  };
-  searchParams?: {
+  }>;
+  searchParams?: Promise<{
     lang?: string;
     error?: string;
     message?: string;
-  };
+  }>;
 };
 
 function formatSchoolYearDate(value: string) {
@@ -142,10 +142,9 @@ function getDashboardCalendarStatus(calendar: StudentSchoolCalendarPayload) {
   };
 }
 
-export default async function ParentStudentOverviewPage({
-  params,
-  searchParams
-}: ParentStudentOverviewPageProps) {
+export default async function ParentStudentOverviewPage(props: ParentStudentOverviewPageProps) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { currentUser, dashboard, home, student, studentRouteSegment } = await getParentStudentPageData(params.studentId, searchParams?.lang);
   if (params.studentId !== studentRouteSegment) {
     redirect(studentRoutePath(studentRouteSegment, "", searchParams));

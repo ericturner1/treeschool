@@ -11,7 +11,7 @@ import { FaqSubmitButton } from "./faq-submit-button";
 
 export const dynamic = "force-dynamic";
 
-type Props = { searchParams?: { error?: string; message?: string } };
+type Props = { searchParams?: Promise<{ error?: string; message?: string }> };
 
 function FaqFields({ faq, categories }: { faq?: SalesFaq; categories: string[] }) {
   return (
@@ -90,7 +90,8 @@ function FaqFields({ faq, categories }: { faq?: SalesFaq; categories: string[] }
   );
 }
 
-export default async function AdminFaqsPage({ searchParams }: Props) {
+export default async function AdminFaqsPage(props: Props) {
+  const searchParams = await props.searchParams;
   const user = await getCurrentUser();
   if (!user?.id) redirect("/p/signin?next=/admin/faqs");
   let data;

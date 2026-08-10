@@ -9,15 +9,17 @@ import { getParentStudentPageData, studentRoutePath } from "../student-page-data
 import { StudentShell } from "../student-shell";
 
 type Props = {
-  params: { studentId?: string };
-  searchParams?: { lang?: string; yearId?: string; subjectKey?: string };
+  params: Promise<{ studentId?: string }>;
+  searchParams?: Promise<{ lang?: string; yearId?: string; subjectKey?: string }>;
 };
 
 const formatDate = (value: string) => new Intl.DateTimeFormat("en-US", {
   month: "short", day: "numeric", year: "numeric", timeZone: "UTC"
 }).format(new Date(value));
 
-export default async function GradesPage({ params, searchParams }: Props) {
+export default async function GradesPage(props: Props) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { dashboard, home, currentUser, student, studentRouteSegment } = await getParentStudentPageData(params.studentId, searchParams?.lang);
   if (params.studentId !== studentRouteSegment) {
     redirect(studentRoutePath(studentRouteSegment, "/grades", searchParams));

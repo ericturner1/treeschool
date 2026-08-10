@@ -14,8 +14,8 @@ import { updateAccountRoleAction } from "../../actions";
 import { AccountSubmitButton } from "../../account-submit-button";
 
 type Props = {
-  params: { profileId: string };
-  searchParams?: { lang?: string; error?: string; message?: string };
+  params: Promise<{ profileId: string }>;
+  searchParams?: Promise<{ lang?: string; error?: string; message?: string }>;
 };
 
 function roleLabel(role: "OWNER" | "ADMIN" | "TEACHER") {
@@ -53,7 +53,9 @@ function activityTypeLabel(value: string | null) {
   return "other learning";
 }
 
-export default async function TeacherProfilePage({ params, searchParams }: Props) {
+export default async function TeacherProfilePage(props: Props) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { dashboard, home } = dictionary;
   const user = await getCurrentUser();

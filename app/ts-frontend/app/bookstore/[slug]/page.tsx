@@ -12,7 +12,7 @@ import { WorkbookImageGallery } from "./workbook-image-gallery";
 
 const SITE_URL = "https://www.treehomeschool.com";
 
-type Props = { params: { slug: string }; searchParams?: { checkout?: string; error?: string; addToLearningYearId?: string } };
+type Props = { params: Promise<{ slug: string }>; searchParams?: Promise<{ checkout?: string; error?: string; addToLearningYearId?: string }> };
 
 function formatPrice(priceInCents: number, currencyCode: string) {
   return new Intl.NumberFormat("en-US", {
@@ -43,7 +43,8 @@ function productDescription(input: {
   return `${input.title} is a printable ${input.gradeLabel} ${input.subjectLabel.toLowerCase()} homeschool ${input.isBundle ? "workbook bundle" : "workbook"}${pages}. Download the PDF and teach with less screen time.`;
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
   const workbook = await getNativeWorkbookProduct({ slug: params.slug }).catch(() => null);
   if (!workbook) return { title: "Printable Homeschool Workbooks | Treeschool" };
   const gradeLabel = formatNativeWorkbookGradeRange(workbook.gradeMin, workbook.gradeMax);
@@ -84,7 +85,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function WorkbookProductPage({ params, searchParams }: Props) {
+export default async function WorkbookProductPage(props: Props) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const user = await getCurrentUser();
   const workbook = await getNativeWorkbookProduct({ slug: params.slug, userId: user?.id }).catch(() => null);
   if (!workbook) notFound();

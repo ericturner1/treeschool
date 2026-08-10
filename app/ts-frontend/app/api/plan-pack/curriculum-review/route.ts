@@ -3,6 +3,7 @@ import {
   approvePlanPackCurriculum,
   evaluatePlanPackCurriculum
 } from "../../../../lib/plan-pack/server";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 
 export async function POST(request: Request) {
   try {
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not review the curriculum." },
+      { error: publicErrorMessage(error, "Could not review the curriculum.") },
       { status: 400 }
     );
   }

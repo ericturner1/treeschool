@@ -44,18 +44,17 @@ const subjectCardMeta: Record<
 };
 
 type ParentCurriculumSubjectsPageProps = {
-  params: {
+  params: Promise<{
     curriculumSlug: string;
-  };
-  searchParams?: {
+  }>;
+  searchParams?: Promise<{
     lang?: string;
-  };
+  }>;
 };
 
-export default async function ParentCurriculumSubjectsPage({
-  params,
-  searchParams
-}: ParentCurriculumSubjectsPageProps) {
+export default async function ParentCurriculumSubjectsPage(props: ParentCurriculumSubjectsPageProps) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { home, dashboard } = dictionary;
   const currentUser = await getCurrentUser();

@@ -27,8 +27,8 @@ type RootLayoutProps = Readonly<{
   children: React.ReactNode;
 }>;
 
-export default function RootLayout({ children }: RootLayoutProps) {
-  const headerStore = headers();
+export default async function RootLayout({ children }: RootLayoutProps) {
+  const headerStore = await headers();
   const countryCode =
     headerStore.get("x-treeschool-ip-country") ??
     headerStore.get("x-vercel-ip-country") ??

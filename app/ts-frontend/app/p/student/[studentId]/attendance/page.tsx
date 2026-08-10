@@ -15,8 +15,8 @@ import {
 } from "./actions";
 
 type Props = {
-  params: { studentId?: string };
-  searchParams?: { lang?: string; yearId?: string; dateFrom?: string; dateTo?: string; error?: string; message?: string };
+  params: Promise<{ studentId?: string }>;
+  searchParams?: Promise<{ lang?: string; yearId?: string; dateFrom?: string; dateTo?: string; error?: string; message?: string }>;
 };
 
 function displayDate(value: string) {
@@ -28,7 +28,9 @@ function activityLabel(value: string, entryKind?: string) {
   return ({ lesson: "Plan activity", field_trip: "Field trip", co_op: "Co-op", library: "Library", sport: "Physical education", project: "Project", subject: "Subject study", other: "Other learning" } as Record<string, string>)[value] ?? value;
 }
 
-export default async function AttendancePage({ params, searchParams }: Props) {
+export default async function AttendancePage(props: Props) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { dashboard, home, currentUser, parentProfile, student, studentRouteSegment } = await getParentStudentPageData(params.studentId, searchParams?.lang);
   if (params.studentId !== studentRouteSegment) {
     redirect(studentRoutePath(studentRouteSegment, "/attendance", searchParams));

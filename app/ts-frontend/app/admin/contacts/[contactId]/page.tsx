@@ -12,7 +12,11 @@ function money(currency: string, cents: number) {
 
 const FIELD = "min-h-12 w-full rounded-[14px] border border-[#d8c5a8] bg-white px-4 py-3 outline-none focus:border-[#739655] focus:ring-4 focus:ring-[#739655]/15";
 
-export default async function ContactDetailPage({ params, searchParams }: { params: { contactId: string }; searchParams?: { message?: string; error?: string } }) {
+export default async function ContactDetailPage(
+  props: { params: Promise<{ contactId: string }>; searchParams?: Promise<{ message?: string; error?: string }> }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const user = await getCurrentUser();
   if (!user?.id) redirect(`/p/signin?next=/admin/contacts/${encodeURIComponent(params.contactId)}`);
   const access = await getNativeWorkbookNavigation(user.id).catch(() => null);

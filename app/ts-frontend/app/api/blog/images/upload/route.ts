@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../../../lib/auth/server";
+import { publicErrorMessage } from "../../../../../lib/security/request-guards";
 import {
   completeBlogImageUpload,
   discardBlogImageUpload,
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
     }));
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not prepare the blog image upload." },
+      { error: publicErrorMessage(error, "Could not prepare the blog image upload.") },
       { status: 400 }
     );
   }
@@ -42,7 +43,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json(await completeBlogImageUpload({ userId, postId: body.postId, objectPath: body.objectPath }));
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not save the blog image." },
+      { error: publicErrorMessage(error, "Could not save the blog image.") },
       { status: 400 }
     );
   }
@@ -59,7 +60,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json(await discardBlogImageUpload({ userId, postId: body.postId, objectPath: body.objectPath }));
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not discard the blog image upload." },
+      { error: publicErrorMessage(error, "Could not discard the blog image upload.") },
       { status: 400 }
     );
   }

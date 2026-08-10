@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../lib/auth/server";
+import { publicErrorMessage } from "../../../lib/security/request-guards";
 import { updateStudentLearningProfile } from "../../../lib/accounts/server";
 
 export async function PATCH(request: Request) {
@@ -30,7 +31,7 @@ export async function PATCH(request: Request) {
     }));
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not update the student profile." },
+      { error: publicErrorMessage(error, "Could not update the student profile.") },
       { status: 400 }
     );
   }

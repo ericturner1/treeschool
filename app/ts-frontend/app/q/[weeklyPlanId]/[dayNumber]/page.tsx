@@ -3,10 +3,11 @@ import { getCurrentUser } from "../../../../lib/auth/server";
 import { getPaperPlanQrDestination } from "../../../../lib/paper-plans/server";
 
 type Props = {
-  params: { weeklyPlanId: string; dayNumber: string };
+  params: Promise<{ weeklyPlanId: string; dayNumber: string }>;
 };
 
-export default async function LessonPlanDayQrPage({ params }: Props) {
+export default async function LessonPlanDayQrPage(props: Props) {
+  const params = await props.params;
   const dayNumber = Number(params.dayNumber);
   const returnPath = `/q/${encodeURIComponent(params.weeklyPlanId)}/${encodeURIComponent(params.dayNumber)}`;
   const user = await getCurrentUser();

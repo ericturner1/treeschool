@@ -14,13 +14,13 @@ import { InteractiveCalendar } from "./interactive-calendar";
 import { TimeZoneInput } from "./time-zone-input";
 
 type Props = {
-  params: { studentId?: string };
-  searchParams?: {
+  params: Promise<{ studentId?: string }>;
+  searchParams?: Promise<{
     lang?: string;
     month?: string;
     error?: string;
     message?: string;
-  };
+  }>;
 };
 
 const weekdayLabels = [
@@ -101,7 +101,9 @@ function displayDate(value: string) {
   }).format(new Date(`${value}T00:00:00.000Z`));
 }
 
-export default async function StudentSchoolCalendarPage({ params, searchParams }: Props) {
+export default async function StudentSchoolCalendarPage(props: Props) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const {
     dashboard,
     home,

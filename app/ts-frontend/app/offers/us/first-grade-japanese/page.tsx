@@ -7,10 +7,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false }
 };
 
-export default async function FirstGradeJapaneseUpsellPage({
-  searchParams
-}: {
-  searchParams: { session_id?: string };
-}) {
+export default async function FirstGradeJapaneseUpsellPage(
+  props: {
+    searchParams: Promise<{ session_id?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   return FirstGradeJapaneseOfferPageContent({ searchParams, stage: "us" });
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decideFirstGradePostCheckoutOffer } from "../../../../lib/billing/server";
+import { getPublicAppOrigin } from "../../../../lib/security/public-origin";
 
 const ACTIONS = new Set([
   "accept_full",
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "A valid offer decision is required." }, { status: 400 });
   }
 
-  const origin = request.nextUrl.origin;
+  const origin = getPublicAppOrigin(request.nextUrl);
   const stage = body.action.includes("starter") ? "ds" : "us";
   try {
     const result = await decideFirstGradePostCheckoutOffer({

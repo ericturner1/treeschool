@@ -4,7 +4,10 @@ import { getCurrentUser } from "../../../lib/auth/server";
 import { PurchaseAnalytics } from "../../../components/commerce-analytics";
 import { BookstoreCartClearer } from "../bookstore-catalog";
 
-export default async function WorkbookPurchaseSuccessPage({ searchParams }: { searchParams?: { session_id?: string; returnPath?: string } }) {
+export default async function WorkbookPurchaseSuccessPage(
+  props: { searchParams?: Promise<{ session_id?: string; returnPath?: string }> }
+) {
+  const searchParams = await props.searchParams;
   const user = await getCurrentUser();
   const returnPath = searchParams?.returnPath?.startsWith("/p/") ? searchParams.returnPath : null;
   const analyticsOrderId = searchParams?.session_id

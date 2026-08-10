@@ -3,21 +3,22 @@ import { verifyEmailTokenHashAction } from "../actions";
 import { HashSessionCompleter } from "./hash-session-completer";
 
 type ConfirmPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     token_hash?: string;
     next?: string;
     lang?: string;
     purpose?: string;
     confirmed?: string;
     error?: string;
-  };
+  }>;
 };
 
 function safeNext(value?: string) {
   return value && value.startsWith("/") && !value.startsWith("//") ? value : "/p/dashboard";
 }
 
-export default function ConfirmEmailPage({ searchParams }: ConfirmPageProps) {
+export default async function ConfirmEmailPage(props: ConfirmPageProps) {
+  const searchParams = await props.searchParams;
   const tokenHash = searchParams?.token_hash ?? "";
   const next = safeNext(searchParams?.next);
   const isEmailChange = searchParams?.purpose === "email-change";

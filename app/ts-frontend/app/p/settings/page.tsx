@@ -13,16 +13,15 @@ import { PRINT_PAGE_SIZE_OPTIONS } from "../../../lib/print-page-sizes";
 import { updatePreferencesAction } from "./actions";
 
 type ParentSettingsPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     lang?: string;
     message?: string;
     error?: string;
-  };
+  }>;
 };
 
-export default async function ParentSettingsPage({
-  searchParams
-}: ParentSettingsPageProps) {
+export default async function ParentSettingsPage(props: ParentSettingsPageProps) {
+  const searchParams = await props.searchParams;
   const { locale, dictionary } = await getRequestDictionary(searchParams?.lang);
   const { dashboard, home } = dictionary;
   const currentUser = await getCurrentUser();

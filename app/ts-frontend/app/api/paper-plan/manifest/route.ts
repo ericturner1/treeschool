@@ -1,5 +1,6 @@
 import { getCurrentUser } from "../../../../lib/auth/server";
 import { downloadWeeklyPlanManifest } from "../../../../lib/paper-plans/server";
+import { publicErrorMessage } from "../../../../lib/security/request-guards";
 
 export async function GET(request: Request) {
   const user = await getCurrentUser();
@@ -30,7 +31,7 @@ export async function GET(request: Request) {
       }
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to build the weekly plan manifest.";
+    const message = publicErrorMessage(error, "Failed to build the weekly plan manifest.");
     return Response.json(
       { error: message },
       { status: message === "Administrator access is required." ? 403 : 400 }

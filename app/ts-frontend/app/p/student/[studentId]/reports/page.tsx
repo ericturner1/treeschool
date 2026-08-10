@@ -4,20 +4,19 @@ import { getParentStudentPageData, studentRoutePath } from "../student-page-data
 import { StudentShell } from "../student-shell";
 
 type ParentStudentReportsPageProps = {
-  params: {
+  params: Promise<{
     studentId?: string;
-  };
-  searchParams?: {
+  }>;
+  searchParams?: Promise<{
     lang?: string;
     error?: string;
     message?: string;
-  };
+  }>;
 };
 
-export default async function ParentStudentReportsPage({
-  params,
-  searchParams
-}: ParentStudentReportsPageProps) {
+export default async function ParentStudentReportsPage(props: ParentStudentReportsPageProps) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { dashboard, home, student, studentRouteSegment } = await getParentStudentPageData(params.studentId, searchParams?.lang);
   if (params.studentId !== studentRouteSegment) {
     redirect(studentRoutePath(studentRouteSegment, "/reports", searchParams));

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "../../../../../lib/auth/server";
+import { publicErrorMessage } from "../../../../../lib/security/request-guards";
 import {
   completeAdminFunnelAssetUpload,
   discardAdminFunnelAssetUpload,
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
       userId
     }));
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not prepare the image upload." }, { status: 400 });
+    return NextResponse.json({ error: publicErrorMessage(error, "Could not prepare the image upload.") }, { status: 400 });
   }
 }
 
@@ -33,7 +34,7 @@ export async function PATCH(request: Request) {
       userId
     }));
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not save the image." }, { status: 400 });
+    return NextResponse.json({ error: publicErrorMessage(error, "Could not save the image.") }, { status: 400 });
   }
 }
 
@@ -46,6 +47,6 @@ export async function DELETE(request: Request) {
       userId
     }));
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not discard the image." }, { status: 400 });
+    return NextResponse.json({ error: publicErrorMessage(error, "Could not discard the image.") }, { status: 400 });
   }
 }

@@ -9,9 +9,9 @@ import { SUPPORTED_LOCALES } from "../lib/i18n/config";
 import { getRequestDictionary } from "../lib/i18n/server";
 
 type HomePageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     lang?: string;
-  };
+  }>;
 };
 
 function BookIcon() {
@@ -107,7 +107,8 @@ function PathwayStrip({ item, tone, actionFirst = false }: PathwayStripProps) {
   );
 }
 
-export default async function HomePage({ searchParams }: HomePageProps) {
+export default async function HomePage(props: HomePageProps) {
+  const searchParams = await props.searchParams;
   const currentUser = await getCurrentUser();
   if (currentUser?.id) {
     redirect("/p/dashboard");

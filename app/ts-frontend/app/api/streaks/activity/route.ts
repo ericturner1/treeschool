@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
-import { getActiveProfileCookie } from "../../../../lib/accounts/active-profile";
-import { getCurrentUser } from "../../../../lib/auth/server";
+import { getCurrentStudentAccess } from "../../../../lib/auth/student-access";
 import { backendFetch } from "../../../../lib/backend/server";
 
 const DEFAULT_INTERNAL_BACKEND_URL = "http://ts-backend:3001";
@@ -10,15 +9,14 @@ function getBackendUrl() {
 }
 
 export async function POST(request: NextRequest) {
-  const currentUser = await getCurrentUser();
-  const activeProfile = getActiveProfileCookie();
   const body = (await request.json().catch(() => ({}))) as { profileId?: string };
+  const access = await getCurrentStudentAccess(body.profileId);
 
-  if (!currentUser?.id || !activeProfile || activeProfile.role !== "STUDENT") {
+  if (!access) {
     return Response.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (!body.profileId || body.profileId !== activeProfile.id) {
+  if (!body.profileId) {
     return Response.json({ error: "Invalid profile." }, { status: 400 });
   }
 
@@ -28,7 +26,7 @@ export async function POST(request: NextRequest) {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      profileId: body.profileId
+      profileId: access.student.id
     }),
     cache: "no-store"
   });
