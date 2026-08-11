@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
 import { headers } from "next/headers";
 import { getCurrentUser } from "../../lib/auth/server";
 import {
@@ -90,8 +89,69 @@ function CheckIcon() {
   );
 }
 
-function ArrowIcon() {
-  return <span aria-hidden="true">→</span>;
+const ACADEMIC_COVERAGE_AREAS = [
+  { key: "mathematics", label: "Mathematics" },
+  { key: "languageArts", label: "Language arts" },
+  { key: "science", label: "Science" },
+  { key: "socialStudies", label: "Social studies" }
+] as const;
+
+type GradeOneCoverage = NativeWorkbookCatalogItem["curriculumCoverage"][number];
+
+function AcademicCompletenessGraph({ coverage }: { coverage: GradeOneCoverage }) {
+  return (
+    <section
+      aria-labelledby="academic-completeness-title"
+      className="mt-10 overflow-hidden rounded-[28px] border border-[#b8cba7] bg-[#fffdf8] shadow-[0_12px_28px_rgba(72,99,56,0.08)]"
+    >
+      <div className="grid gap-8 p-6 sm:p-8 lg:grid-cols-[.78fr_1.22fr] lg:items-center">
+        <div>
+          <p className="label-font text-sm font-black uppercase tracking-[0.1em] text-[#486338]">
+            Academic completeness
+          </p>
+          <h3
+            id="academic-completeness-title"
+            className="mt-2 text-3xl font-semibold leading-tight tracking-[-0.045em] sm:text-4xl"
+          >
+            The first-grade essentials are covered.
+          </h3>
+          <p className="mt-4 text-base leading-7 text-ink/64">
+            Indexed lessons were compared with widely used first-grade expectations across the four core academic areas.
+          </p>
+        </div>
+
+        <div className="grid gap-4" aria-label="Estimated first-grade academic coverage">
+          {ACADEMIC_COVERAGE_AREAS.map((area) => {
+            const score = coverage.scores[area.key];
+            return (
+              <div key={area.key}>
+                <div className="flex items-baseline justify-between gap-4">
+                  <p className="text-sm font-semibold text-ink/72 sm:text-base">{area.label}</p>
+                  <p className="text-lg font-semibold tabular-nums text-[#567b40]">{score}%</p>
+                </div>
+                <div
+                  className="mt-2 h-3 overflow-hidden rounded-full bg-[#e4eadc]"
+                  role="progressbar"
+                  aria-label={`${area.label} estimated coverage`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={score}
+                >
+                  <div
+                    className="h-full rounded-full bg-[#75a254]"
+                    style={{ width: `${score}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <p className="border-t border-[#d9e3d0] bg-[#f4f8ef] px-6 py-3 text-center text-xs leading-5 text-ink/48 sm:px-8">
+        Scores reflect direct teaching evidence found in the indexed workbook lessons.
+      </p>
+    </section>
+  );
 }
 
 type PageSearchParams = {
@@ -206,6 +266,9 @@ async function FirstGradeCurriculumVariantA({
       )
     : null;
   const memberCount = bundle?.memberCount ?? displayMembers.length;
+  const gradeOneCoverage = bundle?.curriculumCoverage.find(
+    (coverage) => coverage.gradeLevel === 1
+  );
   const checkoutMessage =
     searchParams?.checkout === "canceled"
       ? "Checkout was canceled. Nothing was charged."
@@ -249,37 +312,6 @@ async function FirstGradeCurriculumVariantA({
         preview={experiment.previewMode}
         visitorId={experiment.funnelVisitorId}
       />
-      <header className="border-b border-[#dfcfb8] bg-[#fffaf2]">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <Link href="/" className="flex items-center gap-1">
-            <Image
-              src="/tree-icon.png"
-              alt="Treeschool"
-              width={58}
-              height={58}
-              className="h-12 w-12 object-contain"
-              priority
-            />
-            <span className="brand-logo text-[25px] font-semibold leading-none">
-              treeschool
-            </span>
-          </Link>
-          <Link
-            href={user ? "/p/dashboard" : "/p/signin"}
-            className="text-sm font-semibold text-ink/60 underline decoration-[#bba486] underline-offset-4 transition hover:text-ink"
-          >
-            {user ? (
-              "Open dashboard"
-            ) : (
-              <>
-                <span className="sm:hidden">Sign in</span>
-                <span className="hidden sm:inline">Already a customer? Sign in</span>
-              </>
-            )}
-          </Link>
-        </div>
-      </header>
-
       {checkoutMessage ? (
         <div className="border-b border-[#e3cfaf] bg-[#fff6e7] px-4 py-3 text-center text-sm font-semibold text-[#77512f]">
           {checkoutMessage}
@@ -303,13 +335,9 @@ async function FirstGradeCurriculumVariantA({
 
             <div className="mt-7 max-w-[480px]">
               {bundle?.accessState === "owned" ? (
-                <Link
-                  href="/p/purchased-workbooks"
-                  className="cta-button cta-button--light w-full justify-center"
-                >
-                  Open my purchased workbooks
-                  <ArrowIcon />
-                </Link>
+                <div className="rounded-[16px] border border-[#9db887] bg-white/65 px-5 py-4 text-center text-sm font-semibold text-[#486338]">
+                  This curriculum is already in your library.
+                </div>
               ) : bundle && bundlePrice ? (
                 <CurriculumCheckoutChoice
                   bundleSlug={bundle.slug}
@@ -444,15 +472,9 @@ async function FirstGradeCurriculumVariantA({
             ))}
           </div>
 
-          <div className="mt-8 text-center">
-            <Link
-              href={DETAILS_PATH}
-              className="inline-flex items-center gap-2 text-sm font-semibold text-[#486338] underline decoration-[#8cab75] underline-offset-4"
-            >
-              See the detailed curriculum and coverage
-              <ArrowIcon />
-            </Link>
-          </div>
+          {gradeOneCoverage ? (
+            <AcademicCompletenessGraph coverage={gradeOneCoverage} />
+          ) : null}
         </div>
       </section>
 
@@ -504,12 +526,9 @@ async function FirstGradeCurriculumVariantA({
           </div>
           <div className="w-full lg:w-[390px]">
             {bundle?.accessState === "owned" ? (
-              <Link
-                href="/p/purchased-workbooks"
-                className="cta-button cta-button--dark w-full justify-center"
-              >
-                Open my purchased workbooks
-              </Link>
+              <div className="rounded-[16px] border border-[#b69a78] bg-white/65 px-5 py-4 text-center text-sm font-semibold text-[#6f513e]">
+                This curriculum is already in your library.
+              </div>
             ) : bundle && bundlePrice ? (
               <CurriculumCheckoutChoice
                 bundleSlug={bundle.slug}
@@ -579,12 +598,9 @@ async function FirstGradeCurriculumVariantA({
           </p>
           <div className="mx-auto mt-7 max-w-[440px]">
             {bundle?.accessState === "owned" ? (
-              <Link
-                href="/p/purchased-workbooks"
-                className="cta-button cta-button--light w-full justify-center"
-              >
-                Open my purchased workbooks
-              </Link>
+              <div className="rounded-[16px] border border-[#9db887] bg-white/65 px-5 py-4 text-center text-sm font-semibold text-[#486338]">
+                This curriculum is already in your library.
+              </div>
             ) : bundle && bundlePrice ? (
               <CurriculumCheckoutChoice
                 bundleSlug={bundle.slug}
@@ -608,17 +624,6 @@ async function FirstGradeCurriculumVariantA({
         </div>
       </section>
 
-      <footer className="bg-[#6f513e] px-4 py-7 text-center text-sm text-[#fff8ee] sm:px-6">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
-          <p>Copyright © 2026 Treeschool. Paper-first homeschool for grades K–4.</p>
-          <div className="flex flex-wrap justify-center gap-5">
-            <Link href="/faq" className="hover:text-white">FAQ</Link>
-            <Link href="/refunds" className="hover:text-white">Refunds</Link>
-            <Link href="/privacy" className="hover:text-white">Privacy</Link>
-            <Link href="/support" className="hover:text-white">Support</Link>
-          </div>
-        </div>
-      </footer>
     </main>
   );
 }
