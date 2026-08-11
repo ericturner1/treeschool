@@ -142,6 +142,16 @@ export type FunnelPageElement =
       props: { media: FunnelMediaSnapshot; fit: "contain" | "cover"; caption: string };
     })
   | (FunnelElementBase & {
+      type: "workbook_gallery";
+      props: {
+        title: string;
+        cover: FunnelMediaSnapshot;
+        images: FunnelMediaSnapshot[];
+        fit: "contain" | "cover";
+        caption: string;
+      };
+    })
+  | (FunnelElementBase & {
       type: "button";
       props: {
         label: string;

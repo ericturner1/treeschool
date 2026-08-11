@@ -47,6 +47,19 @@ test("rate limits repeated sign-in requests per client address", () => {
   });
 });
 
+test("rate limits public workbook preview generation", () => {
+  const request = new Request("https://www.treehomeschool.com/api/native-workbooks/product-previews?slug=math-1", {
+    headers: { "x-forwarded-for": "203.0.113.10" }
+  });
+  for (let index = 0; index < 30; index += 1) {
+    expect(checkRequestRateLimit(request, "/api/native-workbooks/product-previews", 1_000)).toBeNull();
+  }
+  expect(checkRequestRateLimit(request, "/api/native-workbooks/product-previews", 1_000)).toEqual({
+    limit: 30,
+    retryAfterSeconds: 60
+  });
+});
+
 test("redacts infrastructure errors returned by route handlers", () => {
   expect(publicErrorMessage(
     new Error('relation "profiles" does not exist'),

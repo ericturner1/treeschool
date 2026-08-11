@@ -173,6 +173,7 @@ type ProductPreviewImage = {
   pdfPageNumber: number;
   label: string;
 };
+const PRODUCT_PREVIEW_VERSION = 2;
 
 type WorkbookReplacementState = {
   previousVersionId: string;
@@ -421,7 +422,13 @@ function readProductPreviewImages(analysisJson: unknown) {
           label: normalizeText(preview.label || `Sample page ${pdfPageNumber}`, 160)
         }]
       : [];
-  }).slice(0, 4);
+  }).slice(0, 7);
+}
+
+function readProductPreviewVersion(analysisJson: unknown) {
+  if (!analysisJson || typeof analysisJson !== "object") return 0;
+  const value = Number((analysisJson as { productPreviewVersion?: unknown }).productPreviewVersion);
+  return Number.isInteger(value) && value > 0 ? value : 0;
 }
 
 function readWorkbookReplacementState(analysisJson: unknown): WorkbookReplacementState | null {
@@ -460,10 +467,23 @@ function readWorkbookStudioReleaseState(analysisJson: unknown): WorkbookStudioRe
     : null;
 }
 
-function selectProductPreviewPages(analysis: unknown, pageCount: number) {
+export function selectProductPreviewPages(analysis: unknown, pageCount: number) {
   const analysisRecord = analysis && typeof analysis === "object"
-    ? analysis as { learningUnits?: unknown }
+    ? analysis as { learningUnits?: unknown; sections?: unknown }
     : {};
+  const sections = Array.isArray(analysisRecord.sections) ? analysisRecord.sections : [];
+  const tableOfContents = sections.flatMap((section) => {
+    if (!section || typeof section !== "object") return [];
+    const value = section as { category?: unknown; title?: unknown; startPage?: unknown };
+    const title = String(value.title ?? "");
+    const page = Number(value.startPage);
+    return (value.category === "table_of_contents" || /\b(?:table of contents|contents|scope and sequence)\b/i.test(title))
+      && Number.isInteger(page)
+      && page > 1
+      && page <= pageCount
+      ? [{ pdfPageNumber: page, label: "Table of contents" }]
+      : [];
+  }).slice(0, 1);
   const units = Array.isArray(analysisRecord.learningUnits) ? analysisRecord.learningUnits : [];
   const candidates = units.flatMap((unit) => {
     if (!unit || typeof unit !== "object") return [];
@@ -488,11 +508,17 @@ function selectProductPreviewPages(analysis: unknown, pageCount: number) {
         }]
       : [];
   });
-  const unique = Array.from(new Map(candidates.map((candidate) => [candidate.pdfPageNumber, candidate])).values());
-  if (unique.length <= 4) return unique;
-  return Array.from({ length: 4 }, (_, index) => unique[
-    Math.round(index * (unique.length - 1) / 3)
-  ]).filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate));
+  const reservedPages = new Set(tableOfContents.map((candidate) => candidate.pdfPageNumber));
+  const unique = Array.from(new Map(candidates
+    .filter((candidate) => !reservedPages.has(candidate.pdfPageNumber))
+    .map((candidate) => [candidate.pdfPageNumber, candidate])).values());
+  const sampleCount = Math.min(6, 7 - tableOfContents.length, unique.length);
+  const samples = unique.length <= sampleCount
+    ? unique
+    : Array.from({ length: sampleCount }, (_, index) => unique[
+        Math.round(index * (unique.length - 1) / Math.max(1, sampleCount - 1))
+      ]).filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate));
+  return [...tableOfContents, ...samples];
 }
 
 async function renderNativeWorkbookPage(input: {
@@ -949,10 +975,18 @@ async function serializeCatalogRows<T extends {
   id: string;
   thumbnailObjectPath: string;
   curriculumCoverageProfile?: unknown;
-}>(rows: T[], userId?: string | null) {
+  productPreviewImages?: unknown;
+}>(rows: T[], userId?: string | null, includePreviews = false) {
   const access = await accessByWorkbookIds(userId, rows.map((row) => row.id));
   return Promise.all(rows.map(async (row) => {
-    const { curriculumCoverageProfile, ...catalogRow } = row;
+    const { curriculumCoverageProfile, productPreviewImages, ...catalogRow } = row;
+    const previewImages = includePreviews
+      ? (await Promise.all(readProductPreviewImages({ productPreviewImages }).map(async (preview) => ({
+          pdfPageNumber: preview.pdfPageNumber,
+          label: preview.label,
+          url: await getSignedLessonAssetUrl(preview.objectPath, 60).catch(() => null)
+        })))).flatMap((preview) => preview.url ? [{ ...preview, url: preview.url }] : [])
+      : null;
     return {
       ...catalogRow,
       catalogKind: "workbook" as const,
@@ -962,6 +996,7 @@ async function serializeCatalogRows<T extends {
       recommendedGradeLevel: null,
       curriculumCoverage: publicCurriculumCoverageProfile(curriculumCoverageProfile),
       thumbnailUrl: await getSignedLessonAssetUrl(row.thumbnailObjectPath, 60).catch(() => null),
+      ...(previewImages ? { previewImages } : {}),
       accessState: access.get(row.id) ?? "purchase_required" as AccessState
     };
   }));
@@ -1105,6 +1140,7 @@ export async function listNativeWorkbookCatalog(input: {
   profileId?: string | null;
   grade?: number | null;
   subject?: string | null;
+  includePreviews?: boolean;
 }) {
   const conditions = [eq(nativeWorkbooks.active, true), eq(nativeWorkbooks.status, "published")];
   if (input.grade != null) {
@@ -1138,6 +1174,7 @@ export async function listNativeWorkbookCatalog(input: {
       thumbnailObjectPath: nativeWorkbooks.thumbnailObjectPath,
       activeVersionId: nativeWorkbooks.activeVersionId,
       pageCount: nativeWorkbookVersions.pageCount,
+      productPreviewImages: sql<unknown>`${nativeWorkbookVersions.analysisJson}->'productPreviewImages'`,
       curriculumCoverageProfile: nativeWorkbookVersions.curriculumCoverageProfile
     })
     .from(nativeWorkbooks)
@@ -1145,7 +1182,7 @@ export async function listNativeWorkbookCatalog(input: {
     .where(and(...conditions))
     .orderBy(asc(nativeWorkbooks.gradeMin), asc(nativeWorkbooks.subjectLabel), asc(nativeWorkbooks.title));
   const [workbooks, allBundles] = await Promise.all([
-    serializeCatalogRows(rows, input.userId),
+    serializeCatalogRows(rows, input.userId, input.includePreviews === true),
     loadBundleCatalogRows({ userId: input.userId })
   ]);
   const subject = input.subject?.trim().toLowerCase() ?? "";
@@ -1256,8 +1293,9 @@ export async function getNativeWorkbookProduct(input: { slug: string; userId?: s
     .where(eq(nativeWorkbookVersions.id, row.activeVersionId))
     .limit(1) : [];
   let previewImages = readProductPreviewImages(version?.analysisJson);
-  if (version && !previewImages.length) {
-    previewImages = await (async () => {
+  if (version && (!previewImages.length || readProductPreviewVersion(version.analysisJson) < PRODUCT_PREVIEW_VERSION)) {
+    const existingPreviewImages = previewImages;
+    const refreshedPreviewImages = await (async () => {
       const bytes = await downloadPrivateFile(version.objectPath);
       return createProductPreviewImages({
         workbookId: row.id,
@@ -1270,11 +1308,13 @@ export async function getNativeWorkbookProduct(input: { slug: string; userId?: s
       console.warn(`Could not backfill product previews for native workbook ${row.id}:`, error);
       return [];
     });
-    if (previewImages.length) {
+    previewImages = refreshedPreviewImages.length ? refreshedPreviewImages : existingPreviewImages;
+    if (refreshedPreviewImages.length) {
       await db.update(nativeWorkbookVersions).set({
         analysisJson: {
           ...version.analysisJson,
-          productPreviewImages: previewImages
+          productPreviewImages: refreshedPreviewImages,
+          productPreviewVersion: PRODUCT_PREVIEW_VERSION
         }
       }).where(eq(nativeWorkbookVersions.id, version.id));
     }
@@ -3380,6 +3420,7 @@ async function promoteCompatibleWorkbookReplacement(input: {
     contentFingerprint: input.fingerprint,
     nativeWorkbook: true,
     productPreviewImages,
+    productPreviewVersion: PRODUCT_PREVIEW_VERSION,
     correctedFromVersionId: publishedVersion.id,
     compatibilityVerifiedAt: new Date().toISOString(),
     completedAt: new Date().toISOString()
@@ -3761,6 +3802,7 @@ export async function runNextNativeWorkbookJob(workerId: string) {
       contentFingerprint: fingerprint,
       nativeWorkbook: true,
       productPreviewImages,
+      productPreviewVersion: PRODUCT_PREVIEW_VERSION,
       catalogDescription: finalDescription,
       generatedThumbnailObjectPath,
       completedAt: new Date().toISOString()

@@ -31,6 +31,7 @@ import { ManagedFunnelOneClickButton } from "./managed-funnel-one-click-button";
 import { ManagedFunnelOrderForm } from "./managed-funnel-order-form";
 import { ManagedFunnelPageTracker } from "./managed-funnel-page-tracker";
 import { FunnelCountdown } from "./funnel-countdown";
+import { WorkbookGallery } from "./workbook-gallery";
 
 const THEMES = {
   sage: {
@@ -225,6 +226,32 @@ function PageElement({
         />
         {element.props.caption ? <figcaption className="text-center text-sm text-current/60">{element.props.caption}</figcaption> : null}
       </figure>
+    );
+  }
+  if (element.type === "workbook_gallery") {
+    const coverSource = element.props.cover.publicUrl ?? element.props.cover.storagePath;
+    const images = element.props.images.flatMap((media) => {
+      const source = media.publicUrl ?? media.storagePath;
+      return source ? [{ url: source, alt: media.alt, label: media.alt }] : [];
+    });
+    if (!coverSource && images.length === 0) return null;
+    return (
+      <div className={visibility}>
+        <WorkbookGallery
+          title={element.props.title || element.props.cover.alt || "Workbook preview"}
+          cover={coverSource ? {
+            url: coverSource,
+            alt: element.props.cover.alt,
+            label: "Cover"
+          } : null}
+          images={images}
+          caption={element.props.caption}
+          fit={element.props.fit}
+          sizes="(min-width: 1024px) 500px, 90vw"
+          thumbnailClassName="mx-auto aspect-[4/5] max-h-[620px] max-w-[500px] rounded-[20px] border border-ink/10 bg-white shadow-[0_10px_26px_rgba(60,45,32,.12)]"
+          imageClassName="p-3 sm:p-5"
+        />
+      </div>
     );
   }
   if (element.type === "button") {

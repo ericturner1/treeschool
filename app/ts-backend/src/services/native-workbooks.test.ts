@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   isByteIdenticalWorkbookUpload,
-  nativeWorkbookErrorReference
+  nativeWorkbookErrorReference,
+  selectProductPreviewPages
 } from "./native-workbooks";
 
 describe("native workbook processing errors", () => {
@@ -28,5 +29,35 @@ describe("native workbook identical-upload guard", () => {
       candidateFingerprint: "candidate",
       publishedFingerprint: null
     })).toBe(false);
+  });
+});
+
+describe("native workbook marketing previews", () => {
+  test("selects the table of contents and representative lessons across the workbook", () => {
+    const pages = selectProductPreviewPages({
+      sections: [{ title: "Table of Contents", category: "table_of_contents", startPage: 2 }],
+      learningUnits: Array.from({ length: 12 }, (_, index) => ({
+        title: `Lesson ${index + 1}`,
+        components: [{
+          role: "practice",
+          includeInPacket: true,
+          pdfPageStart: 4 + index * 5
+        }]
+      }))
+    }, 80);
+
+    expect(pages).toHaveLength(7);
+    expect(pages[0]).toEqual({ pdfPageNumber: 2, label: "Table of contents" });
+    expect(pages[1]?.pdfPageNumber).toBe(4);
+    expect(pages.at(-1)?.pdfPageNumber).toBe(59);
+  });
+
+  test("does not duplicate a contents page that also appears in a lesson range", () => {
+    const pages = selectProductPreviewPages({
+      sections: [{ title: "Contents", category: "table_of_contents", startPage: 2 }],
+      learningUnits: [{ title: "Front matter", components: [{ role: "practice", pdfPageStart: 2 }] }]
+    }, 10);
+
+    expect(pages).toEqual([{ pdfPageNumber: 2, label: "Table of contents" }]);
   });
 });

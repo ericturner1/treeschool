@@ -1092,7 +1092,8 @@ const server = Bun.serve({
             userId: url.searchParams.get("userId"),
             profileId: url.searchParams.get("profileId"),
             grade: rawGrade == null || rawGrade === "" ? null : Number(rawGrade),
-            subject: url.searchParams.get("subject")
+            subject: url.searchParams.get("subject"),
+            includePreviews: url.searchParams.get("includePreviews") === "true"
           })
         });
       } catch (error) {

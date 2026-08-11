@@ -27,7 +27,11 @@ function configuredAppOrigin() {
 }
 
 function rateLimitRule(method: string, pathname: string): RateLimitRule | null {
-  if (!UNSAFE_METHODS.has(method.toUpperCase())) return null;
+  const normalizedMethod = method.toUpperCase();
+  if (normalizedMethod === "GET" && pathname === "/api/native-workbooks/product-previews") {
+    return { key: "workbook-product-preview", limit: 30, windowMs: 60_000 };
+  }
+  if (!UNSAFE_METHODS.has(normalizedMethod)) return null;
   if (pathname === "/signin") {
     return { key: "signin", limit: 20, windowMs: 15 * 60_000 };
   }

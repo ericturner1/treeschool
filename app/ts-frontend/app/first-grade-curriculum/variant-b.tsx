@@ -37,7 +37,9 @@ const FALLBACK_WORKBOOKS = [
   id,
   title,
   coverPath,
-  pageCount: null as number | null
+  slug: null as string | null,
+  pageCount: null as number | null,
+  previewImages: [] as Array<{ url: string; label: string }>
 }));
 
 type Props = {
@@ -79,7 +81,8 @@ export async function FirstGradeCurriculumVariantB({
   const { workbooks } = await listNativeWorkbookCatalog({
     userId: user?.id,
     grade: 1,
-    subject: null
+    subject: null,
+    includePreviews: true
   }).catch(() => ({ workbooks: [] as NativeWorkbookCatalogItem[] }));
   const bundle = selectFirstGradeBundle(workbooks);
   const workbooksById = new Map(
@@ -95,9 +98,11 @@ export async function FirstGradeCurriculumVariantB({
   const displayMembers = bundle
     ? members.map((workbook) => ({
       id: workbook.id,
+      slug: workbook.slug,
       title: workbook.title,
       pageCount: workbook.pageCount,
-      coverPath: getFirstGradeMarketingCoverPath(workbook)
+      coverPath: getFirstGradeMarketingCoverPath(workbook),
+      previewImages: workbook.previewImages ?? []
     }))
     : FALLBACK_WORKBOOKS;
   const bundlePrice = bundle
@@ -389,6 +394,8 @@ export async function FirstGradeCurriculumVariantB({
                 <WorkbookCover
                   title={workbook.title}
                   src={workbook.coverPath}
+                  previewImages={workbook.previewImages}
+                  previewSlug={workbook.slug ?? undefined}
                   priority={index < 4}
                 />
                 {workbook.pageCount ? (

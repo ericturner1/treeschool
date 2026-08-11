@@ -45,6 +45,10 @@ type PendingNavigation =
   | { kind: "href"; href: string }
   | { kind: "back" };
 
+type MediaTarget =
+  | { kind: "selection" }
+  | { kind: "workbook_gallery"; slot: "cover" | "append" | number };
+
 const INPUT = "min-h-10 w-full rounded-[11px] border border-[#cfbea4] bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-[#739655] focus:ring-4 focus:ring-[#739655]/15";
 const themes = {
   sage: { page: "#edf4e7", surface: "#fffdf8", muted: "#f5f9f0", accent: "#dfeccf", dark: "#4d6b3a", primary: "#76a456", secondary: "#ffffff", primaryShadow: "#486f34", secondaryShadow: "#cdddbd" },
@@ -55,6 +59,10 @@ const themes = {
 
 function cloneDocument(document: FunnelPageDocument) {
   return structuredClone(document);
+}
+
+function emptyMedia(): FunnelMediaSnapshot {
+  return { assetId: null, storagePath: null, publicUrl: null, alt: "", width: null, height: null };
 }
 
 function createElement(type: FunnelPageElement["type"]): FunnelPageElement {
@@ -73,7 +81,8 @@ function createElement(type: FunnelPageElement["type"]): FunnelPageElement {
       appearance: { marker: "check", markerSize: 22, markerColor: "#76a456", itemSpacing: 8, markerGap: 12, borderWidth: 0, borderRadius: 14, paddingX: 0, paddingY: 0 }
     }
   };
-  if (type === "image") return { id, type, props: { media: { assetId: null, storagePath: null, publicUrl: null, alt: "", width: null, height: null }, fit: "contain", caption: "" } };
+  if (type === "image") return { id, type, props: { media: emptyMedia(), fit: "contain", caption: "" } };
+  if (type === "workbook_gallery") return { id, type, props: { title: "Workbook preview", cover: emptyMedia(), images: [], fit: "contain", caption: "" } };
   if (type === "button") return { id, type, props: { label: "Continue", variant: "primary", align: "left", action: { type: "next_step" } } };
   if (type === "countdown") return {
     id,
@@ -232,6 +241,10 @@ function PreviewElement({ element, palette, onSelect, selected }: { element: Fun
     return <ul onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} grid`} style={funnelListContainerStyle(element.props)}>{element.props.items.map((item, index) => <li key={index} className="flex" style={funnelListItemStyle(element.props)}><span className="shrink-0 font-black" aria-hidden="true" style={funnelListMarkerStyle(element.props, palette.primary)}>{funnelListMarker(element.props)}</span><span style={funnelListTextStyle(element.props)}>{item}</span></li>)}</ul>;
   }
   if (element.type === "image") return <button type="button" onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} min-h-28 w-full overflow-hidden border border-dashed border-ink/20 bg-white/40`}>{element.props.media.publicUrl ? <Image src={element.props.media.publicUrl} alt={element.props.media.alt} width={1000} height={700} unoptimized className={`max-h-96 w-full ${element.props.fit === "cover" ? "object-cover" : "object-contain"}`} /> : <span className="text-sm text-ink/45">Choose an image in the inspector</span>}</button>;
+  if (element.type === "workbook_gallery") {
+    const preview = element.props.cover.publicUrl ?? element.props.images.find((image) => image.publicUrl)?.publicUrl;
+    return <button type="button" onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} relative mx-auto aspect-[4/5] w-full max-w-sm overflow-hidden border border-dashed border-ink/20 bg-white/40`}>{preview ? <Image src={preview} alt={element.props.cover.alt} fill unoptimized className={element.props.fit === "cover" ? "object-cover" : "object-contain p-3"} /> : <span className="absolute inset-0 grid place-items-center px-4 text-sm text-ink/45">Choose a cover and sample pages in the inspector</span>}<span className="absolute bottom-2 right-2 rounded-full bg-[#24311d]/85 px-2 py-1 text-[10px] font-bold text-white">Gallery · {element.props.images.length + (element.props.cover.publicUrl ? 1 : 0)}</span></button>;
+  }
   if (element.type === "button") {
     const textColor = funnelButtonDefaultTextColor(element.props, palette);
     return <div onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} flex ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"}`}><span className="inline-flex min-h-12 flex-col items-center justify-center gap-0.5 text-center transition" style={funnelButtonBoxStyle(element.props, palette)}><span className="inline-flex items-center justify-center gap-2 text-lg font-semibold" style={funnelButtonTextStyle(element.props.typography, textColor)}>{element.props.label}{element.props.showArrow === false ? null : <span aria-hidden="true">→</span>}</span>{element.props.subtext ? <span className="text-xs font-medium opacity-90" style={funnelButtonSubtextStyle(element.props.subtextTypography, textColor)}>{element.props.subtext}</span> : null}</span></div>;
@@ -302,6 +315,7 @@ function EditorCanvas({ document, selection, onSelect, viewport, orderFormPrevie
 type FunnelButtonElement = Extract<FunnelPageElement, { type: "button" }>;
 type FunnelListElement = Extract<FunnelPageElement, { type: "list" }>;
 type FunnelCountdownElement = Extract<FunnelPageElement, { type: "countdown" }>;
+type FunnelWorkbookGalleryElement = Extract<FunnelPageElement, { type: "workbook_gallery" }>;
 
 function InspectorGroup({ title, children, open = false }: { title: string; children: ReactNode; open?: boolean }) {
   const [expanded, setExpanded] = useState(open);
@@ -450,7 +464,62 @@ function CountdownInspector({ element, update, palette }: { element: FunnelCount
   </div>;
 }
 
-function ElementInspector({ element, update, chooseMedia, move, remove, buttonPalette }: { element: FunnelPageElement; update: (next: FunnelPageElement) => void; chooseMedia: () => void; move: (direction: -1 | 1) => void; remove: () => void; buttonPalette: FunnelButtonPalette }) {
+function WorkbookGalleryInspector({
+  element,
+  update,
+  chooseMedia
+}: {
+  element: FunnelWorkbookGalleryElement;
+  update: (next: FunnelWorkbookGalleryElement) => void;
+  chooseMedia: (slot: "cover" | "append" | number) => void;
+}) {
+  const updateProps = (next: Partial<FunnelWorkbookGalleryElement["props"]>) => update({
+    ...element,
+    props: { ...element.props, ...next }
+  });
+  const updateImage = (index: number, next: FunnelMediaSnapshot) => {
+    const images = [...element.props.images];
+    images[index] = next;
+    updateProps({ images });
+  };
+  const moveImage = (index: number, direction: -1 | 1) => {
+    const destination = index + direction;
+    if (destination < 0 || destination >= element.props.images.length) return;
+    const images = [...element.props.images];
+    const [image] = images.splice(index, 1);
+    if (image) images.splice(destination, 0, image);
+    updateProps({ images });
+  };
+
+  return <div className="grid gap-3">
+    <label className="grid gap-1.5 text-xs font-semibold">Workbook title<input className={INPUT} value={element.props.title} onChange={(event) => updateProps({ title: event.target.value })} /></label>
+    <InspectorGroup title="Cover thumbnail" open>
+      {element.props.cover.publicUrl ? <Image src={element.props.cover.publicUrl} alt={element.props.cover.alt} width={260} height={320} unoptimized className="mx-auto max-h-44 w-full rounded-[10px] border border-[#dfcfb7] bg-white object-contain p-2" /> : <div className="grid min-h-28 place-items-center rounded-[10px] border border-dashed border-[#cfbea4] bg-white text-xs text-ink/45">No cover selected</div>}
+      <button type="button" onClick={() => chooseMedia("cover")} className="rounded-[11px] border-2 border-[#739655] bg-[#edf5e7] px-3 py-2 text-xs font-semibold text-[#4d6a39]">{element.props.cover.publicUrl ? "Replace cover" : "Choose cover"}</button>
+      <label className="grid gap-1.5 text-xs font-semibold">Cover alternative text<input className={INPUT} value={element.props.cover.alt} onChange={(event) => updateProps({ cover: { ...element.props.cover, alt: event.target.value } })} /></label>
+    </InspectorGroup>
+    <InspectorGroup title={`Sample pages (${element.props.images.length}/8)`} open>
+      <p className="text-xs leading-5 text-ink/50">Add the table of contents and representative inside pages. Visitors can browse and zoom every image.</p>
+      {element.props.images.map((image, index) => <div key={`${image.assetId ?? image.publicUrl}-${index}`} className="grid gap-2 rounded-[11px] border border-[#dfcfb7] bg-white p-2">
+        <div className="flex gap-2">
+          {image.publicUrl ? <Image src={image.publicUrl} alt="" width={72} height={88} unoptimized className="h-20 w-16 shrink-0 rounded-[7px] border border-[#eadfce] object-contain" /> : null}
+          <label className="grid min-w-0 flex-1 gap-1 text-[10px] font-semibold">Page label / alternative text<input className={INPUT} value={image.alt} onChange={(event) => updateImage(index, { ...image, alt: event.target.value })} /></label>
+        </div>
+        <div className="grid grid-cols-4 gap-1">
+          <button type="button" onClick={() => moveImage(index, -1)} disabled={index === 0} className="rounded-lg border px-2 py-1 text-xs disabled:opacity-35" aria-label="Move sample page earlier">↑</button>
+          <button type="button" onClick={() => moveImage(index, 1)} disabled={index === element.props.images.length - 1} className="rounded-lg border px-2 py-1 text-xs disabled:opacity-35" aria-label="Move sample page later">↓</button>
+          <button type="button" onClick={() => chooseMedia(index)} className="rounded-lg border px-2 py-1 text-xs">Replace</button>
+          <button type="button" onClick={() => updateProps({ images: element.props.images.filter((_, imageIndex) => imageIndex !== index) })} className="rounded-lg border px-2 py-1 text-xs text-[#9b4738]">Remove</button>
+        </div>
+      </div>)}
+      <button type="button" disabled={element.props.images.length >= 8} onClick={() => chooseMedia("append")} className="rounded-[11px] border-2 border-[#739655] bg-[#edf5e7] px-3 py-2 text-xs font-semibold text-[#4d6a39] disabled:opacity-45">+ Add sample page</button>
+    </InspectorGroup>
+    <label className="grid gap-1.5 text-xs font-semibold">Image fit<select className={INPUT} value={element.props.fit} onChange={(event) => updateProps({ fit: event.target.value as "contain" | "cover" })}><option value="contain">Show whole page</option><option value="cover">Fill and crop</option></select></label>
+    <label className="grid gap-1.5 text-xs font-semibold">Caption<input className={INPUT} value={element.props.caption} onChange={(event) => updateProps({ caption: event.target.value })} placeholder="Optional text below the thumbnail" /></label>
+  </div>;
+}
+
+function ElementInspector({ element, update, chooseMedia, chooseGalleryMedia, move, remove, buttonPalette }: { element: FunnelPageElement; update: (next: FunnelPageElement) => void; chooseMedia: () => void; chooseGalleryMedia: (slot: "cover" | "append" | number) => void; move: (direction: -1 | 1) => void; remove: () => void; buttonPalette: FunnelButtonPalette }) {
   const align = "align" in element.props ? element.props.align : null;
   return <div className="grid gap-4">
     <div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Element</p><h3 className="mt-1 text-lg font-semibold capitalize">{element.type.replaceAll("_", " ")}</h3></div><div className="flex gap-1"><button type="button" onClick={() => move(-1)} className="rounded-lg border px-2 py-1">↑</button><button type="button" onClick={() => move(1)} className="rounded-lg border px-2 py-1">↓</button><button type="button" onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738]">×</button></div></div>
@@ -459,6 +528,7 @@ function ElementInspector({ element, update, chooseMedia, move, remove, buttonPa
     {element.type === "text" ? <label className="grid gap-1.5 text-xs font-semibold">Text style<select className={INPUT} value={element.props.style} onChange={(event) => update({ ...element, props: { ...element.props, style: event.target.value as "lead" | "body" | "small" } })}><option value="lead">Lead</option><option value="body">Body</option><option value="small">Small</option></select></label> : null}
     {element.type === "list" ? <ListInspector element={element} palette={buttonPalette} update={update} /> : null}
     {element.type === "image" ? <><button type="button" onClick={chooseMedia} className="rounded-[13px] border-2 border-[#739655] bg-[#edf5e7] px-4 py-3 text-sm font-semibold text-[#4d6a39]">Choose from media manager</button><label className="grid gap-1.5 text-xs font-semibold">Alternative text<input className={INPUT} value={element.props.media.alt} onChange={(event) => update({ ...element, props: { ...element.props, media: { ...element.props.media, alt: event.target.value } } })} /></label><label className="grid gap-1.5 text-xs font-semibold">Image fit<select className={INPUT} value={element.props.fit} onChange={(event) => update({ ...element, props: { ...element.props, fit: event.target.value as "contain" | "cover" } })}><option value="contain">Show whole image</option><option value="cover">Fill and crop</option></select></label></> : null}
+    {element.type === "workbook_gallery" ? <WorkbookGalleryInspector element={element} update={update} chooseMedia={chooseGalleryMedia} /> : null}
     {element.type === "button" ? <ButtonInspector element={element} palette={buttonPalette} update={update} /> : null}
     {element.type === "countdown" ? <CountdownInspector element={element} palette={buttonPalette} update={update} /> : null}
     {element.type === "lead_capture" ? <><label className="grid gap-1.5 text-xs font-semibold">Form heading<input className={INPUT} value={element.props.heading} onChange={(event) => update({ ...element, props: { ...element.props, heading: event.target.value } })} /></label><label className="grid gap-1.5 text-xs font-semibold">Submit label<input className={INPUT} value={element.props.submitLabel} onChange={(event) => update({ ...element, props: { ...element.props, submitLabel: event.target.value } })} /></label></> : null}
@@ -489,7 +559,7 @@ export function FunnelPageStudio({
   const [selection, setSelection] = useState<Selection>({ kind: "page" });
   const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
   const [panel, setPanel] = useState<"elements" | "blocks" | "styles">("elements");
-  const [mediaOpen, setMediaOpen] = useState(false);
+  const [mediaTarget, setMediaTarget] = useState<MediaTarget | null>(null);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [unpublishing, setUnpublishing] = useState(false);
@@ -559,6 +629,30 @@ export function FunnelPageStudio({
   function selectedElement() {
     if (selection.kind !== "element") return null;
     return document.sections[selection.sectionIndex]?.rows[selection.rowIndex]?.columns[selection.columnIndex]?.elements[selection.elementIndex] ?? null;
+  }
+
+  function assignMedia(draft: FunnelPageDocument, asset: FunnelMediaSnapshot) {
+    if (!mediaTarget) return;
+    if (mediaTarget.kind === "workbook_gallery" && selection.kind === "element") {
+      const element = draft.sections[selection.sectionIndex]?.rows[selection.rowIndex]?.columns[selection.columnIndex]?.elements[selection.elementIndex];
+      if (element?.type !== "workbook_gallery") return;
+      if (mediaTarget.slot === "cover") {
+        element.props.cover = { ...asset, alt: element.props.cover.alt || asset.alt };
+      } else if (mediaTarget.slot === "append") {
+        if (element.props.images.length < 8) element.props.images.push(asset);
+      } else {
+        const current = element.props.images[mediaTarget.slot];
+        if (current) element.props.images[mediaTarget.slot] = { ...asset, alt: current.alt || asset.alt };
+      }
+      return;
+    }
+    if (mediaTarget.kind !== "selection") return;
+    if (selection.kind === "element") {
+      const element = draft.sections[selection.sectionIndex]?.rows[selection.rowIndex]?.columns[selection.columnIndex]?.elements[selection.elementIndex];
+      if (element?.type === "image") element.props.media = asset;
+    } else if (selection.kind === "section") {
+      draft.sections[selection.sectionIndex]!.props.background = asset;
+    }
   }
 
   function destinationColumn() {
@@ -717,16 +811,16 @@ export function FunnelPageStudio({
     <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)_300px]">
       <aside className="overflow-auto border-r border-[#d6c6af] bg-[#fffaf2] p-3">
         <div className="grid grid-cols-3 gap-1 rounded-[11px] bg-[#eee7dc] p-1">{(["elements", "blocks", "styles"] as const).map((item) => <button type="button" key={item} onClick={() => { setPanel(item); if (item === "styles") setSelection({ kind: "page" }); }} className={`rounded-[8px] px-2 py-2 text-[11px] font-semibold capitalize ${panel === item ? "bg-white shadow-sm" : "text-ink/50"}`}>{item}</button>)}</div>
-        {panel === "elements" ? <div className="mt-4 grid grid-cols-2 gap-2">{(["heading", "text", "eyebrow", "list", "image", "button", "countdown", "lead_capture", "divider"] as FunnelPageElement["type"][]).map((type) => <button type="button" key={type} onClick={() => addElement(type)} className="min-h-16 rounded-[12px] border border-[#d8c5a8] bg-white px-2 text-xs font-semibold capitalize hover:border-[#739655]">{type.replaceAll("_", " ")}</button>)}</div> : null}
+        {panel === "elements" ? <div className="mt-4 grid grid-cols-2 gap-2">{(["heading", "text", "eyebrow", "list", "image", "workbook_gallery", "button", "countdown", "lead_capture", "divider"] as FunnelPageElement["type"][]).map((type) => <button type="button" key={type} onClick={() => addElement(type)} className="min-h-16 rounded-[12px] border border-[#d8c5a8] bg-white px-2 text-xs font-semibold capitalize hover:border-[#739655]">{type.replaceAll("_", " ")}</button>)}</div> : null}
         {panel === "blocks" ? <div className="mt-4 grid gap-2">{(["hero", "split", "offer", "blank"] as const).map((kind) => <button type="button" key={kind} onClick={() => mutate((draft) => { draft.sections.push(newSection(kind)); setSelection({ kind: "section", sectionIndex: draft.sections.length - 1 }); })} className="min-h-14 rounded-[12px] border border-[#d8c5a8] bg-white px-3 text-left text-sm font-semibold capitalize hover:border-[#739655]">+ {kind} section</button>)}</div> : null}
         {panel === "styles" ? <div className="mt-4 grid gap-4"><label className="grid gap-1 text-xs font-semibold">Theme<select className={INPUT} value={document.theme} onChange={(event) => mutate((draft) => { draft.theme = event.target.value as FunnelPageDocument["theme"]; })}>{Object.keys(themes).map((theme) => <option key={theme} value={theme}>{theme[0]!.toUpperCase()}{theme.slice(1)}</option>)}</select></label><ColorControl label="Page background" value={document.styles?.colors?.pageBackground ?? baseTheme.page} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, pageBackground: value } }; })} /><ColorControl label="Surface" value={document.styles?.colors?.surface ?? baseTheme.surface} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, surface: value } }; })} /><ColorControl label="Primary" value={document.styles?.colors?.primary ?? baseTheme.primary} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, primary: value } }; })} /><NumberControl label="Content width" value={document.styles?.layout?.contentWidth ?? 1120} min={640} max={1600} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, layout: { ...draft.styles?.layout, contentWidth: value } }; })} /><NumberControl label="Section spacing" value={document.styles?.layout?.sectionGap ?? 22} min={0} max={160} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, layout: { ...draft.styles?.layout, sectionGap: value } }; })} /></div> : null}
       </aside>
       <section className="min-w-0 overflow-auto bg-[#d9d4cc] p-5"><EditorCanvas document={document} selection={selection} onSelect={setSelection} viewport={viewport} orderFormPreview={orderFormPreview} /></section>
       <aside className="overflow-auto border-l border-[#d6c6af] bg-[#fffaf2] p-4">
-        {currentElement && selection.kind === "element" ? <ElementInspector element={currentElement} buttonPalette={buttonPalette} chooseMedia={() => setMediaOpen(true)} update={(next) => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements[selection.elementIndex] = next; })} move={(direction) => mutate((draft) => { const items = draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements; const nextIndex = selection.elementIndex + direction; if (nextIndex < 0 || nextIndex >= items.length) return; const [item] = items.splice(selection.elementIndex, 1); if (item) items.splice(nextIndex, 0, item); setSelection({ ...selection, elementIndex: nextIndex }); })} remove={() => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements.splice(selection.elementIndex, 1); setSelection({ kind: "section", sectionIndex: selection.sectionIndex }); })} /> : selection.kind === "section" ? <SectionInspector section={document.sections[selection.sectionIndex]!} chooseMedia={() => setMediaOpen(true)} update={(recipe) => mutate((draft) => recipe(draft.sections[selection.sectionIndex]!))} move={(direction) => mutate((draft) => { const nextIndex = selection.sectionIndex + direction; if (nextIndex < 0 || nextIndex >= draft.sections.length) return; const [item] = draft.sections.splice(selection.sectionIndex, 1); if (item) draft.sections.splice(nextIndex, 0, item); setSelection({ kind: "section", sectionIndex: nextIndex }); })} remove={() => mutate((draft) => { if (draft.sections.length <= 1) return; draft.sections.splice(selection.sectionIndex, 1); setSelection({ kind: "page" }); })} /> : <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Page</p><h3 className="mt-1 text-lg font-semibold">Page settings</h3><p className="mt-3 text-sm leading-6 text-ink/55">Select an element on the canvas to edit its content. Page-wide styles are available from the left panel.</p><button type="button" onClick={() => setPanel("styles")} className="mt-4 w-full rounded-[12px] border border-[#d8c5a8] bg-white px-4 py-3 text-sm font-semibold">Open page styles</button><div className="mt-5 border-t border-[#eadfce] pt-5"><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Search appearance</p><div className="mt-3 grid gap-4"><label className="grid gap-1.5 text-xs font-semibold">SEO title<input className={INPUT} value={seo.title} maxLength={140} onChange={(event) => setSeo((current) => ({ ...current, title: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.title.length}/140 characters</span></label><label className="grid gap-1.5 text-xs font-semibold">Meta description<textarea className={`${INPUT} min-h-28 resize-y`} value={seo.description} maxLength={320} onChange={(event) => setSeo((current) => ({ ...current, description: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.description.length}/320 characters</span></label><label className="flex items-start gap-3 rounded-[12px] border border-[#dfcfb7] bg-white px-3 py-3 text-xs font-semibold"><input type="checkbox" checked={seo.noIndex} onChange={(event) => setSeo((current) => ({ ...current, noIndex: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-[#76a456]" /><span>Hide this page from search engines<span className="mt-1 block font-normal leading-5 text-ink/50">Adds a no-index directive while keeping the page available by its funnel URL.</span></span></label></div></div></div>}
+        {currentElement && selection.kind === "element" ? <ElementInspector element={currentElement} buttonPalette={buttonPalette} chooseMedia={() => setMediaTarget({ kind: "selection" })} chooseGalleryMedia={(slot) => setMediaTarget({ kind: "workbook_gallery", slot })} update={(next) => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements[selection.elementIndex] = next; })} move={(direction) => mutate((draft) => { const items = draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements; const nextIndex = selection.elementIndex + direction; if (nextIndex < 0 || nextIndex >= items.length) return; const [item] = items.splice(selection.elementIndex, 1); if (item) items.splice(nextIndex, 0, item); setSelection({ ...selection, elementIndex: nextIndex }); })} remove={() => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements.splice(selection.elementIndex, 1); setSelection({ kind: "section", sectionIndex: selection.sectionIndex }); })} /> : selection.kind === "section" ? <SectionInspector section={document.sections[selection.sectionIndex]!} chooseMedia={() => setMediaTarget({ kind: "selection" })} update={(recipe) => mutate((draft) => recipe(draft.sections[selection.sectionIndex]!))} move={(direction) => mutate((draft) => { const nextIndex = selection.sectionIndex + direction; if (nextIndex < 0 || nextIndex >= draft.sections.length) return; const [item] = draft.sections.splice(selection.sectionIndex, 1); if (item) draft.sections.splice(nextIndex, 0, item); setSelection({ kind: "section", sectionIndex: nextIndex }); })} remove={() => mutate((draft) => { if (draft.sections.length <= 1) return; draft.sections.splice(selection.sectionIndex, 1); setSelection({ kind: "page" }); })} /> : <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Page</p><h3 className="mt-1 text-lg font-semibold">Page settings</h3><p className="mt-3 text-sm leading-6 text-ink/55">Select an element on the canvas to edit its content. Page-wide styles are available from the left panel.</p><button type="button" onClick={() => setPanel("styles")} className="mt-4 w-full rounded-[12px] border border-[#d8c5a8] bg-white px-4 py-3 text-sm font-semibold">Open page styles</button><div className="mt-5 border-t border-[#eadfce] pt-5"><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Search appearance</p><div className="mt-3 grid gap-4"><label className="grid gap-1.5 text-xs font-semibold">SEO title<input className={INPUT} value={seo.title} maxLength={140} onChange={(event) => setSeo((current) => ({ ...current, title: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.title.length}/140 characters</span></label><label className="grid gap-1.5 text-xs font-semibold">Meta description<textarea className={`${INPUT} min-h-28 resize-y`} value={seo.description} maxLength={320} onChange={(event) => setSeo((current) => ({ ...current, description: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.description.length}/320 characters</span></label><label className="flex items-start gap-3 rounded-[12px] border border-[#dfcfb7] bg-white px-3 py-3 text-xs font-semibold"><input type="checkbox" checked={seo.noIndex} onChange={(event) => setSeo((current) => ({ ...current, noIndex: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-[#76a456]" /><span>Hide this page from search engines<span className="mt-1 block font-normal leading-5 text-ink/50">Adds a no-index directive while keeping the page available by its funnel URL.</span></span></label></div></div></div>}
       </aside>
     </div>
-    {mediaOpen ? <AssetLibrary assets={assets} funnelId={funnelId} stepId={stepId} onClose={() => setMediaOpen(false)} onUploaded={(asset) => mutate((draft) => { draft.assets = [...(draft.assets ?? []), asset]; if (selection.kind === "element") { const element = draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements[selection.elementIndex]; if (element?.type === "image") element.props.media = asset; } else if (selection.kind === "section") draft.sections[selection.sectionIndex]!.props.background = asset; setMediaOpen(false); })} onChoose={(asset) => mutate((draft) => { if (selection.kind === "element") { const element = draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements[selection.elementIndex]; if (element?.type === "image") element.props.media = asset; } else if (selection.kind === "section") draft.sections[selection.sectionIndex]!.props.background = asset; setMediaOpen(false); })} /> : null}
+    {mediaTarget ? <AssetLibrary assets={assets} funnelId={funnelId} stepId={stepId} onClose={() => setMediaTarget(null)} onUploaded={(asset) => mutate((draft) => { draft.assets = [...(draft.assets ?? []), asset]; assignMedia(draft, asset); setMediaTarget(null); })} onChoose={(asset) => mutate((draft) => { assignMedia(draft, asset); setMediaTarget(null); })} /> : null}
     {pendingNavigation ? <div className="fixed inset-0 z-[320] grid place-items-center bg-black/50 p-4" role="presentation">
       <section role="dialog" aria-modal="true" aria-labelledby="unsaved-page-title" className="w-full max-w-lg rounded-[24px] border border-[#d8c5a8] bg-[#fffaf2] p-6 shadow-2xl">
         <p className="text-xs font-black uppercase tracking-[.12em] text-[#8a674d]">Unsaved changes</p>

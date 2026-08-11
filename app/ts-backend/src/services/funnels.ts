@@ -322,6 +322,16 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
     })
   }),
   funnelElementBaseSchema.extend({
+    type: z.literal("workbook_gallery"),
+    props: z.object({
+      title: z.string().trim().max(300).default("Workbook preview"),
+      cover: funnelMediaSnapshotSchema,
+      images: z.array(funnelMediaSnapshotSchema).max(8).default([]),
+      fit: z.enum(["contain", "cover"]).default("contain"),
+      caption: z.string().trim().max(1000).default("")
+    })
+  }),
+  funnelElementBaseSchema.extend({
     type: z.literal("button"),
     props: z.object({
       label: z.string().trim().min(1).max(200),
@@ -3036,13 +3046,13 @@ export async function generateAdminFunnelPageDraft(
               current ? `Current structured page:\n${JSON.stringify(current)}` : "",
               "The content object is a versioned visual-editor document. It must have schemaVersion 2, kind funnel_page, a theme, and sections containing rows, columns, and elements.",
               `Allowed themes: ${FUNNEL_PAGE_THEMES.join(", ")}. Section tones: default, muted, accent, dark. Section widths: narrow, standard, wide.`,
-              "Allowed element types are eyebrow, heading, text, list, image, button, lead_capture, and divider.",
+              "Allowed element types are eyebrow, heading, text, list, image, workbook_gallery, button, lead_capture, and divider.",
               "Use this exact nesting shape: content={schemaVersion:2,kind:'funnel_page',theme,sections:[{id,props:{tone,width,background:null},rows:[{id,columns:[{id,span,elements:[]}]}]}]}.",
-              "Exact element props: eyebrow={text,align}; heading={text,level:'h1'|'h2'|'h3',align}; text={text,style:'lead'|'body'|'small',align}; list={items:string[],style:'checks'|'bullets',align}; image={media:{assetId,storagePath,publicUrl,alt,width,height},fit:'contain'|'cover',caption}; button={label,variant:'primary'|'secondary'|'text',align,action}; lead_capture={heading,collectFirstName,firstNameLabel,emailLabel,submitLabel,action}; divider={}.",
+              "Exact element props: eyebrow={text,align}; heading={text,level:'h1'|'h2'|'h3',align}; text={text,style:'lead'|'body'|'small',align}; list={items:string[],style:'checks'|'bullets',align}; image={media:{assetId,storagePath,publicUrl,alt,width,height},fit:'contain'|'cover',caption}; workbook_gallery={title,cover:media,images:media[],fit:'contain'|'cover',caption}; button={label,variant:'primary'|'secondary'|'text',align,action}; lead_capture={heading,collectFirstName,firstNameLabel,emailLabel,submitLabel,action}; divider={}.",
               "Every element needs a unique stable string id. Rows, columns, and sections also need unique stable string ids. Columns use an integer span from 1 through 12.",
               "Buttons contain label, variant (primary, secondary, or text), align, and a semantic action.",
               "Use action {\"type\":\"next_step\"} to continue through the funnel. Use {\"type\":\"url\",\"target\":\"...\"} only for a deliberate external or fixed destination.",
-              "Image elements contain a media snapshot with assetId, storagePath, publicUrl, alt, width, and height. Preserve existing media snapshots exactly unless instructed otherwise.",
+              "Image and workbook gallery elements contain media snapshots with assetId, storagePath, publicUrl, alt, width, and height. Preserve existing media snapshots exactly unless instructed otherwise. Only use workbook_gallery when the current page already contains its cover and sample-page media.",
               "The seo object must include title, description, and noIndex.",
               "Be specific, clear, and persuasive without hype. Never invent testimonials, statistics, scarcity, guarantees, product capabilities, prices, discounts, or research findings.",
               "Preserve factual details from the current page unless the editor explicitly requests a change.",

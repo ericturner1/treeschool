@@ -177,7 +177,8 @@ export default async function FirstGradeHomeschoolCurriculumPage() {
   const { workbooks } = await listNativeWorkbookCatalog({
     userId: user?.id,
     grade: 1,
-    subject: null
+    subject: null,
+    includePreviews: true
   }).catch(() => ({ workbooks: [] as NativeWorkbookCatalogItem[] }));
   const bundle = selectFirstGradeBundle(workbooks);
   if (!bundle) notFound();
@@ -418,6 +419,8 @@ export default async function FirstGradeHomeschoolCurriculumPage() {
                 <WorkbookCover
                   title={workbook.title}
                   src={getFirstGradeMarketingCoverPath(workbook)}
+                  previewImages={workbook.previewImages ?? []}
+                  previewSlug={workbook.slug}
                 />
                 {workbook.pageCount ? (
                   <p className="mt-2 text-center text-xs font-semibold text-ink/50">

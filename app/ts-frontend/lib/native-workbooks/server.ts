@@ -224,12 +224,14 @@ export async function listNativeWorkbookCatalog(input: {
   profileId?: string | null;
   grade?: number | null;
   subject?: string | null;
+  includePreviews?: boolean;
 }) {
   const params = new URLSearchParams();
   if (input.userId) params.set("userId", input.userId);
   if (input.profileId) params.set("profileId", input.profileId);
   if (input.grade != null) params.set("grade", String(input.grade));
   if (input.subject) params.set("subject", input.subject);
+  if (input.includePreviews) params.set("includePreviews", "true");
   const response = await requireOk(
     await backendFetch(`${getBackendUrl()}/internal/native-workbooks/catalog?${params}`, { cache: "no-store" }),
     "Could not load the bookstore."

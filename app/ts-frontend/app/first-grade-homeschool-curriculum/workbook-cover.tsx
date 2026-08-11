@@ -2,17 +2,38 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import { WorkbookGallery } from "../../components/workbook-gallery";
 
 export function WorkbookCover({
   title,
   src,
+  previewImages = [],
+  previewSlug,
   priority = false
 }: {
   title: string;
   src: string | null;
+  previewImages?: Array<{ url: string; label: string }>;
+  previewSlug?: string;
   priority?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
+
+  if (src && (previewImages.length > 0 || previewSlug)) {
+    return (
+      <WorkbookGallery
+        title={title}
+        cover={{ url: src, alt: `${title} printable first-grade homeschool workbook cover`, label: "Cover" }}
+        images={previewImages.map((image) => ({
+          url: image.url,
+          alt: `${title}: ${image.label}`,
+          label: image.label
+        }))}
+        previewEndpoint={previewSlug ? `/api/native-workbooks/product-previews?slug=${encodeURIComponent(previewSlug)}` : undefined}
+        priority={priority}
+      />
+    );
+  }
 
   return (
     <div className="relative aspect-[3/4] overflow-hidden rounded-[16px] border border-[#d8c7ad] bg-white shadow-[0_8px_20px_rgba(80,58,39,0.1)]">

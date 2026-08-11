@@ -138,6 +138,51 @@ describe("funnel administration normalization", () => {
     expect(element.props.media.publicUrl).toBe(asset.publicUrl);
   });
 
+  test("validates workbook galleries as ordered immutable media snapshots", () => {
+    const cover = {
+      assetId: "cover",
+      storagePath: "funnel-assets/funnel/step/cover.webp",
+      publicUrl: "/api/funnels/assets/funnel/step/cover.webp",
+      alt: "Math 1 cover",
+      width: 800,
+      height: 1000
+    };
+    const sample = {
+      ...cover,
+      assetId: "sample",
+      storagePath: "funnel-assets/funnel/step/sample.webp",
+      publicUrl: "/api/funnels/assets/funnel/step/sample.webp",
+      alt: "Table of contents"
+    };
+    const content = funnelPageContentSchema.parse({
+      schemaVersion: 2,
+      kind: "funnel_page",
+      theme: "sage",
+      assets: [cover, sample],
+      sections: [{
+        id: "section_gallery",
+        props: { tone: "default", width: "standard", background: null },
+        rows: [{
+          id: "row_gallery",
+          columns: [{
+            id: "column_gallery",
+            span: 4,
+            elements: [{
+              id: "gallery_math",
+              type: "workbook_gallery",
+              props: { title: "Math 1", cover, images: [sample], fit: "contain", caption: "Look inside" }
+            }]
+          }]
+        }]
+      }]
+    });
+
+    const element = content.sections[0]?.rows[0]?.columns[0]?.elements[0];
+    expect(element?.type).toBe("workbook_gallery");
+    if (element?.type !== "workbook_gallery") throw new Error("Expected a workbook gallery element.");
+    expect(element.props.images[0]?.alt).toBe("Table of contents");
+  });
+
   test("preserves conversion-focused button typography and appearance", () => {
     const content = funnelPageContentSchema.parse({
       schemaVersion: 2,
