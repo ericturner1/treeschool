@@ -91,7 +91,7 @@ export default async function StudentPointsPage(props: Props) {
             playKey={searchParams?.resetForm === "award" ? searchParams.resetToken ?? null : null}
           />
           <section className="overflow-hidden rounded-[30px] border border-[#b7ce9f] bg-[#eef5e4] shadow-[0_8px_0_#cadbb9]">
-            <div className="grid gap-6 px-6 py-7 sm:px-8 xl:grid-cols-[minmax(190px,0.7fr)_minmax(300px,1.4fr)_minmax(290px,1fr)] xl:items-center">
+            <div className="grid gap-6 px-6 py-7 sm:px-8 xl:grid-cols-[minmax(190px,0.7fr)_minmax(0,2fr)_minmax(150px,0.55fr)] xl:items-center">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.14em] text-[#587443]">Total balance</p>
                 <div className="mt-3 flex items-center gap-4">
@@ -113,22 +113,14 @@ export default async function StudentPointsPage(props: Props) {
                 timeZone={streakSettings.timeZone}
                 pluralName={pluralName}
               />
-              <div className="grid grid-cols-2 gap-3">
-                <div className="min-w-32 rounded-[20px] bg-white/75 px-5 py-4">
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-1">
+                <div className="rounded-[20px] bg-white/75 px-5 py-4">
                   <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">Available</p>
                   <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.availableBalance}</p>
                 </div>
-                <div className="min-w-32 rounded-[20px] bg-white/75 px-5 py-4">
+                <div className="rounded-[20px] bg-white/75 px-5 py-4">
                   <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">In the bank</p>
                   <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.bankBalance}</p>
-                </div>
-                <div className="min-w-36 rounded-[20px] bg-white/75 px-5 py-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">Lifetime earned</p>
-                  <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.lifetimeEarned}</p>
-                </div>
-                <div className="min-w-36 rounded-[20px] bg-white/75 px-5 py-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">Used</p>
-                  <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.lifetimeUsed}</p>
                 </div>
               </div>
             </div>
@@ -218,7 +210,18 @@ export default async function StudentPointsPage(props: Props) {
             <section className="site-panel rounded-[28px] px-6 py-7">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.13em] text-[#587443]">Points bank</p>
+                  <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.13em] text-[#587443]">
+                    <span
+                      aria-hidden="true"
+                      className="grid h-7 w-7 place-items-center rounded-[9px] bg-[#e3eed8] text-[#587443]"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none">
+                        <path d="M3.5 9h17L12 4 3.5 9Z" fill="currentColor" />
+                        <path d="M5.5 10.5v6m4.3-6v6m4.4-6v6m4.3-6v6M3.5 19h17M4.5 16.5h15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                    <span>Points bank</span>
+                  </p>
                   <h2 className="mt-2 text-[30px] font-semibold tracking-[-0.05em] text-ink">Save and grow {pluralName.toLowerCase()}</h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/60">
                     Banked {pluralName.toLowerCase()} earn {points.settings.bank.interestRatePercent}% interest with {points.settings.bank.compoundingInterval} compounding. Transfers never change the total balance.
@@ -289,6 +292,17 @@ export default async function StudentPointsPage(props: Props) {
               </div>
             </section>
           ) : null}
+
+          <section aria-label="Lifetime points summary" className="grid gap-4 sm:grid-cols-2">
+            <div className="site-panel rounded-[24px] px-6 py-5">
+              <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">Lifetime earned</p>
+              <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.lifetimeEarned}</p>
+            </div>
+            <div className="site-panel rounded-[24px] px-6 py-5">
+              <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">Used</p>
+              <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.lifetimeUsed}</p>
+            </div>
+          </section>
 
           <section className="site-panel rounded-[28px] px-6 py-7">
             <div className="flex flex-wrap items-end justify-between gap-3">

@@ -32,21 +32,29 @@ export function PointsBalanceChart({
   }
   const width = 480;
   const height = 128;
-  const paddingX = 8;
+  const plotLeft = 38;
+  const plotRight = 8;
   const paddingY = 10;
   const balances = points.map((point) => point.balance);
   const minimum = Math.min(0, ...balances);
   const maximum = Math.max(1, ...balances);
   const span = Math.max(1, maximum - minimum);
+  const yPosition = (value: number) =>
+    paddingY + ((maximum - value) / span) * (height - paddingY * 2);
+  const yAxisValues = Array.from(new Set([
+    maximum,
+    Math.round((maximum + minimum) / 2),
+    minimum
+  ]));
   const coordinates = points.map((point, index) => {
     const x = points.length === 1
-      ? width / 2
-      : paddingX + (index / (points.length - 1)) * (width - paddingX * 2);
-    const y = paddingY + ((maximum - point.balance) / span) * (height - paddingY * 2);
+      ? plotLeft + (width - plotLeft - plotRight) / 2
+      : plotLeft + (index / (points.length - 1)) * (width - plotLeft - plotRight);
+    const y = yPosition(point.balance);
     return { x, y };
   });
   const line = coordinates.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
-  const area = `${paddingX},${height - paddingY} ${line} ${width - paddingX},${height - paddingY}`;
+  const area = `${plotLeft},${height - paddingY} ${line} ${width - plotRight},${height - paddingY}`;
   const dateFormatter = new Intl.DateTimeFormat("en", {
     timeZone,
     month: "short",
@@ -72,7 +80,34 @@ export function PointsBalanceChart({
             <stop offset="100%" stopColor="#6f9852" stopOpacity="0.03" />
           </linearGradient>
         </defs>
-        <line x1={paddingX} x2={width - paddingX} y1={height - paddingY} y2={height - paddingY} stroke="#a8bd96" strokeOpacity="0.45" />
+        {yAxisValues.map((value) => {
+          const y = yPosition(value);
+          return (
+            <g key={value}>
+              <line
+                x1={plotLeft}
+                x2={width - plotRight}
+                y1={y}
+                y2={y}
+                stroke="#a8bd96"
+                strokeOpacity={value === minimum ? 0.5 : 0.26}
+                strokeDasharray={value === minimum ? undefined : "4 5"}
+              />
+              <text
+                x={plotLeft - 8}
+                y={y}
+                textAnchor="end"
+                dominantBaseline="middle"
+                fill="#6f6b65"
+                fillOpacity="0.68"
+                fontSize="11"
+                fontWeight="700"
+              >
+                {value}
+              </text>
+            </g>
+          );
+        })}
         <polygon points={area} fill="url(#points-balance-area)" />
         <polyline points={line} fill="none" stroke="#5f8747" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
         <circle cx={coordinates.at(-1)!.x} cy={coordinates.at(-1)!.y} r="5" fill="#fff" stroke="#5f8747" strokeWidth="3" />
