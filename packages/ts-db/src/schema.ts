@@ -6,6 +6,7 @@ import {
   integer,
   index,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -2550,7 +2551,7 @@ export const weeklyPlanDaySubjectGrades = pgTable(
     subjectKey: text("subject_key").notNull(),
     subjectLabel: text("subject_label").notNull(),
     title: text("title"),
-    score: integer("score").notNull(),
+    score: numeric("score", { precision: 5, scale: 2, mode: "number" }).notNull(),
     assessmentRecommended: boolean("assessment_recommended").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
@@ -2651,7 +2652,7 @@ export const teacherActivityEvents = pgTable(
     eventType: text("event_type").notNull(),
     subjectKey: text("subject_key"),
     subjectLabel: text("subject_label"),
-    score: integer("score"),
+    score: numeric("score", { precision: 5, scale: 2, mode: "number" }),
     metadata: jsonb("metadata")
       .$type<Record<string, unknown>>()
       .notNull()

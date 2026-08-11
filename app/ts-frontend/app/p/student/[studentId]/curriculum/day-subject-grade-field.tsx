@@ -62,8 +62,8 @@ export function DaySubjectGradeField({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const score = Number(value);
-    if (!Number.isInteger(score) || score < 0 || score > 100) {
-      setError("Enter a whole-number grade from 0 to 100.");
+    if (!Number.isFinite(score) || score < 0 || score > 100) {
+      setError("Enter a grade from 0 to 100.");
       return;
     }
     void save(score);
@@ -93,7 +93,7 @@ export function DaySubjectGradeField({
         type="number"
         min="0"
         max="100"
-        step="1"
+        step="0.01"
         required
         autoFocus
         value={value}

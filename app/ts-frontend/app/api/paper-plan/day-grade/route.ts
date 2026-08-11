@@ -23,8 +23,8 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (body.score !== null && (typeof body.score !== "number" || !Number.isInteger(body.score) || body.score < 0 || body.score > 100)) {
-    return NextResponse.json({ error: "Enter a whole-number grade from 0 to 100." }, { status: 400 });
+  if (body.score !== null && (typeof body.score !== "number" || !Number.isFinite(body.score) || body.score < 0 || body.score > 100)) {
+    return NextResponse.json({ error: "Enter a grade from 0 to 100." }, { status: 400 });
   }
 
   try {

@@ -803,7 +803,7 @@ function clampGrade(value: unknown) {
   if (value == null || (typeof value === "string" && value.trim() === "")) return null;
   const grade = Number(value);
   if (!Number.isFinite(grade)) return null;
-  return Math.max(0, Math.min(100, Math.round(grade)));
+  return Math.max(0, Math.min(100, Math.round(grade * 100) / 100));
 }
 
 async function resolveUploadSubject(input: {
