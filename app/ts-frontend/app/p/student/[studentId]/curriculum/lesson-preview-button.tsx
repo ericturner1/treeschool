@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { LessonDispositionControl } from "./lesson-disposition-control";
 
@@ -32,16 +32,20 @@ export function LessonPreviewButton({
   const titleId = useId();
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [currentDisposition, setCurrentDisposition] = useState(disposition);
-  const previewParams = new URLSearchParams({
-    weeklyPlanItemId,
-    documentId,
-    lessonLabel,
-    firstPageIndex: String(firstPageIndex),
-    lastPageIndex: String(lastPageIndex),
-    ...(sourceUnitId ? { sourceUnitId } : {})
-  });
-  const previewUrl = `/api/paper-plan/lesson-preview?${previewParams.toString()}`;
+  const previewUrl = useMemo(() => {
+    const previewParams = new URLSearchParams({
+      weeklyPlanItemId,
+      documentId,
+      lessonLabel,
+      firstPageIndex: String(firstPageIndex),
+      lastPageIndex: String(lastPageIndex),
+      ...(sourceUnitId ? { sourceUnitId } : {})
+    });
+    return `/api/paper-plan/lesson-preview?${previewParams.toString()}`;
+  }, [documentId, firstPageIndex, lastPageIndex, lessonLabel, sourceUnitId, weeklyPlanItemId]);
 
   useEffect(() => setCurrentDisposition(disposition), [disposition]);
 
@@ -58,6 +62,32 @@ export function LessonPreviewButton({
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    let objectUrl: string | null = null;
+    setLoaded(false);
+    setPreviewError(null);
+    setPreviewObjectUrl(null);
+    void fetch(previewUrl, { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({})) as { error?: string };
+          throw new Error(payload.error || "Could not open the lesson pages.");
+        }
+        objectUrl = URL.createObjectURL(await response.blob());
+        setPreviewObjectUrl(objectUrl);
+      })
+      .catch((requestError) => {
+        if (requestError instanceof DOMException && requestError.name === "AbortError") return;
+        setPreviewError(requestError instanceof Error ? requestError.message : "Could not open the lesson pages.");
+      });
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [open, previewUrl]);
 
   function openPreview() {
     setLoaded(false);
@@ -113,7 +143,14 @@ export function LessonPreviewButton({
             </header>
 
             <div className="relative min-h-0 flex-1 bg-[#e9e5de]">
-              {!loaded ? (
+              {previewError ? (
+                <div className="absolute inset-0 z-10 grid place-items-center bg-[#f3efe8] p-6">
+                  <div className="max-w-md rounded-[18px] border border-[#efd4c9] bg-white px-5 py-4 text-center text-sm text-[#7d4034]">
+                    <p className="font-semibold">These lesson pages could not be opened.</p>
+                    <p className="mt-1 leading-6">{previewError}</p>
+                  </div>
+                </div>
+              ) : !loaded ? (
                 <div className="absolute inset-0 z-10 grid place-items-center bg-[#f3efe8]">
                   <div className="flex items-center gap-3 text-sm font-semibold text-ink/62">
                     <span aria-hidden="true" className="h-5 w-5 animate-spin rounded-full border-2 border-[#729954] border-r-transparent" />
@@ -121,12 +158,12 @@ export function LessonPreviewButton({
                   </div>
                 </div>
               ) : null}
-              <iframe
-                src={previewUrl}
+              {previewObjectUrl ? <iframe
+                src={previewObjectUrl}
                 title={`${lessonLabel} lesson pages`}
                 className="h-full w-full border-0"
                 onLoad={() => setLoaded(true)}
-              />
+              /> : null}
             </div>
 
             <footer className="border-t border-[#e8d9bd] bg-[#fffaf2] px-4 py-4 sm:px-6">
