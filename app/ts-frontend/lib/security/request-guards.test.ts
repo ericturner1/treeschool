@@ -30,6 +30,34 @@ test("allows same-origin mutations and Stripe webhooks", () => {
   expect(hasTrustedRequestOrigin(webhook, "/api/billing/stripe-webhook")).toBe(true);
 });
 
+test("allows mutations from the HTTPS local-development proxy", () => {
+  const request = new Request("http://ts-frontend:3100/api/funnels/pages", {
+    method: "POST",
+    headers: {
+      origin: "https://dev.treehomeschool.com",
+      "x-forwarded-host": "dev.treehomeschool.com",
+      "x-forwarded-proto": "https"
+    }
+  });
+
+  expect(hasTrustedRequestOrigin(request, "/api/funnels/pages")).toBe(true);
+});
+
+test("does not trust the local-development proxy origin in production", () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  try {
+    const request = new Request("http://ts-frontend:3100/api/funnels/pages", {
+      method: "POST",
+      headers: { origin: "https://dev.treehomeschool.com" }
+    });
+    expect(hasTrustedRequestOrigin(request, "/api/funnels/pages")).toBe(false);
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+  }
+});
+
 test("rate limits repeated sign-in requests per client address", () => {
   const request = new Request("https://www.treehomeschool.com/signin", {
     method: "POST",

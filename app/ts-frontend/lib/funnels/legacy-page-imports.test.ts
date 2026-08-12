@@ -56,9 +56,21 @@ describe("legacy funnel page imports", () => {
     }
   });
 
-  test("does not present routing, checkout, or runtime interactions as content pages", () => {
+  test("imports the editable content around protected purchase fulfillment", () => {
+    const imported = getLegacyFunnelPageImport(step("purchase_fulfillment", "runtime"));
+    const headings = imported?.content.sections.flatMap((section) =>
+      section.rows.flatMap((row) => row.columns.flatMap((column) =>
+        column.elements.flatMap((element) => element.type === "heading" ? [element.props.text] : [])
+      ))
+    ) ?? [];
+
+    expect(canImportLegacyFunnelPage(step("purchase_fulfillment", "runtime"))).toBe(true);
+    expect(headings).toContain("Thank you! You're done with your purchase journey.");
+    expect(imported?.seo.noIndex).toBe(true);
+  });
+
+  test("does not present routing or checkout interactions as content pages", () => {
     expect(canImportLegacyFunnelPage(step("first_grade_curriculum_experiment"))).toBe(false);
     expect(canImportLegacyFunnelPage(step("stripe_checkout", "external"))).toBe(false);
-    expect(canImportLegacyFunnelPage(step("purchase_fulfillment", "runtime"))).toBe(false);
   });
 });

@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   classifyWorkbookContentChange,
   emptyWorkbookContent,
+  flattenWorkbookExercises,
+  flattenWorkbookLearnBlocks,
   parseWorkbookContent,
   validateWorkbookForPublish,
   workbookLessonIdFingerprint,
@@ -45,6 +47,76 @@ describe("Workbook Studio content compatibility", () => {
     });
     expect(workbookLessonIdFingerprint(next)).toBe(
       workbookLessonIdFingerprint(previous),
+    );
+  });
+
+  test("persists box styling as a same-edition content revision", () => {
+    const previous = validContent();
+    const next = structuredClone(previous);
+    const lesson = next.chapters[0].lessons[0];
+    lesson.boxStyle = { paddingTop: 12, backgroundColor: "#fffaf2" };
+    lesson.learnSectionBoxStyle = { marginBottom: 8 };
+    lesson.learnBlocks[0].boxStyle = {
+      borderColor: "#739e56",
+      borderWidth: 2,
+      borderRadius: 10,
+      borderStyle: "solid",
+    };
+    lesson.exercises[0].boxStyle = { paddingLeft: 6 };
+
+    const parsed = parseWorkbookContent(next);
+    expect(parsed.chapters[0].lessons[0].learnBlocks[0].boxStyle).toEqual(
+      lesson.learnBlocks[0].boxStyle,
+    );
+    expect(classifyWorkbookContentChange(previous, parsed).classification).toBe(
+      "revision",
+    );
+  });
+
+  test("persists layout rows without changing lesson compatibility", () => {
+    const previous = validContent();
+    const next = structuredClone(previous);
+    const lesson = next.chapters[0].lessons[0];
+    const learnBlock = lesson.learnBlocks[0];
+    const exercises = lesson.exercises.slice(0, 2);
+    if (learnBlock.type === "layout_row") throw new Error("Unexpected row fixture");
+    const leftExercise = exercises[0];
+    const rightExercise = exercises[1];
+    if (
+      !leftExercise ||
+      !rightExercise ||
+      leftExercise.type === "layout_row" ||
+      rightExercise.type === "layout_row"
+    ) {
+      throw new Error("Unexpected row fixture");
+    }
+    lesson.learnBlocks = [
+      {
+        id: "learn-row-1",
+        type: "layout_row",
+        columns: [
+          { id: "learn-column-1", blocks: [learnBlock] },
+          { id: "learn-column-2", blocks: [] },
+        ],
+      },
+    ];
+    lesson.exercises = [
+      {
+        id: "practice-row-1",
+        type: "layout_row",
+        columns: [
+          { id: "practice-column-1", exercises: [leftExercise] },
+          { id: "practice-column-2", exercises: [rightExercise] },
+        ],
+      },
+      ...lesson.exercises.slice(2),
+    ];
+
+    const parsed = parseWorkbookContent(next);
+    expect(flattenWorkbookLearnBlocks(parsed.chapters[0].lessons[0].learnBlocks)).toHaveLength(1);
+    expect(flattenWorkbookExercises(parsed.chapters[0].lessons[0].exercises)).toHaveLength(5);
+    expect(classifyWorkbookContentChange(previous, parsed).classification).toBe(
+      "revision",
     );
   });
 
@@ -120,5 +192,16 @@ describe("Workbook Studio validation", () => {
     );
 
     expect(() => parseWorkbookContent(content)).toThrow("duplicated");
+  });
+
+  test("rejects unsafe workbook box-style values", () => {
+    const content = validContent();
+    content.chapters[0].lessons[0].boxStyle = {
+      backgroundColor: "url(javascript:alert(1))",
+    } as never;
+
+    expect(() => parseWorkbookContent(content)).toThrow(
+      "Use a six-digit hex color",
+    );
   });
 });

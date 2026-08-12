@@ -50,6 +50,13 @@ export function FunnelStepUrlField({
   const [copied, setCopied] = useState(false);
   const normalizedPath = comparablePath(path);
   const sitePath = normalizedPath ? `/${normalizedPath}` : "";
+  const displayedHost = (() => {
+    try {
+      return new URL(origin).host.replace(/^www\./i, "");
+    } catch {
+      return origin.replace(/^https?:\/\/(?:www\.)?/i, "");
+    }
+  })();
   const localConflict = useMemo(
     () => existingSteps.some((step) =>
       step.id !== currentStepId &&
@@ -159,9 +166,9 @@ export function FunnelStepUrlField({
         availability === "unavailable" || availability === "error"
           ? "border-[#c76554] focus-within:border-[#b34e3e] focus-within:ring-[#b34e3e]/12"
           : "border-[#d8c5a8] hover:border-[#b79570] focus-within:border-[#739655] focus-within:ring-[#739655]/15"
-      } sm:grid-cols-[minmax(230px,auto)_minmax(180px,1fr)_52px]`}>
+      } sm:grid-cols-[minmax(150px,auto)_minmax(180px,1fr)_52px]`}>
         <span className="flex min-h-12 min-w-0 items-center overflow-hidden border-b border-[#ded5c7] bg-[#f1f3f5] px-4 py-3 font-medium text-ink/48 sm:border-b-0 sm:border-r">
-          <span className="truncate">{origin}/</span>
+          <span className="truncate">{displayedHost}/</span>
         </span>
         <input
           id={inputId}

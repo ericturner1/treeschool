@@ -15,8 +15,7 @@ const rateLimitBuckets = new Map<string, RateLimitBucket>();
 const MAX_RATE_LIMIT_BUCKETS = 10_000;
 const SENSITIVE_ERROR_PATTERN = /(?:\bpostgres\b|\bdrizzle\b|\bsqlstate\b|\bdatabase\b|\bconstraint\b|\brelation\s+["']|\bcolumn\s+["']|syntax error at or near|invalid input syntax for type|remaining connection slots|econn(?:refused|reset)|enotfound|etimedout|authorization\s*:|password\s*=|api[_ -]?key|-----begin .*private key-----|\bat\s+[^\s]+:\d+:\d+)/i;
 
-function configuredAppOrigin() {
-  const value = process.env.NEXT_PUBLIC_APP_URL?.trim();
+function httpOrigin(value: string | undefined) {
   if (!value) return null;
   try {
     const url = new URL(value);
@@ -24,6 +23,30 @@ function configuredAppOrigin() {
   } catch {
     return null;
   }
+}
+
+function configuredAppOrigins() {
+  const origins = new Set<string>();
+  const configuredUrl = httpOrigin(process.env.NEXT_PUBLIC_APP_URL?.trim());
+  if (configuredUrl) origins.add(configuredUrl);
+
+  const configuredHost = process.env.NEXT_PUBLIC_APP_HOST?.trim();
+  if (configuredHost) {
+    const httpsOrigin = httpOrigin(`https://${configuredHost}`);
+    const httpOriginValue = httpOrigin(`http://${configuredHost}`);
+    if (httpsOrigin) origins.add(httpsOrigin);
+    if (httpOriginValue) origins.add(httpOriginValue);
+  }
+
+  // Local development is served through the checked-in HTTPS reverse proxy.
+  // The application container still sees its own internal HTTP URL, so the
+  // browser origin must be listed explicitly here as well.
+  if (process.env.NODE_ENV !== "production") {
+    origins.add("https://dev.treehomeschool.com");
+    origins.add("http://localhost:3100");
+    origins.add("http://127.0.0.1:3100");
+  }
+  return origins;
 }
 
 function rateLimitRule(method: string, pathname: string): RateLimitRule | null {
@@ -138,8 +161,7 @@ export function hasTrustedRequestOrigin(request: Request, pathname: string) {
     if (origin === "null") return false;
     try {
       const allowedOrigins = new Set([new URL(request.url).origin]);
-      const configured = configuredAppOrigin();
-      if (configured) allowedOrigins.add(configured);
+      for (const configured of configuredAppOrigins()) allowedOrigins.add(configured);
       return allowedOrigins.has(new URL(origin).origin);
     } catch {
       return false;

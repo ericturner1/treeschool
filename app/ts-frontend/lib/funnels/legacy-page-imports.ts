@@ -452,6 +452,48 @@ function japaneseOfferImport(mode: "full" | "starter"): LegacyFunnelPageImport {
   };
 }
 
+function purchaseFulfillmentImport(): LegacyFunnelPageImport {
+  return {
+    content: document([
+      section([
+        row([column([
+          eyebrow("Purchase complete", "center"),
+          heading("Thank you! You're done with your purchase journey.", "h1", "center"),
+          text(
+            "Your order is complete. There is nothing else you need to buy or approve before continuing to your Treeschool account.",
+            "lead",
+            "center"
+          ),
+          list([
+            "Your purchase is safely attached to your account",
+            "PDF purchases receive secure delivery links by email",
+            "You can return to your account whenever you need your materials"
+          ]),
+          button("Go to your account", { type: "url", target: "/p/dashboard" }, "primary", "center")
+        ])])
+      ], "accent", "narrow"),
+      section([
+        row([column([
+          eyebrow("Completely optional", "center"),
+          heading("Want planning and recordkeeping tools too?", "h2", "center"),
+          text(
+            "Your purchase is already finished. If you would also like weekly planning, grades, attendance, and progress tracking, you can review Treeschool membership separately.",
+            "body",
+            "center"
+          ),
+          button("See optional membership plans", { type: "url", target: "/pricing" }, "secondary", "center"),
+          text("No action is required. You can simply continue to your account.", "small", "center")
+        ])])
+      ], "muted", "narrow")
+    ]),
+    seo: {
+      title: "Purchase complete · Treeschool",
+      description: "Your Treeschool purchase is complete and ready in your account.",
+      noIndex: true
+    }
+  };
+}
+
 export function getLegacyFunnelPageImport(step: AdminFunnelStep): LegacyFunnelPageImport | null {
   sequence = 0;
   switch (step.sourceRef) {
@@ -465,6 +507,8 @@ export function getLegacyFunnelPageImport(step: AdminFunnelStep): LegacyFunnelPa
       return japaneseOfferImport("full");
     case "first_grade_japanese_downsell":
       return japaneseOfferImport("starter");
+    case "purchase_fulfillment":
+      return purchaseFulfillmentImport();
     case "first_grade_homeschool_landing":
       return marketingConfigImport(firstGradeHomeschoolConfig);
     case "switch_to_paper_landing":

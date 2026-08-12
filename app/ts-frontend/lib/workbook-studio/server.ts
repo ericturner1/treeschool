@@ -27,7 +27,23 @@ async function postJson<T>(path: string, body: unknown, fallback: string) {
   return response.json() as Promise<T>;
 }
 
-export type WorkbookLearnBlock =
+export type WorkbookBoxStyle = {
+  marginTop?: number;
+  marginRight?: number;
+  marginBottom?: number;
+  marginLeft?: number;
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
+  backgroundColor?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  borderRadius?: number;
+  borderStyle?: "none" | "solid" | "dashed" | "dotted";
+};
+
+export type WorkbookLearnBlockLeaf = (
   | { type: "paragraph"; text: string }
   | {
       type: "callout";
@@ -70,9 +86,22 @@ export type WorkbookLearnBlock =
       pronunciation?: string;
       meaning?: string;
       traceRows: number;
+    }
+) & { boxStyle?: WorkbookBoxStyle };
+
+export type WorkbookLearnBlock =
+  | WorkbookLearnBlockLeaf
+  | {
+      id: string;
+      type: "layout_row";
+      columns: Array<{
+        id: string;
+        blocks: WorkbookLearnBlockLeaf[];
+      }>;
+      boxStyle?: WorkbookBoxStyle;
     };
 
-export type WorkbookExercise = {
+export type WorkbookExerciseLeaf = {
   id: string;
   type:
     | "circle_choice"
@@ -91,7 +120,20 @@ export type WorkbookExercise = {
   sampleAnswer?: string;
   writingLines?: number;
   boxHeightMm?: number;
+  boxStyle?: WorkbookBoxStyle;
 };
+
+export type WorkbookExercise =
+  | WorkbookExerciseLeaf
+  | {
+      id: string;
+      type: "layout_row";
+      columns: Array<{
+        id: string;
+        exercises: WorkbookExerciseLeaf[];
+      }>;
+      boxStyle?: WorkbookBoxStyle;
+    };
 
 export type WorkbookContent = {
   schemaVersion: 1;
@@ -110,6 +152,9 @@ export type WorkbookContent = {
       id: string;
       title: string;
       subtitle?: string;
+      boxStyle?: WorkbookBoxStyle;
+      learnSectionBoxStyle?: WorkbookBoxStyle;
+      practiceSectionBoxStyle?: WorkbookBoxStyle;
       standardsCodes: string[];
       needsIllustration: boolean;
       learnBlocks: WorkbookLearnBlock[];

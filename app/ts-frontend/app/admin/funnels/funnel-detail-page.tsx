@@ -284,6 +284,8 @@ export async function AdminFunnelDetailPage({
     (
       configurationPageData?.page ||
       selectedStep.stepType === "order_form" ||
+      selectedStep.stepType === "thank_you" ||
+      selectedStep.stepType === "fulfillment" ||
       selectedStep.sourceType === "generated" ||
       canImportLegacyFunnelPage(selectedStep)
     )
@@ -429,6 +431,11 @@ export async function AdminFunnelDetailPage({
                                   {selectedStep.stepType === "order_form" ? (
                                     <p className="w-full pt-1 text-center text-[11px] leading-4 text-ink/48">
                                       Edit the surrounding copy and layout. The product, order bumps, and secure checkout block stay protected.
+                                    </p>
+                                  ) : null}
+                                  {selectedStep.stepType === "thank_you" || selectedStep.stepType === "fulfillment" ? (
+                                    <p className="w-full pt-1 text-center text-[11px] leading-4 text-ink/48">
+                                      Edit the confirmation copy and layout. Purchase fulfillment and account access stay protected.
                                     </p>
                                   ) : null}
                                   {configurationPageData?.page ? (

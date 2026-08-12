@@ -10,12 +10,13 @@ import {
 describe("authentication session policy", () => {
   test("keeps refresh credentials available for the sliding session", () => {
     expect(AUTH_SESSION_COOKIE_MAX_AGE_SECONDS).toBe(60 * 60 * 24 * 90);
+    expect(AUTH_SESSION_IDLE_TIMEOUT_SECONDS).toBe(60 * 60 * 24 * 7);
     expect(AUTH_SESSION_COOKIE_MAX_AGE_SECONDS).toBeGreaterThan(
       AUTH_SESSION_IDLE_TIMEOUT_SECONDS
     );
   });
 
-  test("keeps a parent signed in through normal monthly use", () => {
+  test("keeps a parent signed in until seven full days of inactivity", () => {
     const now = 1_800_000_000;
 
     expect(

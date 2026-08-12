@@ -46,6 +46,40 @@ test("hands safe session renewal to a route that can commit rotated cookies atom
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
+test("hands RSC navigation renewal to the cookie-committing route", async () => {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
+
+  const fetchMock = mock(async () => {
+    throw new Error("Safe RSC renewal should not happen in Edge middleware.");
+  });
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  const request = new NextRequest(
+    "https://www.treehomeschool.com/p/student/gajou/lesson-plan?week=4",
+    {
+      method: "GET",
+      headers: {
+        rsc: "1",
+        "next-router-prefetch": "1",
+        cookie: [
+          `treeschool_access_token=${jwtWithExpiry(Math.floor(Date.now() / 1000) - 60)}`,
+          "treeschool_refresh_token=original-refresh-token",
+          `treeschool_last_activity=${Math.floor(Date.now() / 1000) - 3600}`
+        ].join("; ")
+      }
+    }
+  );
+
+  const response = await middleware(request);
+
+  expect(response.status).toBe(307);
+  expect(response.headers.get("location")).toBe(
+    "https://www.treehomeschool.com/auth/renew?next=%2Fp%2Fstudent%2Fgajou%2Flesson-plan%3Fweek%3D4"
+  );
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
 test("renews an expiring session inline for an unsafe request", async () => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";

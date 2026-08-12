@@ -240,6 +240,16 @@ const funnelElementBaseSchema = z.object({
   visibility: z.object({
     desktop: z.boolean().optional(),
     mobile: z.boolean().optional()
+  }).optional(),
+  spacing: z.object({
+    marginTop: z.number().int().min(-300).max(300).optional(),
+    marginRight: z.number().int().min(-300).max(300).optional(),
+    marginBottom: z.number().int().min(-300).max(300).optional(),
+    marginLeft: z.number().int().min(-300).max(300).optional(),
+    paddingTop: z.number().int().min(0).max(300).optional(),
+    paddingRight: z.number().int().min(0).max(300).optional(),
+    paddingBottom: z.number().int().min(0).max(300).optional(),
+    paddingLeft: z.number().int().min(0).max(300).optional()
   }).optional()
 });
 
@@ -399,6 +409,17 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
     })
   }),
   funnelElementBaseSchema.extend({
+    type: z.literal("progress_steps"),
+    props: z.object({
+      steps: z.array(z.string().trim().min(1).max(120)).min(2).max(8),
+      currentStep: z.number().int().min(1).max(8),
+      showNumbers: z.boolean().default(true)
+    }).refine(
+      ({ steps, currentStep }) => currentStep <= steps.length,
+      { message: "Current progress step must refer to one of the configured steps.", path: ["currentStep"] }
+    )
+  }),
+  funnelElementBaseSchema.extend({
     type: z.literal("divider"),
     props: z.object({}).default({})
   })
@@ -436,7 +457,16 @@ const funnelPageDocumentSchema = z.object({
     props: z.object({
       tone: z.enum(["default", "muted", "accent", "dark"]).default("default"),
       width: z.enum(["narrow", "standard", "wide"]).default("standard"),
-      background: funnelMediaSnapshotSchema.optional().nullable().default(null)
+      background: funnelMediaSnapshotSchema.optional().nullable().default(null),
+      backgroundColor: z.string().trim().max(40).optional(),
+      paddingX: z.number().int().min(0).max(300).optional(),
+      paddingY: z.number().int().min(0).max(300).optional(),
+      marginTop: z.number().int().min(0).max(300).optional(),
+      marginBottom: z.number().int().min(0).max(300).optional(),
+      borderColor: z.string().trim().max(40).optional(),
+      borderWidth: z.number().int().min(0).max(20).optional(),
+      borderRadius: z.number().int().min(0).max(200).optional(),
+      borderStyle: z.enum(["solid", "dashed", "dotted"]).optional()
     }),
     rows: z.array(z.object({
       id: z.string().trim().min(1).max(160),
@@ -2638,12 +2668,13 @@ export async function saveAdminFunnelPageDraft(
       .returning();
     if (page.isPrimary) {
       const currentSettings = (step.settingsJson ?? {}) as Record<string, unknown>;
-      const importingLegacyPage = parsed.source === "imported" && step.sourceType === "code";
+      const importingLegacyPage = parsed.source === "imported" &&
+        (step.sourceType === "code" || step.sourceType === "runtime");
       await tx
         .update(funnelSteps)
         .set({
           // An imported draft is a safe editable snapshot of the existing
-          // code-backed page. Keep the live source identity until an admin
+          // code- or runtime-backed page. Keep the live source identity until an admin
           // actually edits or publishes the managed version.
           sourceType: importingLegacyPage ? step.sourceType : "generated",
           sourceRef: importingLegacyPage ? step.sourceRef : null,
@@ -2668,10 +2699,12 @@ export async function saveAdminFunnelPageDraft(
           ...step,
           ...(page.isPrimary
             ? {
-                sourceType: parsed.source === "imported" && step.sourceType === "code"
+                sourceType: parsed.source === "imported" &&
+                  (step.sourceType === "code" || step.sourceType === "runtime")
                   ? step.sourceType
                   : "generated" as FunnelStepSourceType,
-                sourceRef: parsed.source === "imported" && step.sourceType === "code"
+                sourceRef: parsed.source === "imported" &&
+                  (step.sourceType === "code" || step.sourceType === "runtime")
                   ? step.sourceRef
                   : null,
                 previewPath

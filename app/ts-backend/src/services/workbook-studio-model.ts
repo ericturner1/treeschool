@@ -11,7 +11,34 @@ const stableIdSchema = z
     "Use a stable letter/number id with dashes or underscores.",
   );
 
+export const workbookBoxStyleSchema = z.object({
+  marginTop: z.number().min(-200).max(200).optional(),
+  marginRight: z.number().min(-200).max(200).optional(),
+  marginBottom: z.number().min(-200).max(200).optional(),
+  marginLeft: z.number().min(-200).max(200).optional(),
+  paddingTop: z.number().min(0).max(200).optional(),
+  paddingRight: z.number().min(0).max(200).optional(),
+  paddingBottom: z.number().min(0).max(200).optional(),
+  paddingLeft: z.number().min(0).max(200).optional(),
+  backgroundColor: z
+    .string()
+    .regex(/^#[0-9a-f]{6}$/i, "Use a six-digit hex color.")
+    .optional(),
+  borderColor: z
+    .string()
+    .regex(/^#[0-9a-f]{6}$/i, "Use a six-digit hex color.")
+    .optional(),
+  borderWidth: z.number().min(0).max(20).optional(),
+  borderRadius: z.number().min(0).max(200).optional(),
+  borderStyle: z.enum(["none", "solid", "dashed", "dotted"]).optional(),
+});
+
+const workbookBoxStyleField = {
+  boxStyle: workbookBoxStyleSchema.optional(),
+};
+
 const illustrationSchema = z.object({
+  ...workbookBoxStyleField,
   type: z.literal("illustration"),
   illustrationType: stableIdSchema,
   parameters: z.record(z.unknown()).default({}),
@@ -19,19 +46,22 @@ const illustrationSchema = z.object({
   caption: z.string().trim().optional(),
 });
 
-const learnBlockSchema = z.discriminatedUnion("type", [
+const learnBlockLeafSchema = z.discriminatedUnion("type", [
   z.object({
+    ...workbookBoxStyleField,
     type: z.literal("paragraph"),
     text: z.string().trim().min(1),
   }),
   illustrationSchema,
   z.object({
+    ...workbookBoxStyleField,
     type: z.literal("callout"),
     label: z.string().trim().optional(),
     text: z.string().trim().min(1),
     tone: z.enum(["tip", "remember", "example"]).default("tip"),
   }),
   z.object({
+    ...workbookBoxStyleField,
     type: z.literal("image_asset"),
     assetId: z.string().uuid().nullable().default(null),
     description: z.string().trim().min(1),
@@ -39,6 +69,7 @@ const learnBlockSchema = z.discriminatedUnion("type", [
     generationBrief: z.string().trim().optional(),
   }),
   z.object({
+    ...workbookBoxStyleField,
     type: z.literal("vocabulary_list"),
     title: z.string().trim().optional(),
     entries: z
@@ -52,12 +83,14 @@ const learnBlockSchema = z.discriminatedUnion("type", [
       .min(1),
   }),
   z.object({
+    ...workbookBoxStyleField,
     type: z.literal("reading_passage"),
     title: z.string().trim().optional(),
     paragraphs: z.array(z.string().trim().min(1)).min(1),
     attribution: z.string().trim().optional(),
   }),
   z.object({
+    ...workbookBoxStyleField,
     type: z.literal("character_practice"),
     character: z.string().trim().min(1).max(8),
     pronunciation: z.string().trim().optional(),
@@ -66,13 +99,31 @@ const learnBlockSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+const learnLayoutRowSchema = z.object({
+  ...workbookBoxStyleField,
+  id: stableIdSchema,
+  type: z.literal("layout_row"),
+  columns: z
+    .array(
+      z.object({
+        id: stableIdSchema,
+        blocks: z.array(learnBlockLeafSchema).max(30).default([]),
+      }),
+    )
+    .min(1)
+    .max(4),
+});
+
+const learnBlockSchema = z.union([learnBlockLeafSchema, learnLayoutRowSchema]);
+
 const exerciseBase = {
+  ...workbookBoxStyleField,
   id: stableIdSchema,
   prompt: z.string().trim().min(1),
   standardsCodes: z.array(z.string().trim().min(1)).default([]),
 };
 
-const exerciseSchema = z.discriminatedUnion("type", [
+const exerciseLeafSchema = z.discriminatedUnion("type", [
   z.object({
     ...exerciseBase,
     type: z.literal("circle_choice"),
@@ -127,14 +178,37 @@ const exerciseSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+const practiceLayoutRowSchema = z.object({
+  ...workbookBoxStyleField,
+  id: stableIdSchema,
+  type: z.literal("layout_row"),
+  columns: z
+    .array(
+      z.object({
+        id: stableIdSchema,
+        exercises: z.array(exerciseLeafSchema).max(30).default([]),
+      }),
+    )
+    .min(1)
+    .max(4),
+});
+
+const practiceItemSchema = z.union([
+  exerciseLeafSchema,
+  practiceLayoutRowSchema,
+]);
+
 const lessonSchema = z.object({
   id: stableIdSchema,
   title: z.string().trim().min(1),
   subtitle: z.string().trim().optional(),
+  boxStyle: workbookBoxStyleSchema.optional(),
+  learnSectionBoxStyle: workbookBoxStyleSchema.optional(),
+  practiceSectionBoxStyle: workbookBoxStyleSchema.optional(),
   standardsCodes: z.array(z.string().trim().min(1)).default([]),
   needsIllustration: z.boolean().default(false),
   learnBlocks: z.array(learnBlockSchema).min(1),
-  exercises: z.array(exerciseSchema).min(1),
+  exercises: z.array(practiceItemSchema).min(1),
   notesForParent: z.string().trim().optional(),
 });
 
@@ -182,23 +256,33 @@ export const workbookContentSchema = z
         }
         lessonIds.add(lesson.id);
 
-        lesson.exercises.forEach((exercise, exerciseIndex) => {
+        const validateExercise = (
+          exercise: (typeof lesson.exercises)[number],
+          exercisePath: Array<string | number>,
+        ) => {
           if (exerciseIds.has(exercise.id)) {
             context.addIssue({
               code: z.ZodIssueCode.custom,
-              path: [
-                "chapters",
-                chapterIndex,
-                "lessons",
-                lessonIndex,
-                "exercises",
-                exerciseIndex,
-                "id",
-              ],
+              path: [...exercisePath, "id"],
               message: `Exercise id ${exercise.id} is duplicated.`,
             });
           }
           exerciseIds.add(exercise.id);
+
+          if (exercise.type === "layout_row") {
+            exercise.columns.forEach((column, columnIndex) => {
+              column.exercises.forEach((child, childIndex) =>
+                validateExercise(child, [
+                  ...exercisePath,
+                  "columns",
+                  columnIndex,
+                  "exercises",
+                  childIndex,
+                ]),
+              );
+            });
+            return;
+          }
 
           if (exercise.type === "matching") {
             const pairIds = exercise.pairs.map((pair) => pair.id);
@@ -209,15 +293,7 @@ export const workbookContentSchema = z
             ) {
               context.addIssue({
                 code: z.ZodIssueCode.custom,
-                path: [
-                  "chapters",
-                  chapterIndex,
-                  "lessons",
-                  lessonIndex,
-                  "exercises",
-                  exerciseIndex,
-                  "rightOrder",
-                ],
+                path: [...exercisePath, "rightOrder"],
                 message:
                   "Matching rightOrder must contain every pair id exactly once.",
               });
@@ -231,20 +307,23 @@ export const workbookContentSchema = z
           ) {
             context.addIssue({
               code: z.ZodIssueCode.custom,
-              path: [
-                "chapters",
-                chapterIndex,
-                "lessons",
-                lessonIndex,
-                "exercises",
-                exerciseIndex,
-                "correctAnswer",
-              ],
+              path: [...exercisePath, "correctAnswer"],
               message:
                 "The correct answer must be one of the exercise options.",
             });
           }
-        });
+        };
+
+        lesson.exercises.forEach((exercise, exerciseIndex) =>
+          validateExercise(exercise, [
+            "chapters",
+            chapterIndex,
+            "lessons",
+            lessonIndex,
+            "exercises",
+            exerciseIndex,
+          ]),
+        );
       });
     });
   });
@@ -252,6 +331,36 @@ export const workbookContentSchema = z
 export type WorkbookContent = z.infer<typeof workbookContentSchema>;
 export type WorkbookLesson =
   WorkbookContent["chapters"][number]["lessons"][number];
+export type WorkbookLearnBlock = WorkbookLesson["learnBlocks"][number];
+export type WorkbookLearnBlockLeaf = Exclude<
+  WorkbookLearnBlock,
+  { type: "layout_row" }
+>;
+export type WorkbookPracticeItem = WorkbookLesson["exercises"][number];
+export type WorkbookExercise = Exclude<
+  WorkbookPracticeItem,
+  { type: "layout_row" }
+>;
+
+export function flattenWorkbookLearnBlocks(
+  blocks: WorkbookLearnBlock[],
+): WorkbookLearnBlockLeaf[] {
+  return blocks.flatMap((block) =>
+    block.type === "layout_row"
+      ? block.columns.flatMap((column) => column.blocks)
+      : [block],
+  );
+}
+
+export function flattenWorkbookExercises(
+  items: WorkbookPracticeItem[],
+): WorkbookExercise[] {
+  return items.flatMap((item) =>
+    item.type === "layout_row"
+      ? item.columns.flatMap((column) => column.exercises)
+      : [item],
+  );
+}
 
 export type WorkbookValidationIssue = {
   severity: "error" | "warning";
@@ -326,7 +435,7 @@ export function validateWorkbookForPublish(
 
   for (const chapter of content.chapters) {
     for (const lesson of chapter.lessons) {
-      const illustrations = lesson.learnBlocks.filter(
+      const illustrations = flattenWorkbookLearnBlocks(lesson.learnBlocks).filter(
         (block) => block.type === "illustration",
       );
       if (
@@ -343,13 +452,14 @@ export function validateWorkbookForPublish(
       }
       if (
         policy.standardExerciseCount !== null &&
-        lesson.exercises.length !== policy.standardExerciseCount
+        flattenWorkbookExercises(lesson.exercises).length !==
+          policy.standardExerciseCount
       ) {
         issues.push({
           severity: "warning",
           code: "nonstandard_exercise_count",
           path: `chapters.${chapter.id}.lessons.${lesson.id}.exercises`,
-          message: `${lesson.title} has ${lesson.exercises.length} exercises; the active rule is ${policy.standardExerciseCount}.`,
+          message: `${lesson.title} has ${flattenWorkbookExercises(lesson.exercises).length} exercises; the active rule is ${policy.standardExerciseCount}.`,
         });
       }
     }

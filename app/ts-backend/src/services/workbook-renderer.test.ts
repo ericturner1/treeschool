@@ -45,11 +45,18 @@ function rendererFixture() {
   ];
   const lesson = content.chapters[0].lessons[0];
   lesson.needsIllustration = true;
+  lesson.boxStyle = { backgroundColor: "#fffaf2" };
+  lesson.learnSectionBoxStyle = {
+    borderColor: "#739e56",
+    borderWidth: 1,
+    borderStyle: "dashed",
+  };
   lesson.learnBlocks = [
     {
       type: "reading_passage",
       title: "A short passage",
       paragraphs: ["A calm first paragraph.", "A second paragraph."],
+      boxStyle: { marginBottom: 2, paddingLeft: 3 },
     },
     {
       type: "vocabulary_list",
@@ -69,14 +76,47 @@ function rendererFixture() {
       altText: "A themed tree",
     },
   ];
-  lesson.exercises = Array.from({ length: 5 }, (_, index) => ({
+  const learnChildren = lesson.learnBlocks.splice(0, 2);
+  const leftLearnBlock = learnChildren[0];
+  const rightLearnBlock = learnChildren[1];
+  if (
+    !leftLearnBlock ||
+    !rightLearnBlock ||
+    leftLearnBlock.type === "layout_row" ||
+    rightLearnBlock.type === "layout_row"
+  ) {
+    throw new Error("Unexpected row fixture");
+  }
+  lesson.learnBlocks.unshift({
+    id: "learn-layout-row",
+    type: "layout_row",
+    columns: [
+      { id: "learn-layout-left", blocks: [leftLearnBlock] },
+      { id: "learn-layout-right", blocks: [rightLearnBlock] },
+    ],
+  });
+  const exercises = Array.from({ length: 5 }, (_, index) => ({
     id: `exercise-${index + 1}`,
     type: "short_answer" as const,
     prompt: `Question ${index + 1}`,
     correctAnswer: `Answer ${index + 1}`,
     standardsCodes: [],
     writingLines: 3,
+    ...(index === 0
+      ? { boxStyle: { borderRadius: 6, backgroundColor: "#f6eddc" } }
+      : {}),
   }));
+  lesson.exercises = [
+    {
+      id: "practice-layout-row",
+      type: "layout_row",
+      columns: [
+        { id: "practice-layout-left", exercises: [exercises[0]!] },
+        { id: "practice-layout-right", exercises: [exercises[1]!] },
+      ],
+    },
+    ...exercises.slice(2),
+  ];
   return parseWorkbookContent(content);
 }
 
@@ -115,6 +155,15 @@ describe("Workbook Studio deterministic renderer", () => {
     expect(html).toContain("Copyright &copy; 2024 Treeschool");
     expect(html).toContain("reader-vocabulary");
     expect(html).toContain("character-practice");
+    expect(html).toContain("background-color:#fffaf2");
+    expect(html).toContain(
+      "border-width:1px;border-style:dashed;border-color:#739e56",
+    );
+    expect(html).toContain("margin-bottom:2px;padding-left:3px");
+    expect(html).toContain("border-radius:6px");
+    expect(html).toContain("workbook-layout-row");
+    expect(html).toContain("grid-template-columns:repeat(2,minmax(0,1fr))");
+    expect(html).toContain('<li value="5" data-exercise-id="exercise-5"');
     expect(html).not.toContain('class="chapter-page"');
     expect(html).not.toContain("{{theme:");
     expect(html).not.toContain("{{SUBJECT_NAME}}");

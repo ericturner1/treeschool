@@ -114,7 +114,20 @@ describe("funnel administration normalization", () => {
       assets: [asset],
       sections: [{
         id: "section_test",
-        props: { tone: "default", width: "standard", background: null },
+        props: {
+          tone: "default",
+          width: "standard",
+          background: null,
+          backgroundColor: "#f6ead8",
+          paddingX: 32,
+          paddingY: 24,
+          marginTop: 12,
+          marginBottom: 20,
+          borderColor: "#8a674d",
+          borderWidth: 3,
+          borderRadius: 18,
+          borderStyle: "dashed"
+        },
         rows: [{
           id: "row_test",
           columns: [{
@@ -123,6 +136,16 @@ describe("funnel administration normalization", () => {
             elements: [{
               id: "image_test",
               type: "image",
+              spacing: {
+                marginTop: 10,
+                marginRight: -4,
+                marginBottom: 18,
+                marginLeft: 2,
+                paddingTop: 6,
+                paddingRight: 12,
+                paddingBottom: 8,
+                paddingLeft: 14
+              },
               props: { media: asset, fit: "contain", caption: "" }
             }]
           }]
@@ -132,10 +155,22 @@ describe("funnel administration normalization", () => {
 
     expect(content.styles?.layout?.contentWidth).toBe(1080);
     expect(content.assets?.[0]?.storagePath).toBe(asset.storagePath);
+    expect(content.sections[0]?.props).toMatchObject({
+      backgroundColor: "#f6ead8",
+      paddingX: 32,
+      paddingY: 24,
+      marginTop: 12,
+      marginBottom: 20,
+      borderColor: "#8a674d",
+      borderWidth: 3,
+      borderRadius: 18,
+      borderStyle: "dashed"
+    });
     const element = content.sections[0]?.rows[0]?.columns[0]?.elements[0];
     expect(element?.type).toBe("image");
     if (element?.type !== "image") throw new Error("Expected an image element.");
     expect(element.props.media.publicUrl).toBe(asset.publicUrl);
+    expect(element.spacing).toMatchObject({ marginTop: 10, marginRight: -4, paddingLeft: 14 });
   });
 
   test("validates workbook galleries as ordered immutable media snapshots", () => {
@@ -265,6 +300,57 @@ describe("funnel administration normalization", () => {
     expect(countdown.props.duration).toEqual({ days: 1, hours: 2, minutes: 3, seconds: 4 });
     expect(countdown.props.expiryAction).toEqual({ type: "redirect", target: "/offer-ended" });
     expect(countdown.props.typography?.fontFamily).toBe("Georgia, serif");
+  });
+
+  test("validates configurable progress steps and their current position", () => {
+    const baseContent = {
+      schemaVersion: 2 as const,
+      kind: "funnel_page" as const,
+      theme: "sage" as const,
+      sections: [{
+        id: "section_progress",
+        props: { tone: "default" as const, width: "standard" as const, background: null },
+        rows: [{
+          id: "row_progress",
+          columns: [{
+            id: "column_progress",
+            span: 12,
+            elements: [{
+              id: "progress_checkout",
+              type: "progress_steps" as const,
+              props: {
+                steps: ["Details", "Review", "Checkout"],
+                currentStep: 2,
+                showNumbers: true
+              }
+            }]
+          }]
+        }]
+      }]
+    };
+    const content = funnelPageContentSchema.parse(baseContent);
+    const progress = content.sections[0]?.rows[0]?.columns[0]?.elements[0];
+
+    expect(progress?.type).toBe("progress_steps");
+    if (progress?.type !== "progress_steps") throw new Error("Expected progress steps.");
+    expect(progress.props.steps).toEqual(["Details", "Review", "Checkout"]);
+    expect(progress.props.currentStep).toBe(2);
+    expect(() => funnelPageContentSchema.parse({
+      ...baseContent,
+      sections: [{
+        ...baseContent.sections[0],
+        rows: [{
+          ...baseContent.sections[0]!.rows[0],
+          columns: [{
+            ...baseContent.sections[0]!.rows[0]!.columns[0],
+            elements: [{
+              ...baseContent.sections[0]!.rows[0]!.columns[0]!.elements[0],
+              props: { steps: ["Details", "Review"], currentStep: 3, showNumbers: true }
+            }]
+          }]
+        }]
+      }]
+    })).toThrow("Current progress step");
   });
 
   test("keeps managed funnel attribution vendor-neutral until checkout metadata", () => {

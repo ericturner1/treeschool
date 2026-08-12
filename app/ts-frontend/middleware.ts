@@ -326,20 +326,17 @@ export async function middleware(request: NextRequest) {
   const isAuthPath = request.nextUrl.pathname.startsWith("/auth/");
   const isSafeRequest =
     request.method === "GET" || request.method === "HEAD";
-  const isSpeculativeRequest =
-    request.headers.get("next-router-prefetch") === "1" ||
-    request.headers.get("purpose") === "prefetch" ||
-    request.headers.get("rsc") === "1";
   const shouldUseRenewalRoute = Boolean(
     shouldRefreshSession &&
     isSafeRequest &&
-    !isSpeculativeRequest &&
     !isAuthPath
   );
 
   // Rotate Supabase credentials in a normal Route Handler response. Vercel
   // reliably commits those Set-Cookie headers before the browser returns to
-  // the requested page, avoiding an Edge middleware rotation race.
+  // the requested page, avoiding an Edge middleware rotation race. Next.js
+  // RSC navigations and prefetches must use the same route: rotating inside
+  // middleware can lose the replacement cookies and invalidate the next visit.
   if (shouldUseRenewalRoute) {
     const renewalUrl = request.nextUrl.clone();
     const renewalPath = authRenewalPathFor(request.nextUrl);

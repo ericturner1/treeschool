@@ -16,8 +16,12 @@ import {
 import { db } from "../db";
 import { uploadPrivateFile } from "./media";
 import {
+  flattenWorkbookExercises,
   parseWorkbookContent,
   type WorkbookContent,
+  type WorkbookExercise,
+  type WorkbookLearnBlockLeaf,
+  type WorkbookPracticeItem,
 } from "./workbook-studio-model";
 import { validateWorkbookForScope } from "./workbook-studio-validation";
 import {
@@ -65,6 +69,43 @@ function escapeCssStringContent(value: string) {
     .replaceAll("\\", "\\\\")
     .replaceAll('"', '\\"')
     .replaceAll(/\r?\n/g, " ");
+}
+
+type WorkbookBoxStyle = NonNullable<
+  WorkbookContent["chapters"][number]["lessons"][number]["boxStyle"]
+>;
+
+function workbookBoxStyleAttributes(
+  style: WorkbookBoxStyle | undefined,
+  baseDeclarations: string[] = [],
+) {
+  const declarations: string[] = [...baseDeclarations];
+  const addPixels = (property: string, value: number | undefined) => {
+    if (value !== undefined) declarations.push(`${property}:${value}px`);
+  };
+  addPixels("margin-top", style?.marginTop);
+  addPixels("margin-right", style?.marginRight);
+  addPixels("margin-bottom", style?.marginBottom);
+  addPixels("margin-left", style?.marginLeft);
+  addPixels("padding-top", style?.paddingTop);
+  addPixels("padding-right", style?.paddingRight);
+  addPixels("padding-bottom", style?.paddingBottom);
+  addPixels("padding-left", style?.paddingLeft);
+  if (style?.backgroundColor)
+    declarations.push(`background-color:${style.backgroundColor}`);
+  const hasBorderSetting =
+    style?.borderWidth !== undefined ||
+    style?.borderColor !== undefined ||
+    style?.borderStyle !== undefined;
+  if (hasBorderSetting) {
+    declarations.push(`border-width:${style?.borderWidth ?? 1}px`);
+    declarations.push(`border-style:${style?.borderStyle ?? "solid"}`);
+    declarations.push(`border-color:${style?.borderColor ?? "currentColor"}`);
+  }
+  addPixels("border-radius", style?.borderRadius);
+  return declarations.length
+    ? ` style="${escapeHtml(declarations.join(";"))}"`
+    : "";
 }
 
 async function firstReadable(paths: string[]) {
@@ -249,8 +290,8 @@ function renderIllustration(
   return `<figure class="workbook-illustration" role="img" aria-label="${escapeHtml(block.altText)}">${svg}${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ""}</figure>`;
 }
 
-function renderLearnBlock(
-  block: WorkbookContent["chapters"][number]["lessons"][number]["learnBlocks"][number],
+function renderLearnBlockContent(
+  block: WorkbookLearnBlockLeaf,
   definitions: Map<string, IllustrationDefinition>,
   theme: WorkbookThemeTokens,
 ) {
@@ -272,8 +313,25 @@ function renderLearnBlock(
   return `<section class="character-practice"><div class="character-model">${escapeHtml(block.character)}</div><p>${[block.pronunciation, block.meaning].filter(Boolean).map(escapeHtml).join(" · ")}</p>${Array.from({ length: block.traceRows }, () => `<div class="character-trace-row"><span>${escapeHtml(block.character)}</span><span></span><span></span><span></span></div>`).join("")}</section>`;
 }
 
+function renderLearnBlock(
+  block: WorkbookContent["chapters"][number]["lessons"][number]["learnBlocks"][number],
+  definitions: Map<string, IllustrationDefinition>,
+  theme: WorkbookThemeTokens,
+): string {
+  if (block.type === "layout_row") {
+    const row: string = `<div class="workbook-layout-row" style="display:grid;grid-template-columns:repeat(${block.columns.length},minmax(0,1fr));gap:16px">${block.columns.map((column) => `<div class="workbook-layout-column">${column.blocks.map((child) => renderLearnBlock(child, definitions, theme)).join("")}</div>`).join("")}</div>`;
+    return block.boxStyle
+      ? `<div class="workbook-content-box"${workbookBoxStyleAttributes(block.boxStyle)}>${row}</div>`
+      : row;
+  }
+  const html = renderLearnBlockContent(block, definitions, theme);
+  return block.boxStyle
+    ? `<div class="workbook-content-box"${workbookBoxStyleAttributes(block.boxStyle)}>${html}</div>`
+    : html;
+}
+
 function exerciseAnswer(
-  exercise: WorkbookContent["chapters"][number]["lessons"][number]["exercises"][number],
+  exercise: WorkbookExercise,
 ) {
   if (exercise.type === "matching") {
     return exercise.pairs
@@ -288,7 +346,7 @@ function exerciseAnswer(
 }
 
 function renderExercise(
-  exercise: WorkbookContent["chapters"][number]["lessons"][number]["exercises"][number],
+  exercise: WorkbookExercise,
 ) {
   if (
     exercise.type === "circle_choice" ||
@@ -310,6 +368,25 @@ function renderExercise(
   }
   const lines = exercise.writingLines;
   return `${escapeHtml(exercise.prompt)}<div class="write-space">${Array.from({ length: lines }, () => '<div class="write-line"></div>').join("")}</div>`;
+}
+
+function renderPracticeItems(items: WorkbookPracticeItem[]) {
+  let exerciseNumber = 0;
+  const renderNumberedExercise = (exercise: WorkbookExercise) => {
+    exerciseNumber += 1;
+    return `<li value="${exerciseNumber}" data-exercise-id="${escapeHtml(exercise.id)}"${workbookBoxStyleAttributes(exercise.boxStyle)}>${renderExercise(exercise)}</li>`;
+  };
+  return `<ol>${items
+    .map((item) => {
+      if (item.type !== "layout_row") return renderNumberedExercise(item);
+      return `<li class="workbook-layout-row-shell" style="list-style:none"><div class="workbook-layout-row"${workbookBoxStyleAttributes(item.boxStyle, ["display:grid", `grid-template-columns:repeat(${item.columns.length},minmax(0,1fr))`, "gap:16px"])}>${item.columns
+        .map(
+          (column) =>
+            `<div class="workbook-layout-column"><ol>${column.exercises.map(renderNumberedExercise).join("")}</ol></div>`,
+        )
+        .join("")}</div></li>`;
+    })
+    .join("")}</ol>`;
 }
 
 function gradeBadge(content: WorkbookContent) {
@@ -349,17 +426,17 @@ function renderWorkbookBody(
       .map((lesson, lessonIndex) => {
         const lessonNumber = `${chapterIndex + 1}.${lessonIndex + 1}`;
         return `
-        <div class="lesson" id="${escapeHtml(lesson.id)}">
+        <div class="lesson" id="${escapeHtml(lesson.id)}"${workbookBoxStyleAttributes(lesson.boxStyle)}>
           <h3 class="lesson-title">Lesson ${lessonNumber} — ${escapeHtml(lesson.title)}</h3>
           <span class="part-label">Part 1: Learn</span>
-          <div class="intro">${lesson.learnBlocks.map((block) => renderLearnBlock(block, definitions, theme)).join("")}</div>
+          <div class="intro"${workbookBoxStyleAttributes(lesson.learnSectionBoxStyle)}>${lesson.learnBlocks.map((block) => renderLearnBlock(block, definitions, theme)).join("")}</div>
           <span class="part-label">Part 2: Practice</span>
-          <div class="exercises"><ol>${lesson.exercises.map((exercise) => `<li data-exercise-id="${escapeHtml(exercise.id)}">${renderExercise(exercise)}</li>`).join("")}</ol></div>
+          <div class="exercises"${workbookBoxStyleAttributes(lesson.practiceSectionBoxStyle)}>${renderPracticeItems(lesson.exercises)}</div>
         </div>
         <div class="answer-key-page">
           <div class="ak-banner">FOR PARENTS ONLY — ANSWER KEY</div>
           <h3>Lesson ${lessonNumber} — ${escapeHtml(lesson.title)}</h3>
-          <div class="answer-key">${lesson.exercises.map((exercise, index) => `<p><strong>${index + 1}.</strong> ${escapeHtml(exerciseAnswer(exercise))}</p>`).join("")}</div>
+          <div class="answer-key">${flattenWorkbookExercises(lesson.exercises).map((exercise, index) => `<p><strong>${index + 1}.</strong> ${escapeHtml(exerciseAnswer(exercise))}</p>`).join("")}</div>
         </div>
       `;
       })

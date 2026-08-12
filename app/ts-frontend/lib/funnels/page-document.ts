@@ -109,9 +109,21 @@ export type FunnelMediaSnapshot = {
   height: number | null;
 };
 
+export type FunnelElementSpacing = {
+  marginTop?: number;
+  marginRight?: number;
+  marginBottom?: number;
+  marginLeft?: number;
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
+};
+
 type FunnelElementBase = {
   id: string;
   visibility?: { desktop?: boolean; mobile?: boolean };
+  spacing?: FunnelElementSpacing;
 };
 
 export type FunnelPageElement =
@@ -192,6 +204,14 @@ export type FunnelPageElement =
       };
     })
   | (FunnelElementBase & {
+      type: "progress_steps";
+      props: {
+        steps: string[];
+        currentStep: number;
+        showNumbers: boolean;
+      };
+    })
+  | (FunnelElementBase & {
       type: "divider";
       props: Record<string, never>;
     });
@@ -206,6 +226,7 @@ export type FunnelPageRow = {
   id: string;
   columns: FunnelPageColumn[];
 };
+export type FunnelRowColumnCount = 1 | 2 | 3 | 4;
 
 export type FunnelPageSection = {
   id: string;
@@ -213,6 +234,15 @@ export type FunnelPageSection = {
     tone: FunnelPageTone;
     width: FunnelPageWidth;
     background: FunnelMediaSnapshot | null;
+    backgroundColor?: string;
+    paddingX?: number;
+    paddingY?: number;
+    marginTop?: number;
+    marginBottom?: number;
+    borderColor?: string;
+    borderWidth?: number;
+    borderRadius?: number;
+    borderStyle?: "solid" | "dashed" | "dotted";
   };
   rows: FunnelPageRow[];
 };
@@ -228,6 +258,19 @@ export type FunnelPageDocument = {
 
 export function createFunnelDocumentId(prefix: string) {
   return `${prefix}_${crypto.randomUUID()}`;
+}
+
+export function createFunnelPageRow(
+  columnCount: FunnelRowColumnCount,
+): FunnelPageRow {
+  return {
+    id: createFunnelDocumentId("row"),
+    columns: Array.from({ length: columnCount }, () => ({
+      id: createFunnelDocumentId("column"),
+      span: 12 / columnCount,
+      elements: [],
+    })),
+  };
 }
 
 export function emptyFunnelPageDocument(headline: string, subheadline = ""): FunnelPageDocument {

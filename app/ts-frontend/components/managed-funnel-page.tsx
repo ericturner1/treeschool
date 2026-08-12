@@ -26,11 +26,13 @@ import {
   funnelListTextStyle,
   isCustomizedFunnelList
 } from "../lib/funnels/list-style";
+import { funnelElementSpacingStyle } from "../lib/funnels/element-spacing";
 import { ManagedFunnelLeadForm } from "./managed-funnel-lead-form";
 import { ManagedFunnelOneClickButton } from "./managed-funnel-one-click-button";
 import { ManagedFunnelOrderForm } from "./managed-funnel-order-form";
 import { ManagedFunnelPageTracker } from "./managed-funnel-page-tracker";
 import { FunnelCountdown } from "./funnel-countdown";
+import { FunnelProgressSteps } from "./funnel-progress-steps";
 import { WorkbookGallery } from "./workbook-gallery";
 
 const THEMES = {
@@ -332,6 +334,19 @@ function PageElement({
       </div>
     );
   }
+  if (element.type === "progress_steps") {
+    return (
+      <div className={visibility}>
+        <FunnelProgressSteps
+          steps={element.props.steps}
+          currentStep={element.props.currentStep}
+          showNumbers={element.props.showNumbers}
+          activeColor={styles?.colors?.primary ?? theme.buttonPalette.primary}
+          activeBorderColor={theme.buttonPalette.primaryShadow}
+        />
+      </div>
+    );
+  }
   if (element.type === "lead_capture") {
     const target = resolveActionHref(element.props.action, nextHref);
     if (!target || !attribution) return null;
@@ -429,6 +444,7 @@ export async function ManagedFunnelPageView({
         >
           {document.sections.map((section) => {
             const backgroundSource = section.props.background?.publicUrl ?? section.props.background?.storagePath;
+            const paddingY = section.props.paddingY ?? styles?.layout?.sectionPaddingY;
             const style = {
               ...(backgroundSource
                 ? { backgroundImage: `linear-gradient(rgba(255,255,255,.82),rgba(255,255,255,.82)),url(${JSON.stringify(backgroundSource)})` }
@@ -436,8 +452,32 @@ export async function ManagedFunnelPageView({
               ...(section.props.tone === "default" && styles?.colors?.surface
                 ? { backgroundColor: styles.colors.surface }
                 : {}),
-              ...(styles?.layout?.sectionPaddingY !== undefined
-                ? { paddingTop: styles.layout.sectionPaddingY, paddingBottom: styles.layout.sectionPaddingY }
+              ...(section.props.backgroundColor
+                ? { backgroundColor: section.props.backgroundColor }
+                : {}),
+              ...(section.props.borderColor !== undefined
+                ? { borderColor: section.props.borderColor }
+                : {}),
+              ...(section.props.borderWidth !== undefined
+                ? { borderWidth: section.props.borderWidth }
+                : {}),
+              ...(section.props.borderRadius !== undefined
+                ? { borderRadius: section.props.borderRadius }
+                : {}),
+              ...(section.props.borderStyle !== undefined
+                ? { borderStyle: section.props.borderStyle }
+                : {}),
+              ...(section.props.marginTop !== undefined
+                ? { marginTop: section.props.marginTop }
+                : {}),
+              ...(section.props.marginBottom !== undefined
+                ? { marginBottom: section.props.marginBottom }
+                : {}),
+              ...(section.props.paddingX !== undefined
+                ? { paddingLeft: section.props.paddingX, paddingRight: section.props.paddingX }
+                : {}),
+              ...(paddingY !== undefined
+                ? { paddingTop: paddingY, paddingBottom: paddingY }
                 : {}),
               ...(styles?.layout?.contentWidth && section.props.width === "standard"
                 ? { maxWidth: styles.layout.contentWidth }
@@ -459,20 +499,21 @@ export async function ManagedFunnelPageView({
                           style={{ gridColumn: `span ${column.span} / span ${column.span}` }}
                         >
                           {column.elements.map((element) => (
-                            <PageElement
-                              key={element.id}
-                              element={element}
-                              theme={theme}
-                              nextHref={step.stepType === "order_form" ? null : page.nextHref}
-                              attribution={attribution}
-                              trackedHref={trackedHref}
-                              styles={styles}
-                              countdownStorageScope={`${page.preview ? "preview" : "live"}:${page.id}:${page.latestRevisionNumber}`}
-                              stepId={step.id}
-                              stepType={step.stepType}
-                              sourceCheckoutSessionId={sourceCheckoutSessionId}
-                              preview={page.preview}
-                            />
+                            <div key={element.id} className={visibilityClass(element)} style={funnelElementSpacingStyle(element)}>
+                              <PageElement
+                                element={element}
+                                theme={theme}
+                                nextHref={step.stepType === "order_form" ? null : page.nextHref}
+                                attribution={attribution}
+                                trackedHref={trackedHref}
+                                styles={styles}
+                                countdownStorageScope={`${page.preview ? "preview" : "live"}:${page.id}:${page.latestRevisionNumber}`}
+                                stepId={step.id}
+                                stepType={step.stepType}
+                                sourceCheckoutSessionId={sourceCheckoutSessionId}
+                                preview={page.preview}
+                              />
+                            </div>
                           ))}
                         </div>
                       ))}

@@ -1,5 +1,5 @@
 export const AUTH_SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 90;
-export const AUTH_SESSION_IDLE_TIMEOUT_SECONDS = 60 * 60 * 24 * 30;
+export const AUTH_SESSION_IDLE_TIMEOUT_SECONDS = 60 * 60 * 24 * 7;
 export const AUTH_SESSION_ACTIVITY_COOKIE_NAME = "treeschool_last_activity";
 export const AUTH_SESSION_TRACE_COOKIE_NAME = "treeschool_session_trace";
 export const AUTH_SESSION_RENEWAL_RETRY_LIMIT = 1;
