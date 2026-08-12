@@ -1,6 +1,7 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
+import { useFunnelStepApiFormState } from "./funnel-step-api-form";
 
 export function FunnelSubmitButton({
   label,
@@ -17,7 +18,10 @@ export function FunnelSubmitButton({
   disabled?: boolean;
   className?: string;
 }) {
-  const { pending } = useFormStatus();
+  const { pending: actionPending } = useFormStatus();
+  const apiForm = useFunnelStepApiFormState();
+  const pending = actionPending || Boolean(apiForm?.pending);
+  const displayedLabel = apiForm?.saved ? "Saved" : label;
   const classes = tone === "primary"
     ? "cta-button cta-button--light"
     : tone === "danger"
@@ -38,7 +42,7 @@ export function FunnelSubmitButton({
           <span className="ts-spinner h-4 w-4" aria-hidden="true" />
           {pendingLabel ?? "Saving…"}
         </span>
-      ) : label}
+      ) : displayedLabel}
     </button>
   );
 }

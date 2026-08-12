@@ -247,6 +247,9 @@ function PageElement({
             label: "Cover"
           } : null}
           images={images}
+          previewEndpoint={element.props.previewSlug
+            ? `/api/native-workbooks/product-previews?slug=${encodeURIComponent(element.props.previewSlug)}`
+            : undefined}
           caption={element.props.caption}
           fit={element.props.fit}
           sizes="(min-width: 1024px) 500px, 90vw"
@@ -383,6 +386,8 @@ export async function ManagedFunnelPageView({
   const document = page.content;
   const theme = THEMES[document.theme];
   const styles = document.styles;
+  const showSiteHeader = document.siteChrome?.showHeader === true;
+  const showSiteFooter = document.siteChrome?.showFooter === true;
   const attribution: ManagedFunnelAttribution | null = visitorId && !page.preview
     ? {
         funnelId: funnel.id,
@@ -426,17 +431,25 @@ export async function ManagedFunnelPageView({
       />
       <div className={`pointer-events-none absolute -right-24 -top-28 h-80 w-80 rounded-full opacity-45 blur-3xl ${theme.glow}`} aria-hidden="true" />
       <div className="relative mx-auto flex min-h-screen w-full max-w-[1400px] flex-col px-5 py-6 sm:px-8">
-        <header className="flex items-center justify-between">
-          <Link href="/" className="inline-flex items-center gap-2.5" aria-label="Treeschool home">
-            <Image src="/tree-icon.png" alt="" width={54} height={54} className="h-12 w-12 object-contain" priority />
-            <span className="brand-logo text-[25px] font-semibold leading-none">treeschool</span>
-          </Link>
-          {page.preview ? (
+        {showSiteHeader ? (
+          <header className="flex items-center justify-between">
+            <Link href="/" className="inline-flex items-center gap-2.5" aria-label="Treeschool home">
+              <Image src="/tree-icon.png" alt="" width={54} height={54} className="h-12 w-12 object-contain" priority />
+              <span className="brand-logo text-[25px] font-semibold leading-none">treeschool</span>
+            </Link>
+            {page.preview ? (
+              <span className="rounded-full border border-ink/20 bg-white/70 px-3 py-1.5 text-xs font-semibold text-ink/60">
+                Draft preview · Revision {page.latestRevisionNumber}
+              </span>
+            ) : null}
+          </header>
+        ) : page.preview ? (
+          <div className="flex justify-end">
             <span className="rounded-full border border-ink/20 bg-white/70 px-3 py-1.5 text-xs font-semibold text-ink/60">
               Draft preview · Revision {page.latestRevisionNumber}
             </span>
-          ) : null}
-        </header>
+          </div>
+        ) : null}
 
         <div
           className="my-auto grid gap-6 py-10 sm:py-14"
@@ -527,13 +540,15 @@ export async function ManagedFunnelPageView({
 
         <ManagedFunnelOrderForm data={data} visitorId={visitorId} />
 
-        <footer className="flex flex-col items-center justify-between gap-3 border-t border-ink/10 py-5 text-center text-xs text-ink/50 sm:flex-row sm:text-left">
-          <p>© {new Date().getFullYear()} Treeschool · Paper-first homeschooling for grades K–4.</p>
-          <div className="flex items-center gap-4">
-            <Link href="/privacy" className="hover:text-ink">Privacy</Link>
-            <Link href="/terms" className="hover:text-ink">Terms</Link>
-          </div>
-        </footer>
+        {showSiteFooter ? (
+          <footer className="flex flex-col items-center justify-between gap-3 border-t border-ink/10 py-5 text-center text-xs text-ink/50 sm:flex-row sm:text-left">
+            <p>© {new Date().getFullYear()} Treeschool · Paper-first homeschooling for grades K–4.</p>
+            <div className="flex items-center gap-4">
+              <Link href="/privacy" className="hover:text-ink">Privacy</Link>
+              <Link href="/terms" className="hover:text-ink">Terms</Link>
+            </div>
+          </footer>
+        ) : null}
         {adminBackHref ? (
           <a href={adminBackHref} className="mx-auto mb-2 mt-4 text-xs text-ink/40 underline underline-offset-4 hover:text-ink/60">
             Back to funnel administration

@@ -5,6 +5,7 @@ import {
   Fragment,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type DragEvent,
@@ -157,8 +158,33 @@ function FunnelStepMenu({
   canMoveDown?: boolean;
   onMove?: (direction: -1 | 1) => void;
 }) {
+  const menuRef = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    function closeOnOutsidePress(event: PointerEvent) {
+      const menu = menuRef.current;
+      if (!menu?.open || !(event.target instanceof Node) || menu.contains(event.target)) return;
+      menu.open = false;
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      const menu = menuRef.current;
+      if (event.key !== "Escape" || !menu?.open) return;
+      menu.open = false;
+      menu.querySelector<HTMLElement>("summary")?.focus();
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
   return (
     <details
+      ref={menuRef}
       className="group/menu relative z-20 open:z-[80]"
       onClick={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}

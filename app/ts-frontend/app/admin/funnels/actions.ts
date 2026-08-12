@@ -23,6 +23,7 @@ import {
   updateAdminCodeFunnelExperiment,
   unpublishAdminFunnelPage,
 } from "../../../lib/funnels/server";
+import { buildAdminFunnelStepSaveInput } from "../../../lib/funnels/admin-step-save";
 
 function value(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -93,61 +94,10 @@ export async function saveFunnelStepAction(formData: FormData) {
   const funnelSlug = value(formData, "funnelSlug");
   const user = await requireUser(funnelPath(funnelSlug));
   const id = value(formData, "id") || undefined;
-  const routePath = value(formData, "routePath");
-  const stepName = value(formData, "name");
-  const stepType = value(formData, "stepType");
-  const primaryProductId = value(formData, "orderPrimaryProductId") || null;
-  const oneClickProductId = value(formData, "oneClickProductId") || null;
-  const generatedSlug = (routePath.split("/").filter(Boolean).at(-1) || stepName)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
   let destination: string;
   try {
-    if (stepType === "order_form" && !primaryProductId) {
-      throw new Error("Choose a primary bookstore product before saving an order form.");
-    }
-    if (["upsell", "downsell"].includes(stepType) && !oneClickProductId) {
-      throw new Error("Choose the bookstore product offered on this page.");
-    }
-    const result = await saveAdminFunnelStep({
-      id,
-      funnelId: value(formData, "funnelId"),
-      userId: user.id,
-      name: stepName,
-      slug: value(formData, "slug") || generatedSlug,
-      description: value(formData, "description"),
-      stepType,
-      status: value(formData, "status"),
-      sourceType: value(formData, "sourceType"),
-      sourceRef: value(formData, "sourceRef") || null,
-      routePath: routePath || null,
-      publicPath: value(formData, "publicPath") || null,
-      previewPath: value(formData, "previewPath") || null,
-      linkLabel: value(formData, "linkLabel") || null,
-      isTopOfFunnel: formData.has("isTopOfFunnel"),
-      ...(stepType === "order_form"
-        ? {
-            settings: {
-              journeyNextAction: "button",
-              orderForm: {
-                primaryProductId,
-                orderBumpProductIds: formData.getAll("orderBumpProductId").map(String).filter((id) => Boolean(id) && id !== primaryProductId),
-                submitLabel: value(formData, "orderSubmitLabel") || "Continue to secure checkout"
-              }
-            }
-          }
-        : ["upsell", "downsell"].includes(stepType)
-          ? {
-              settings: {
-                journeyNextAction: "button",
-                oneClickOffer: {
-                  productId: oneClickProductId
-                }
-              }
-            }
-        : {})
-    });
+    const parsed = buildAdminFunnelStepSaveInput(formData, user.id);
+    const result = await saveAdminFunnelStep(parsed.input);
     revalidatePath("/admin/funnels");
     revalidatePath(funnelPath(funnelSlug));
     if (result.step.routePath) revalidatePath(result.step.routePath);

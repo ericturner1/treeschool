@@ -106,6 +106,7 @@ describe("funnel administration normalization", () => {
       schemaVersion: 2,
       kind: "funnel_page",
       theme: "sage",
+      siteChrome: { showHeader: true, showFooter: false },
       styles: {
         colors: { pageBackground: "#edf4e7", primary: "#76a456" },
         layout: { contentWidth: 1080, sectionGap: 24, sectionPaddingY: 36 },
@@ -154,6 +155,7 @@ describe("funnel administration normalization", () => {
     });
 
     expect(content.styles?.layout?.contentWidth).toBe(1080);
+    expect(content.siteChrome).toEqual({ showHeader: true, showFooter: false });
     expect(content.assets?.[0]?.storagePath).toBe(asset.storagePath);
     expect(content.sections[0]?.props).toMatchObject({
       backgroundColor: "#f6ead8",
@@ -205,7 +207,7 @@ describe("funnel administration normalization", () => {
             elements: [{
               id: "gallery_math",
               type: "workbook_gallery",
-              props: { title: "Math 1", cover, images: [sample], fit: "contain", caption: "Look inside" }
+              props: { title: "Math 1", cover, images: [sample], previewSlug: "math-1", fit: "contain", caption: "Look inside" }
             }]
           }]
         }]
@@ -216,6 +218,7 @@ describe("funnel administration normalization", () => {
     expect(element?.type).toBe("workbook_gallery");
     if (element?.type !== "workbook_gallery") throw new Error("Expected a workbook gallery element.");
     expect(element.props.images[0]?.alt).toBe("Table of contents");
+    expect(element.props.previewSlug).toBe("math-1");
   });
 
   test("preserves conversion-focused button typography and appearance", () => {

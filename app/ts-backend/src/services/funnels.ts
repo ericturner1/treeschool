@@ -337,6 +337,7 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
       title: z.string().trim().max(300).default("Workbook preview"),
       cover: funnelMediaSnapshotSchema,
       images: z.array(funnelMediaSnapshotSchema).max(8).default([]),
+      previewSlug: z.string().trim().min(1).max(180).optional(),
       fit: z.enum(["contain", "cover"]).default("contain"),
       caption: z.string().trim().max(1000).default("")
     })
@@ -429,6 +430,10 @@ const funnelPageDocumentSchema = z.object({
   schemaVersion: z.literal(2),
   kind: z.literal("funnel_page"),
   theme: z.enum(FUNNEL_PAGE_THEMES).default("sage"),
+  siteChrome: z.object({
+    showHeader: z.boolean().default(false),
+    showFooter: z.boolean().default(false)
+  }).optional().default({ showHeader: false, showFooter: false }),
   styles: z.object({
     typography: z.object({
       headingFontFamily: z.string().trim().max(300).optional(),
@@ -617,6 +622,11 @@ const pageMutationSchema = z.object({
   funnelId: z.string().uuid(),
   stepId: z.string().uuid(),
   pageId: z.string().uuid().optional().nullable()
+});
+
+const restorePageRevisionSchema = pageMutationSchema.extend({
+  pageId: z.string().uuid(),
+  revisionNumber: z.number().int().positive()
 });
 
 const generatePageSchema = z.object({
@@ -1137,6 +1147,24 @@ async function getLatestPageRevision(pageId: string) {
     .orderBy(desc(funnelPageRevisions.revisionNumber))
     .limit(1);
   return revision ?? null;
+}
+
+async function listPageRevisionSummaries(pageId: string) {
+  const revisions = await db
+    .select({
+      revisionNumber: funnelPageRevisions.revisionNumber,
+      source: funnelPageRevisions.source,
+      createdAt: funnelPageRevisions.createdAt
+    })
+    .from(funnelPageRevisions)
+    .where(eq(funnelPageRevisions.funnelPageId, pageId))
+    .orderBy(desc(funnelPageRevisions.revisionNumber));
+
+  return revisions.map((revision) => ({
+    revisionNumber: revision.revisionNumber,
+    source: revision.source,
+    createdAt: revision.createdAt.toISOString()
+  }));
 }
 
 async function getPublishedPageRevision(pageId: string, revisionNumber: number) {
@@ -2462,13 +2490,17 @@ export async function getAdminFunnelPage(input: {
       step: presentStep(step),
       page: null,
       pages,
+      revisions: [],
       experiment,
       templates: FUNNEL_PAGE_TEMPLATES,
       themes: FUNNEL_PAGE_THEMES,
       goals: FUNNEL_EXPERIMENT_GOALS
     };
   }
-  const revision = await getLatestPageRevision(page.id);
+  const [revision, revisions] = await Promise.all([
+    getLatestPageRevision(page.id),
+    listPageRevisionSummaries(page.id)
+  ]);
   if (!revision) throw new Error("The managed page has no revision.");
   const nextHref = await resolveNextStepHref(funnel, step);
   return {
@@ -2481,6 +2513,7 @@ export async function getAdminFunnelPage(input: {
       preview: true
     }),
     pages,
+    revisions,
     experiment,
     templates: FUNNEL_PAGE_TEMPLATES,
     themes: FUNNEL_PAGE_THEMES,
@@ -2718,6 +2751,39 @@ export async function saveAdminFunnelPageDraft(
       }).page
     };
   });
+}
+
+export async function restoreAdminFunnelPageRevision(
+  input: z.input<typeof restorePageRevisionSchema>
+) {
+  const parsed = restorePageRevisionSchema.parse(input);
+  await requireAdmin(parsed.userId);
+  const funnel = await getFunnelRecord(parsed.funnelId);
+  const step = await getStepForFunnel(funnel.id, parsed.stepId);
+  const page = await getStepPage(step.id, parsed.pageId);
+  const [targetRevision, latestRevision] = await Promise.all([
+    getPublishedPageRevision(page.id, parsed.revisionNumber),
+    getLatestPageRevision(page.id)
+  ]);
+  if (!targetRevision) throw new Error("That page revision no longer exists.");
+  if (latestRevision?.revisionNumber === targetRevision.revisionNumber) {
+    throw new Error("That revision is already the current draft.");
+  }
+
+  const restored = await saveAdminFunnelPageDraft({
+    userId: parsed.userId,
+    funnelId: funnel.id,
+    stepId: step.id,
+    pageId: page.id,
+    content: funnelPageContentSchema.parse(targetRevision.contentJson),
+    seo: funnelPageSeoSchema.parse(targetRevision.seoJson),
+    source: "manual"
+  });
+
+  return {
+    ...restored,
+    restoredFromRevisionNumber: targetRevision.revisionNumber
+  };
 }
 
 export async function publishAdminFunnelPage(input: {

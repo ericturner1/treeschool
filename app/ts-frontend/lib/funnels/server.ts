@@ -146,6 +146,12 @@ export type ManagedFunnelPageSummary = {
   updatedAt: string;
 };
 
+export type ManagedFunnelPageRevisionSummary = {
+  revisionNumber: number;
+  source: "manual" | "ai" | "imported";
+  createdAt: string;
+};
+
 export type FunnelExperimentVariantStats = {
   id: string;
   pageId: string;
@@ -193,6 +199,7 @@ export type AdminManagedFunnelPagePayload = {
   step: AdminFunnelStep;
   page: ManagedFunnelPage | null;
   pages: ManagedFunnelPageSummary[];
+  revisions: ManagedFunnelPageRevisionSummary[];
   experiment: AdminFunnelExperiment | null;
   templates: readonly ManagedFunnelPageTemplate[];
   themes: readonly ManagedFunnelPageTheme[];
@@ -495,6 +502,23 @@ export function saveAdminFunnelPageDraft(input: Record<string, unknown>) {
     "/internal/funnels/admin/page/save",
     input,
     "Could not save the page draft."
+  );
+}
+
+export function restoreAdminFunnelPageRevision(input: {
+  userId: string;
+  funnelId: string;
+  stepId: string;
+  pageId: string;
+  revisionNumber: number;
+}) {
+  return postJson<{
+    page: ManagedFunnelPage;
+    restoredFromRevisionNumber: number;
+  }>(
+    "/internal/funnels/admin/page/restore",
+    input,
+    "Could not restore the page revision."
   );
 }
 

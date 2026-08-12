@@ -8,6 +8,7 @@ import {
   getAdminFunnelPage,
   saveAdminFunnelPageDraft
 } from "../../../../../../../lib/funnels/server";
+import { upgradeCatalogWorkbookImages } from "../../../../../../../lib/funnels/workbook-gallery-upgrade";
 import { getNativeWorkbookNavigation, listNativeWorkbookCatalog } from "../../../../../../../lib/native-workbooks/server";
 
 export const metadata: Metadata = {
@@ -44,6 +45,9 @@ export default async function FunnelPageEditorRoute(
   ).catch(() => null);
   if (!data) notFound();
   let resolvedData = data;
+  const catalog = (await listNativeWorkbookCatalog({
+    userId: user.id
+  }).catch(() => ({ workbooks: [] }))).workbooks;
 
   // Code-backed funnel pages predate the managed page editor. The first time
   // an admin opens one, preserve its authored copy and media as an imported
@@ -52,13 +56,17 @@ export default async function FunnelPageEditorRoute(
   if (!resolvedData.page && !searchParams?.page) {
     const legacyImport = getLegacyFunnelPageImport(resolvedData.step);
     if (legacyImport) {
+      const upgradedImport = upgradeCatalogWorkbookImages(
+        legacyImport.content,
+        catalog
+      );
       const imported = await saveAdminFunnelPageDraft({
         userId: user.id,
         funnelId: resolvedData.funnel.id,
         stepId: resolvedData.step.id,
         pageId: null,
         source: "imported",
-        content: legacyImport.content,
+        content: upgradedImport.content,
         seo: legacyImport.seo
       }).catch(() => null);
       if (imported?.page.id) {
@@ -72,9 +80,37 @@ export default async function FunnelPageEditorRoute(
     }
   }
 
-  const orderFormCatalog = resolvedData.step.stepType === "order_form"
-    ? (await listNativeWorkbookCatalog({ userId: user.id }).catch(() => ({ workbooks: [] }))).workbooks
-    : [];
+  // Earlier legacy imports represented catalog workbook covers as plain image
+  // elements even though their live code-backed page used the interactive
+  // workbook gallery. Add one immutable migration revision when such a draft
+  // is opened so the editor and managed renderer share the same element type.
+  if (resolvedData.page) {
+    const upgraded = upgradeCatalogWorkbookImages(
+      resolvedData.page.content,
+      catalog
+    );
+    if (upgraded.upgradedCount > 0) {
+      const migrated = await saveAdminFunnelPageDraft({
+        userId: user.id,
+        funnelId: resolvedData.funnel.id,
+        stepId: resolvedData.step.id,
+        pageId: resolvedData.page.id,
+        source: "imported",
+        content: upgraded.content,
+        seo: resolvedData.page.seo
+      }).catch(() => null);
+      if (migrated?.page.id) {
+        resolvedData = await getAdminFunnelPage(
+          user.id,
+          resolvedFunnelId,
+          params.stepId,
+          migrated.page.id
+        ).catch(() => resolvedData);
+      }
+    }
+  }
+
+  const orderFormCatalog = catalog;
 
   return <FunnelPageStudio funnelId={resolvedData.funnel.id} funnelSlug={resolvedData.funnel.slug} stepId={resolvedData.step.id} data={resolvedData} orderFormCatalog={orderFormCatalog} editorUserEmail={user.email ?? null} />;
 }

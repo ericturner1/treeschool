@@ -716,6 +716,8 @@ export function WorkbookStudioEditor({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [releaseOpen, setReleaseOpen] = useState(false);
+  const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
   const [pending, startTransition] = useTransition();
   const [themePending, startThemeTransition] = useTransition();
   const chapter = content.chapters[selected.chapter] ?? content.chapters[0];
@@ -735,6 +737,14 @@ export function WorkbookStudioEditor({
       }) as React.CSSProperties,
     [detail.effectiveTheme],
   );
+
+  const editorGridColumns = leftSidebarCollapsed
+    ? rightSidebarCollapsed
+      ? "xl:grid-cols-[52px_minmax(0,1fr)_52px]"
+      : "xl:grid-cols-[52px_minmax(0,1fr)_310px]"
+    : rightSidebarCollapsed
+      ? "xl:grid-cols-[270px_minmax(0,1fr)_52px]"
+      : "xl:grid-cols-[270px_minmax(0,1fr)_310px]";
 
   function mutate(mutator: (draft: WorkbookContent) => void) {
     setContent((current) => {
@@ -907,14 +917,15 @@ export function WorkbookStudioEditor({
   return (
     <div
       style={themeStyle}
-      className="mx-auto grid max-w-[1600px] xl:grid-cols-[270px_minmax(0,1fr)_310px]"
+      className={`mx-auto grid max-w-[1600px] ${editorGridColumns}`}
     >
-      <aside className="border-b border-[#d2c2aa] bg-[#f8f1e5] p-4 xl:min-h-[calc(100vh-65px)] xl:border-b-0 xl:border-r">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-black uppercase tracking-[0.13em] text-earth">
+      <aside className={`border-b border-[#d2c2aa] bg-[#f8f1e5] xl:min-h-[calc(100vh-65px)] xl:border-b-0 xl:border-r ${leftSidebarCollapsed ? "p-2" : "p-4"}`}>
+        <div className={`flex items-center gap-2 ${leftSidebarCollapsed ? "justify-center" : "justify-between"}`}>
+          {!leftSidebarCollapsed ? <h2 className="text-xs font-black uppercase tracking-[0.13em] text-earth">
             Workbook structure
-          </h2>
-          <button
+          </h2> : null}
+          <div className="flex items-center gap-2">
+            {!leftSidebarCollapsed ? <button
             type="button"
             onClick={() =>
               mutate((draft) => {
@@ -940,9 +951,11 @@ export function WorkbookStudioEditor({
             className="rounded-full border border-[#bca98a] bg-white px-2.5 py-1 text-xs font-bold"
           >
             + Chapter
-          </button>
+            </button> : null}
+            <button type="button" onClick={() => setLeftSidebarCollapsed((collapsed) => !collapsed)} aria-label={leftSidebarCollapsed ? "Expand workbook structure sidebar" : "Collapse workbook structure sidebar"} title={leftSidebarCollapsed ? "Expand workbook structure sidebar" : "Collapse workbook structure sidebar"} className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#bca98a] bg-white text-lg font-black text-earth shadow-sm hover:border-[#739655] hover:text-[#486a38]">{leftSidebarCollapsed ? "›" : "‹"}</button>
+          </div>
         </div>
-        <div className="mt-3 grid gap-3">
+        {!leftSidebarCollapsed ? <><div className="mt-3 grid gap-3">
           {content.chapters.map((item, chapterIndex) => (
             <div
               key={item.id}
@@ -1006,6 +1019,7 @@ export function WorkbookStudioEditor({
           PDF page count may change. Adding, deleting, or replacing a lesson ID
           makes a new edition.
         </div>
+        </> : null}
       </aside>
 
       <section className="min-w-0 p-4 sm:p-6 lg:p-8">
@@ -1608,11 +1622,14 @@ export function WorkbookStudioEditor({
         </div>
       </section>
 
-      <aside className="border-t border-[#d2c2aa] bg-[#f8f1e5] p-4 xl:min-h-[calc(100vh-65px)] xl:border-l xl:border-t-0">
-        <h2 className="text-xs font-black uppercase tracking-[0.13em] text-earth">
+      <aside className={`border-t border-[#d2c2aa] bg-[#f8f1e5] xl:min-h-[calc(100vh-65px)] xl:border-l xl:border-t-0 ${rightSidebarCollapsed ? "p-2" : "p-4"}`}>
+        <div className={`flex items-center gap-2 ${rightSidebarCollapsed ? "justify-center" : "justify-between"}`}>
+          {!rightSidebarCollapsed ? <h2 className="text-xs font-black uppercase tracking-[0.13em] text-earth">
           Inspector
-        </h2>
-        <div className="mt-4 grid gap-4">
+          </h2> : null}
+          <button type="button" onClick={() => setRightSidebarCollapsed((collapsed) => !collapsed)} aria-label={rightSidebarCollapsed ? "Expand inspector sidebar" : "Collapse inspector sidebar"} title={rightSidebarCollapsed ? "Expand inspector sidebar" : "Collapse inspector sidebar"} className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#bca98a] bg-white text-lg font-black text-earth shadow-sm hover:border-[#739655] hover:text-[#486a38]">{rightSidebarCollapsed ? "‹" : "›"}</button>
+        </div>
+        {!rightSidebarCollapsed ? <div className="mt-4 grid gap-4">
           <label className="grid gap-1 text-xs font-bold">
             Chapter title
             <input
@@ -1768,7 +1785,7 @@ export function WorkbookStudioEditor({
               ) : null}
             </div>
           </div>
-        </div>
+        </div> : null}
       </aside>
 
       {releaseOpen ? (

@@ -15,6 +15,10 @@ import {
 } from "../../../lib/funnels/step-hierarchy";
 import { canImportLegacyFunnelPage } from "../../../lib/funnels/legacy-page-imports";
 import {
+  funnelStepDetailTabs,
+  type FunnelStepDetailTab
+} from "../../../lib/funnels/step-detail-tabs";
+import {
   getNativeWorkbookNavigation,
   listNativeWorkbookCatalog,
   type NativeWorkbookCatalogItem
@@ -23,20 +27,22 @@ import {
   saveFunnelStepAction
 } from "./actions";
 import { FunnelStepRail } from "./funnel-step-rail";
+import { FunnelStepApiForm } from "./funnel-step-api-form";
 import { FunnelStepUrlField } from "./funnel-step-url-field";
 import { FunnelExperimentPanel } from "./funnel-experiment-panel";
 import { FunnelSettingsDialog } from "./funnel-settings-dialog";
 import { FunnelSubmitButton } from "./funnel-submit-button";
 import { FunnelTabWorkspace } from "./funnel-tab-workspace";
+import { FunnelVersionsPanel } from "./funnel-versions-panel";
 import {
   FunnelOperationsPanel,
   type FunnelOperationsTab
 } from "./funnel-operations-panel";
 
-type FunnelAdminTab = "configuration" | "experiment" | "leads" | "stats" | "sales";
+type FunnelAdminTab = FunnelStepDetailTab;
 
 function normalizeTab(value?: string): FunnelAdminTab {
-  return ["configuration", "experiment", "leads", "stats", "sales"].includes(value ?? "")
+  return ["configuration", "versions", "experiment", "leads", "stats", "sales"].includes(value ?? "")
     ? value as FunnelAdminTab
     : "configuration";
 }
@@ -117,6 +123,7 @@ function StepFields({
       <input type="hidden" name="publicPath" value={step?.publicPath ?? ""} />
       <input type="hidden" name="previewPath" value={step?.previewPath ?? ""} />
       <input type="hidden" name="linkLabel" value={step?.linkLabel ?? ""} />
+      <input type="hidden" name="description" value={step?.description ?? ""} />
       <input type="hidden" name="status" value={step?.status ?? "draft"} />
       {step?.isTopOfFunnel ? <input type="hidden" name="isTopOfFunnel" value="true" /> : null}
       <div className="grid gap-5 sm:grid-cols-2">
@@ -131,14 +138,24 @@ function StepFields({
           existingSteps={existingSteps}
           inputClassName={STEP_FIELD_CLASS}
         />
-        <label className="grid gap-2 text-sm font-semibold text-ink/82 sm:col-span-2">
-          Type
-          <select name="stepType" defaultValue={step?.stepType ?? "landing"} className={STEP_SELECT_CLASS}>
-            {options.stepTypes.map((type) => (
-              <option key={type} value={type}>{STEP_TYPE_LABELS[type]}</option>
-            ))}
-          </select>
-        </label>
+        {step?.stepType === "fulfillment" ? (
+          <label className="grid gap-2 text-sm font-semibold text-ink/82 sm:col-span-2">
+            Type
+            <input type="hidden" name="stepType" value="fulfillment" />
+            <span className={`${STEP_FIELD_CLASS} flex items-center bg-[#f3eee6] text-ink/55`}>
+              Fulfillment · protected system step
+            </span>
+          </label>
+        ) : (
+          <label className="grid gap-2 text-sm font-semibold text-ink/82 sm:col-span-2">
+            Type
+            <select name="stepType" defaultValue={step?.stepType ?? "landing"} className={STEP_SELECT_CLASS}>
+              {options.stepTypes.filter((type) => type !== "fulfillment").map((type) => (
+                <option key={type} value={type}>{STEP_TYPE_LABELS[type]}</option>
+              ))}
+            </select>
+          </label>
+        )}
         {(step?.stepType ?? "landing") === "order_form" ? (
           <section className="grid gap-5 rounded-[18px] border border-[#d8c5a8] bg-[#fffdf8] p-4 sm:col-span-2 sm:p-5">
             <div>
@@ -212,10 +229,6 @@ function StepFields({
             </p>
           </section>
         ) : null}
-        <label className="grid gap-2 text-sm font-semibold text-ink/82 sm:col-span-2">
-          Description
-          <textarea name="description" rows={3} defaultValue={step?.description ?? ""} placeholder="What happens at this step?" className={`${STEP_FIELD_CLASS} min-h-28 resize-y leading-6`} />
-        </label>
       </div>
     </>
   );
@@ -255,9 +268,6 @@ export async function AdminFunnelDetailPage({
     ? stepHierarchy.find(({ step }) => step.id === selectedStep.id)?.children ?? []
     : [];
   const selectedStepIsExperimentContainer = selectedStepChildren.length > 0;
-  const workspaceTab = selectedStepIsExperimentContainer && tab === "configuration"
-    ? "experiment"
-    : tab;
   const configurationPagePromise = selectedStep && selectedStepChildren.length === 0
     ? getAdminFunnelPage(user.id, funnel.id, selectedStep.id, selectedPageId)
     : Promise.resolve(null);
@@ -275,6 +285,15 @@ export async function AdminFunnelDetailPage({
     getAdminFunnelOperations(user.id, funnel.id),
     listNativeWorkbookCatalog({ userId: user.id }).catch(() => ({ workbooks: [] }))
   ]);
+  const availableTabs = selectedStep
+    ? funnelStepDetailTabs(selectedStep.stepType, {
+      experimentContainer: selectedStepIsExperimentContainer,
+      hasManagedPage: Boolean(configurationPageData?.page)
+    })
+    : [];
+  const workspaceTab = availableTabs.includes(tab)
+    ? tab
+    : availableTabs[0] ?? "configuration";
   const catalog = catalogData.workbooks;
   const topStep = funnel.steps.find((step) => step.isTopOfFunnel);
   const funnelPublicPath = topStep?.routePath ?? topStep?.publicPath ?? funnel.publicPath;
@@ -389,16 +408,13 @@ export async function AdminFunnelDetailPage({
                   initialTab={workspaceTab}
                   selectedStepId={selectedStep.id}
                   experimentStepId={experimentStep?.id ?? selectedStep.id}
-                  availableTabs={selectedStepIsExperimentContainer
-                    ? ["experiment", "leads", "stats", "sales"]
-                    : undefined}
+                  availableTabs={availableTabs}
                   panels={{
                     configuration: selectedStepIsExperimentContainer ? null : (
                       <>
                         <div className="p-5 sm:p-7">
-                          <form
+                          <FunnelStepApiForm
                             key={selectedStep.id}
-                            action={saveFunnelStepAction}
                             className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_196px]"
                           >
                             <div>
@@ -438,15 +454,10 @@ export async function AdminFunnelDetailPage({
                                       Edit the confirmation copy and layout. Purchase fulfillment and account access stay protected.
                                     </p>
                                   ) : null}
-                                  {configurationPageData?.page ? (
-                                    <p className="w-full pt-1 text-center text-[11px] leading-4 text-ink/42">
-                                      {configurationPageData.page.status === "published" ? "Published" : "Draft"} · revision {configurationPageData.page.latestRevisionNumber}
-                                    </p>
-                                  ) : null}
                                 </>
                               ) : null}
                             </aside>
-                          </form>
+                          </FunnelStepApiForm>
                           {!selectedStepEditorHref ? (
                             <p className="mt-5 text-sm leading-6 text-ink/52">
                               {configurationPageData
@@ -469,6 +480,16 @@ export async function AdminFunnelDetailPage({
                         data={experimentPageData}
                         codeBackedVariants={experimentVariants}
                         operations={operations}
+                      />
+                    ) : null,
+                    versions: configurationPageData?.page ? (
+                      <FunnelVersionsPanel
+                        funnelId={funnel.id}
+                        stepId={selectedStep.id}
+                        pageId={configurationPageData.page.id}
+                        latestRevisionNumber={configurationPageData.page.latestRevisionNumber}
+                        publishedRevisionNumber={configurationPageData.page.publishedRevisionNumber}
+                        revisions={configurationPageData.revisions}
                       />
                     ) : null,
                     leads: (

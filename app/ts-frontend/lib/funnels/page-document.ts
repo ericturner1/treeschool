@@ -159,6 +159,7 @@ export type FunnelPageElement =
         title: string;
         cover: FunnelMediaSnapshot;
         images: FunnelMediaSnapshot[];
+        previewSlug?: string;
         fit: "contain" | "cover";
         caption: string;
       };
@@ -251,6 +252,10 @@ export type FunnelPageDocument = {
   schemaVersion: 2;
   kind: "funnel_page";
   theme: FunnelPageTheme;
+  siteChrome?: {
+    showHeader: boolean;
+    showFooter: boolean;
+  };
   styles?: FunnelPageStyles;
   assets?: FunnelMediaSnapshot[];
   sections: FunnelPageSection[];
@@ -278,6 +283,7 @@ export function emptyFunnelPageDocument(headline: string, subheadline = ""): Fun
     schemaVersion: 2,
     kind: "funnel_page",
     theme: "sage",
+    siteChrome: { showHeader: false, showFooter: false },
     assets: [],
     sections: [{
       id: createFunnelDocumentId("section"),

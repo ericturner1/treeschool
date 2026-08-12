@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createFunnelPageRow } from "./page-document";
+import { createFunnelPageRow, emptyFunnelPageDocument } from "./page-document";
 
 describe("funnel page layout rows", () => {
   test("creates balanced one-to-four-column rows", () => {
@@ -15,5 +15,14 @@ describe("funnel page layout rows", () => {
       );
       expect(new Set(row.columns.map((column) => column.id)).size).toBe(count);
     }
+  });
+
+  test("keeps site chrome off until an admin explicitly enables it", () => {
+    const document = emptyFunnelPageDocument("A focused funnel page");
+
+    expect(document.siteChrome).toEqual({
+      showHeader: false,
+      showFooter: false,
+    });
   });
 });

@@ -2,11 +2,13 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import type { FunnelStepDetailTab } from "../../../lib/funnels/step-detail-tabs";
 
-export type FunnelWorkspaceTab = "configuration" | "experiment" | "leads" | "stats" | "sales";
+export type FunnelWorkspaceTab = FunnelStepDetailTab;
 
 const TABS: ReadonlyArray<{ key: FunnelWorkspaceTab; label: string }> = [
   { key: "configuration", label: "Configuration" },
+  { key: "versions", label: "Versions" },
   { key: "experiment", label: "A/B test" },
   { key: "leads", label: "Leads" },
   { key: "stats", label: "Stats" },

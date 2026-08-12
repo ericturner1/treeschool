@@ -259,6 +259,7 @@ import {
   recordPublicCodeFunnelEvent,
   recordPublicFunnelEvent,
   reorderAdminFunnelSteps,
+  restoreAdminFunnelPageRevision,
   saveAdminFunnel,
   saveAdminFunnelContact,
   saveAdminFunnelAutomation,
@@ -743,6 +744,16 @@ const server = Bun.serve({
         ));
       } catch (error) {
         return Response.json({ error: publicErrorMessage(error, "Could not save the page draft.") }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/page/restore" && request.method === "POST") {
+      try {
+        return Response.json(await restoreAdminFunnelPageRevision(
+          await request.json() as Parameters<typeof restoreAdminFunnelPageRevision>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: publicErrorMessage(error, "Could not restore the page revision.") }, { status: 400 });
       }
     }
 
