@@ -29,7 +29,7 @@ export function funnelStepDetailTabs(
   const tabs = STEP_DETAIL_TABS[stepType];
   if (!options.experimentContainer) {
     return options.hasManagedPage
-      ? tabs.flatMap((tab) => tab === "configuration" ? [tab, "versions"] : [tab])
+      ? [...tabs, "versions"]
       : tabs;
   }
 

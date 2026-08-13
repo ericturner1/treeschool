@@ -72,6 +72,47 @@ const STEP_TYPE_STYLES: Record<AdminFunnelStepType, string> = {
 const STEP_FIELD_CLASS = "min-h-12 w-full rounded-[14px] border border-[#d8c5a8] bg-white px-4 py-3 text-base font-normal text-ink shadow-[inset_0_1px_1px_rgba(79,53,36,0.04)] outline-none transition placeholder:text-ink/35 hover:border-[#b79570] focus:border-[#739655] focus:ring-4 focus:ring-[#739655]/15 disabled:cursor-not-allowed disabled:border-[#ded5c7] disabled:bg-[#f3eee6] disabled:text-ink/45";
 const STEP_SELECT_CLASS = `${STEP_FIELD_CLASS} pr-12`;
 
+function StripeConfigurationStatus({
+  stripe,
+  mode
+}: {
+  stripe: AdminFunnelOptions["paymentProviders"]["stripe"];
+  mode: "checkout" | "one_click";
+}) {
+  if (stripe.ready) {
+    return (
+      <div className="flex gap-3 rounded-[14px] border border-[#afd09d] bg-[#eef8e8] px-4 py-3 text-[#416b35]" role="status">
+        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#6f994f] text-sm font-black text-white" aria-hidden="true">✓</span>
+        <div>
+          <p className="font-semibold">Stripe is connected</p>
+          <p className="mt-0.5 text-sm leading-5 text-[#416b35]/80">
+            {mode === "one_click"
+              ? "One-click charges and payment confirmation are configured for this offer."
+              : "Secure checkout and payment confirmation are configured for this order form."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const missingConfiguration = [
+    !stripe.checkoutConfigured ? "the Stripe secret key" : null,
+    !stripe.webhookConfigured ? "the Stripe webhook secret" : null
+  ].filter(Boolean).join(" and ");
+
+  return (
+    <div className="flex gap-3 rounded-[14px] border border-[#dc9487] bg-[#fff0eb] px-4 py-3 text-[#8c3f32]" role="alert">
+      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#b65343] text-sm font-black text-white" aria-hidden="true">!</span>
+      <div>
+        <p className="font-semibold">Stripe is not fully configured</p>
+        <p className="mt-0.5 text-sm leading-5 text-[#8c3f32]/85">
+          Customers cannot safely complete this order flow until {missingConfiguration} {stripe.checkoutConfigured || stripe.webhookConfigured ? "is" : "are"} configured.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function StepFields({
   funnelId,
   funnelSlug,
@@ -107,6 +148,11 @@ function StepFields({
     ? rawOneClickOffer as Record<string, unknown>
     : {};
   const oneClickProductId = typeof oneClickOffer.productId === "string" ? oneClickOffer.productId : "";
+  const stripeConfiguration = options.paymentProviders?.stripe ?? {
+    ready: false,
+    checkoutConfigured: false,
+    webhookConfigured: false
+  };
   const money = (item: NativeWorkbookCatalogItem) => new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: item.currencyCode
@@ -158,6 +204,7 @@ function StepFields({
         )}
         {(step?.stepType ?? "landing") === "order_form" ? (
           <section className="grid gap-5 rounded-[18px] border border-[#d8c5a8] bg-[#fffdf8] p-4 sm:col-span-2 sm:p-5">
+            <StripeConfigurationStatus stripe={stripeConfiguration} mode="checkout" />
             <div>
               <p className="text-base font-semibold">Products and order bumps</p>
               <p className="mt-1 text-sm leading-6 text-ink/55">
@@ -204,6 +251,7 @@ function StepFields({
         ) : null}
         {["upsell", "downsell"].includes(step?.stepType ?? "") ? (
           <section className="grid gap-5 rounded-[18px] border border-[#d8c5a8] bg-[#fffdf8] p-4 sm:col-span-2 sm:p-5">
+            <StripeConfigurationStatus stripe={stripeConfiguration} mode="one_click" />
             <div>
               <p className="text-base font-semibold">One-click offer</p>
               <p className="mt-1 text-sm leading-6 text-ink/55">

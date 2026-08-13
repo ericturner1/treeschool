@@ -4,7 +4,8 @@ import {
   calculateBankInterest,
   dateKeyInTimeZone,
   normalizeBankCompoundingInterval,
-  normalizeBankInterestBasisPoints
+  normalizeBankInterestBasisPoints,
+  pointsFromMicropoints
 } from "./student-point-bank";
 
 describe("student point bank", () => {
@@ -58,6 +59,11 @@ describe("student point bank", () => {
     expect(fourthDay.awardedPoints).toBe(1);
     expect(fourthDay.nextBalance).toBe(26);
     expect(fourthDay.nextRemainderMicropoints).toBeGreaterThan(0);
+  });
+
+  test("presents fractional daily interest without losing micropoint precision", () => {
+    expect(pointsFromMicropoints(700_000)).toBe(0.7);
+    expect(pointsFromMicropoints(1_385_000)).toBe(1.385);
   });
 
   test("compounds already-posted interest", () => {

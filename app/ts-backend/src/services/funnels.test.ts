@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   chooseWeightedFunnelVariant,
   funnelCheckoutMetadata,
+  funnelPaymentProviderStatus,
   funnelPageContentSchema,
   normalizeFunnelCheckoutAttribution,
   normalizeFunnelPath,
@@ -10,6 +11,24 @@ import {
 } from "./funnels";
 
 describe("funnel administration normalization", () => {
+  test("reports Stripe ready only when checkout and fulfillment secrets are configured", () => {
+    expect(funnelPaymentProviderStatus({
+      stripeSecretKey: "sk_test_example",
+      stripeWebhookSecret: "whsec_example"
+    }).stripe).toEqual({
+      ready: true,
+      checkoutConfigured: true,
+      webhookConfigured: true
+    });
+    expect(funnelPaymentProviderStatus({
+      stripeSecretKey: "sk_test_example"
+    }).stripe).toEqual({
+      ready: false,
+      checkoutConfigured: true,
+      webhookConfigured: false
+    });
+  });
+
   test("creates stable, route-safe slugs", () => {
     expect(normalizeFunnelSlug(" Japanese A–D Launch! ")).toBe("japanese-a-d-launch");
   });

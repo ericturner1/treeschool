@@ -57,10 +57,10 @@ describe("funnel step detail tabs", () => {
   test("adds version history only when the selected step has a managed page", () => {
     expect(funnelStepDetailTabs("order_form", { hasManagedPage: true })).toEqual([
       "configuration",
-      "versions",
       "experiment",
       "stats",
       "sales",
+      "versions",
     ]);
     expect(funnelStepDetailTabs("order_form")).not.toContain("versions");
   });

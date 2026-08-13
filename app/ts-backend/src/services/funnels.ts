@@ -83,6 +83,28 @@ export const FUNNEL_PUBLIC_EVENT_TYPES = [
   "thank_you_view"
 ] as const;
 
+export function funnelPaymentProviderStatus(input: {
+  stripeSecretKey?: string | null;
+  stripeWebhookSecret?: string | null;
+}) {
+  const checkoutConfigured = Boolean(input.stripeSecretKey?.trim());
+  const webhookConfigured = Boolean(input.stripeWebhookSecret?.trim());
+  return {
+    stripe: {
+      ready: checkoutConfigured && webhookConfigured,
+      checkoutConfigured,
+      webhookConfigured
+    }
+  };
+}
+
+function configuredFunnelPaymentProviders() {
+  return funnelPaymentProviderStatus({
+    stripeSecretKey: env.STRIPE_SECRET_KEY,
+    stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET
+  });
+}
+
 const FUNNEL_PAGE_MODEL = "gemini-2.5-flash";
 const FUNNEL_PAGE_MODEL_ENDPOINT =
   `https://generativelanguage.googleapis.com/v1beta/models/${FUNNEL_PAGE_MODEL}:generateContent`;
@@ -1516,7 +1538,8 @@ export async function listAdminFunnels(userId: string) {
     statuses: FUNNEL_STATUSES,
     stepTypes: FUNNEL_STEP_TYPES,
     stepStatuses: FUNNEL_STEP_STATUSES,
-    sourceTypes: FUNNEL_STEP_SOURCE_TYPES
+    sourceTypes: FUNNEL_STEP_SOURCE_TYPES,
+    paymentProviders: configuredFunnelPaymentProviders()
   };
 }
 
@@ -1537,7 +1560,8 @@ export async function getAdminFunnel(input: { userId: string; idOrSlug: string }
     statuses: FUNNEL_STATUSES,
     stepTypes: FUNNEL_STEP_TYPES,
     stepStatuses: FUNNEL_STEP_STATUSES,
-    sourceTypes: FUNNEL_STEP_SOURCE_TYPES
+    sourceTypes: FUNNEL_STEP_SOURCE_TYPES,
+    paymentProviders: configuredFunnelPaymentProviders()
   };
 }
 

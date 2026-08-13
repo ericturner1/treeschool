@@ -27,7 +27,8 @@ import {
   calculateBankInterest,
   dateKeyInTimeZone,
   normalizeBankCompoundingInterval,
-  normalizeBankInterestBasisPoints
+  normalizeBankInterestBasisPoints,
+  pointsFromMicropoints
 } from "./student-point-bank";
 
 export const STUDENT_POINT_ICON_KEYS = [
@@ -172,8 +173,8 @@ export async function accrueStudentPointBankInterest(profileId: string, now = ne
       });
       balance = accrual.nextBalance;
       remainderMicropoints = accrual.nextRemainderMicropoints;
-      if (accrual.awardedPoints < 1) continue;
       awardedPoints += accrual.awardedPoints;
+      if (accrual.interestMicropoints < 1) continue;
       await tx.insert(studentPointBankTransactions).values({
         profileId,
         amount: accrual.awardedPoints,
@@ -280,7 +281,7 @@ export async function getStudentPoints(input: {
     db
       .select({
         balance: sql<number>`coalesce(sum(${studentPointBankTransactions.amount}), 0)::integer`,
-        interestEarned: sql<number>`coalesce(sum(case when ${studentPointBankTransactions.kind} = 'interest' then ${studentPointBankTransactions.amount} else 0 end), 0)::integer`,
+        interestEarnedMicropoints: sql<number>`coalesce(sum(case when ${studentPointBankTransactions.kind} = 'interest' then coalesce(nullif(${studentPointBankTransactions.metadata}->>'interestMicropoints', '')::bigint, ${studentPointBankTransactions.amount}::bigint * 1000000) else 0 end), 0)::bigint`,
         interestTransactionCount: sql<number>`count(*) filter (where ${studentPointBankTransactions.kind} = 'interest')::integer`
       })
       .from(studentPointBankTransactions)
@@ -311,6 +312,7 @@ export async function getStudentPoints(input: {
       .select({
         id: studentPointBankTransactions.id,
         amount: studentPointBankTransactions.amount,
+        metadata: studentPointBankTransactions.metadata,
         createdAt: studentPointBankTransactions.createdAt
       })
       .from(studentPointBankTransactions)
@@ -333,24 +335,35 @@ export async function getStudentPoints(input: {
         : null,
       createdByUserId: transaction.createdByUserId,
       reversed: Boolean(transaction.reversedAt),
+      isTransfer: transaction.kind === "bank_deposit" || transaction.kind === "bank_withdrawal",
       interestDate: null as string | null,
       createdAt: transaction.createdAt
     })),
-    ...bankInterestTransactions.map((transaction) => ({
-      id: transaction.id,
-      amount: transaction.amount,
-      kind: transaction.kind,
-      reason: transaction.reason,
-      balanceAfter: transaction.balanceAfter,
-      balanceKind: "bank" as const,
-      bankBalanceAfter: transaction.balanceAfter,
-      createdByUserId: transaction.createdByUserId,
-      reversed: false,
-      interestDate: typeof transaction.metadata.interestDate === "string"
-        ? transaction.metadata.interestDate
-        : null,
-      createdAt: transaction.createdAt
-    }))
+    ...bankInterestTransactions.map((transaction) => {
+      const interestMicropoints = typeof transaction.metadata.interestMicropoints === "number"
+        ? transaction.metadata.interestMicropoints
+        : transaction.amount * 1_000_000;
+      const remainderMicropoints = typeof transaction.metadata.remainderMicropointsAfter === "number"
+        ? transaction.metadata.remainderMicropointsAfter
+        : 0;
+      const balanceAfter = transaction.balanceAfter + pointsFromMicropoints(remainderMicropoints);
+      return {
+        id: transaction.id,
+        amount: pointsFromMicropoints(interestMicropoints),
+        kind: transaction.kind,
+        reason: transaction.reason,
+        balanceAfter,
+        balanceKind: "bank" as const,
+        bankBalanceAfter: balanceAfter,
+        createdByUserId: transaction.createdByUserId,
+        reversed: false,
+        isTransfer: false,
+        interestDate: typeof transaction.metadata.interestDate === "string"
+          ? transaction.metadata.interestDate
+          : null,
+        createdAt: transaction.createdAt
+      };
+    })
   ].sort((left, right) =>
     right.createdAt.getTime() - left.createdAt.getTime() || right.id.localeCompare(left.id)
   );
@@ -379,9 +392,11 @@ export async function getStudentPoints(input: {
       .map((actor) => [actor.userId, actor.firstName])
   );
   const pointSummary = pointSummaryRows[0] ?? { availableBalance: 0, lifetimeEarned: 0, lifetimeUsed: 0, transactionCount: 0 };
-  const bankSummary = bankSummaryRows[0] ?? { balance: 0, interestEarned: 0, interestTransactionCount: 0 };
+  const bankSummary = bankSummaryRows[0] ?? { balance: 0, interestEarnedMicropoints: 0, interestTransactionCount: 0 };
   const availableBalance = Number(pointSummary.availableBalance ?? 0);
-  const bankBalance = Number(bankSummary.balance ?? 0);
+  const pendingInterest = pointsFromMicropoints(settings.bankInterestRemainderMicropoints);
+  const bankBalance = Number(bankSummary.balance ?? 0) + pendingInterest;
+  const bankInterestEarned = pointsFromMicropoints(Number(bankSummary.interestEarnedMicropoints ?? 0));
   const iconKey = normalizeIconKey(settings.iconKey);
   const customIconUrl = iconKey === "custom" && settings.customIconPath
     ? await getSignedLessonAssetUrl(settings.customIconPath, 60)
@@ -411,9 +426,9 @@ export async function getStudentPoints(input: {
       availableBalance,
       bankBalance,
       totalBalance: availableBalance + bankBalance,
-      lifetimeEarned: Number(pointSummary.lifetimeEarned ?? 0) + Number(bankSummary.interestEarned ?? 0),
+      lifetimeEarned: Number(pointSummary.lifetimeEarned ?? 0) + bankInterestEarned,
       lifetimeUsed: Number(pointSummary.lifetimeUsed ?? 0),
-      bankInterestEarned: Number(bankSummary.interestEarned ?? 0)
+      bankInterestEarned
     },
     balanceTimeline: (() => {
       let balance = 0;
@@ -421,7 +436,15 @@ export async function getStudentPoints(input: {
         ...pointTimelineTransactions
           .filter((transaction) => transaction.kind !== "bank_deposit" && transaction.kind !== "bank_withdrawal")
           .map((transaction) => ({ ...transaction, scope: "available" as const })),
-        ...bankInterestTimelineTransactions.map((transaction) => ({ ...transaction, scope: "bank" as const }))
+        ...bankInterestTimelineTransactions.map((transaction) => ({
+          ...transaction,
+          amount: pointsFromMicropoints(
+            typeof transaction.metadata.interestMicropoints === "number"
+              ? transaction.metadata.interestMicropoints
+              : transaction.amount * 1_000_000
+          ),
+          scope: "bank" as const
+        }))
       ].sort((left, right) =>
         left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id)
       ).map((transaction) => {
@@ -450,6 +473,7 @@ export async function getStudentPoints(input: {
         ? actorNames.get(transaction.createdByUserId) ?? "Account member"
         : "Treeschool",
       reversed: transaction.reversed,
+      isTransfer: transaction.isTransfer,
       interestDate: transaction.interestDate,
       createdAt: transaction.createdAt.toISOString()
     }))
@@ -750,7 +774,10 @@ export async function depositStudentPointsToBank(input: {
       tx.select({
         balance: sql<number>`coalesce(sum(${studentPointBankTransactions.amount}), 0)::integer`
       }).from(studentPointBankTransactions).where(eq(studentPointBankTransactions.profileId, input.profileId)),
-      tx.select({ lastAccrualDate: studentPointSettings.bankLastAccrualDate })
+      tx.select({
+        lastAccrualDate: studentPointSettings.bankLastAccrualDate,
+        remainderMicropoints: studentPointSettings.bankInterestRemainderMicropoints
+      })
         .from(studentPointSettings)
         .where(eq(studentPointSettings.profileId, input.profileId))
         .limit(1)
@@ -763,6 +790,7 @@ export async function depositStudentPointsToBank(input: {
     const transferId = randomUUID();
     const availableBalanceAfter = availableBalance - amount;
     const bankBalanceAfter = bankBalance + amount;
+    const displayedBankBalanceAfter = bankBalanceAfter + pointsFromMicropoints(settings?.remainderMicropoints ?? 0);
     await tx.insert(studentPointBankTransactions).values({
       profileId: input.profileId,
       amount,
@@ -772,7 +800,11 @@ export async function depositStudentPointsToBank(input: {
       sourceKey: transferId,
       createdByUserId: input.parentUserId,
       balanceAfter: bankBalanceAfter,
-      metadata: { transferId, availableBalanceAfter },
+      metadata: {
+        transferId,
+        availableBalanceAfter,
+        remainderMicropointsAfter: settings?.remainderMicropoints ?? 0
+      },
       createdAt: occurredAt
     });
     const [transaction] = await tx.insert(studentPointTransactions).values({
@@ -784,7 +816,7 @@ export async function depositStudentPointsToBank(input: {
       sourceKey: transferId,
       createdByUserId: input.parentUserId,
       balanceAfter: availableBalanceAfter,
-      metadata: { transferId, bankBalanceAfter },
+      metadata: { transferId, bankBalanceAfter: displayedBankBalanceAfter },
       createdAt: occurredAt
     }).returning();
     if (!settings?.lastAccrualDate) {
@@ -794,7 +826,7 @@ export async function depositStudentPointsToBank(input: {
         updatedAt: occurredAt
       }).where(eq(studentPointSettings.profileId, input.profileId));
     }
-    return { transaction: transaction!, availableBalanceAfter, bankBalanceAfter };
+    return { transaction: transaction!, availableBalanceAfter, bankBalanceAfter: displayedBankBalanceAfter };
   });
 }
 
@@ -812,13 +844,17 @@ export async function withdrawStudentPointsFromBank(input: {
   await accrueStudentPointBankInterest(input.profileId, occurredAt);
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`student-points:${input.profileId}`}))`);
-    const [[pointSummary], [bankSummary]] = await Promise.all([
+    const [[pointSummary], [bankSummary], [settings]] = await Promise.all([
       tx.select({
         balance: sql<number>`coalesce(sum(case when ${studentPointTransactions.reversedAt} is null then ${studentPointTransactions.amount} else 0 end), 0)::integer`
       }).from(studentPointTransactions).where(eq(studentPointTransactions.profileId, input.profileId)),
       tx.select({
         balance: sql<number>`coalesce(sum(${studentPointBankTransactions.amount}), 0)::integer`
-      }).from(studentPointBankTransactions).where(eq(studentPointBankTransactions.profileId, input.profileId))
+      }).from(studentPointBankTransactions).where(eq(studentPointBankTransactions.profileId, input.profileId)),
+      tx.select({ remainderMicropoints: studentPointSettings.bankInterestRemainderMicropoints })
+        .from(studentPointSettings)
+        .where(eq(studentPointSettings.profileId, input.profileId))
+        .limit(1)
     ]);
     const availableBalance = Number(pointSummary?.balance ?? 0);
     const bankBalance = Number(bankSummary?.balance ?? 0);
@@ -828,6 +864,7 @@ export async function withdrawStudentPointsFromBank(input: {
     const transferId = randomUUID();
     const availableBalanceAfter = availableBalance + amount;
     const bankBalanceAfter = bankBalance - amount;
+    const displayedBankBalanceAfter = bankBalanceAfter + pointsFromMicropoints(settings?.remainderMicropoints ?? 0);
     await tx.insert(studentPointBankTransactions).values({
       profileId: input.profileId,
       amount: -amount,
@@ -837,7 +874,11 @@ export async function withdrawStudentPointsFromBank(input: {
       sourceKey: transferId,
       createdByUserId: input.parentUserId,
       balanceAfter: bankBalanceAfter,
-      metadata: { transferId, availableBalanceAfter },
+      metadata: {
+        transferId,
+        availableBalanceAfter,
+        remainderMicropointsAfter: settings?.remainderMicropoints ?? 0
+      },
       createdAt: occurredAt
     });
     const [transaction] = await tx.insert(studentPointTransactions).values({
@@ -849,16 +890,10 @@ export async function withdrawStudentPointsFromBank(input: {
       sourceKey: transferId,
       createdByUserId: input.parentUserId,
       balanceAfter: availableBalanceAfter,
-      metadata: { transferId, bankBalanceAfter },
+      metadata: { transferId, bankBalanceAfter: displayedBankBalanceAfter },
       createdAt: occurredAt
     }).returning();
-    if (bankBalanceAfter === 0) {
-      await tx.update(studentPointSettings).set({
-        bankInterestRemainderMicropoints: 0,
-        updatedAt: occurredAt
-      }).where(eq(studentPointSettings.profileId, input.profileId));
-    }
-    return { transaction: transaction!, availableBalanceAfter, bankBalanceAfter };
+    return { transaction: transaction!, availableBalanceAfter, bankBalanceAfter: displayedBankBalanceAfter };
   });
 }
 

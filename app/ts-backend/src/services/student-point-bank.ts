@@ -4,6 +4,11 @@ export const MAX_BANK_INTEREST_BASIS_POINTS = 1_000;
 export const BANK_COMPOUNDING_INTERVALS = ["daily", "weekly", "monthly"] as const;
 export type BankCompoundingInterval = (typeof BANK_COMPOUNDING_INTERVALS)[number];
 
+export function pointsFromMicropoints(micropoints: number) {
+  if (!Number.isFinite(micropoints)) return 0;
+  return Number((micropoints / MICROPOINTS_PER_POINT).toFixed(6));
+}
+
 export function dateKeyInTimeZone(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,

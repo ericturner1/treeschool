@@ -59,6 +59,7 @@ export type StudentPointsPayload = {
     bankBalanceAfter: number | null;
     actorName: string;
     reversed: boolean;
+    isTransfer: boolean;
     interestDate: string | null;
     createdAt: string;
   }>;

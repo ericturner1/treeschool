@@ -8,7 +8,6 @@ import { StudentShell } from "../student-shell";
 import { AutoRefresh } from "./auto-refresh";
 import { AuthenticatedPlanGenerator } from "./authenticated-plan-generator";
 import { WeeklyPdfButton } from "./weekly-pdf-button";
-import { AdminManifestButton } from "./admin-manifest-button";
 import { DaySubjectGradeField } from "./day-subject-grade-field";
 import { LessonCompletionButton } from "./lesson-completion-button";
 import { LessonDispositionControl } from "./lesson-disposition-control";
@@ -180,7 +179,7 @@ function estimatedPacketPageCount(items: Array<{
 export default async function PaperPlanPage(props: PageProps) {
   const searchParams = await props.searchParams;
   const params = await props.params;
-  const { dashboard, home, currentUser, parentProfile, student, studentRouteSegment } = await getParentStudentPageData(
+  const { dashboard, home, currentUser, student, studentRouteSegment } = await getParentStudentPageData(
     params.studentId,
     searchParams?.lang
   );
@@ -204,7 +203,6 @@ export default async function PaperPlanPage(props: PageProps) {
   const suggestedPrintPageSize = preferences.preferredPrintPageSize
     ? null
     : inferPrintPageSizeFromHeaders(await headers());
-  const isAdmin = parentProfile?.isAdmin === true;
   const canManagePlan = plan.permissions.canManagePlan;
   const recommendedNativeCurriculum = student.gradeLevel == null
     ? null
@@ -847,7 +845,6 @@ export default async function PaperPlanPage(props: PageProps) {
                             ) : null}
                           </div>
                           <div className="ml-auto flex items-center gap-3">
-                            {isAdmin ? <AdminManifestButton weeklyPlanId={week.id} /> : null}
                             <span className="text-2xl text-earth transition-transform group-open:rotate-45">+</span>
                           </div>
                         </summary>

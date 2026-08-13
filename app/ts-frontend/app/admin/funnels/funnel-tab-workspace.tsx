@@ -8,11 +8,11 @@ export type FunnelWorkspaceTab = FunnelStepDetailTab;
 
 const TABS: ReadonlyArray<{ key: FunnelWorkspaceTab; label: string }> = [
   { key: "configuration", label: "Configuration" },
-  { key: "versions", label: "Versions" },
   { key: "experiment", label: "A/B test" },
   { key: "leads", label: "Leads" },
   { key: "stats", label: "Stats" },
-  { key: "sales", label: "Sales" }
+  { key: "sales", label: "Sales" },
+  { key: "versions", label: "Versions" }
 ];
 
 function tabFromUrl(availableTabs: ReadonlyArray<FunnelWorkspaceTab>): FunnelWorkspaceTab {

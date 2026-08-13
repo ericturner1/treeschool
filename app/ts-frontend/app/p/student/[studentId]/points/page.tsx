@@ -36,6 +36,13 @@ function unitName(amount: number, singularName: string, pluralName: string) {
   return Math.abs(amount) === 1 ? singularName : pluralName;
 }
 
+function formatPoints(amount: number, interest = false) {
+  return new Intl.NumberFormat("en", {
+    minimumFractionDigits: interest ? 2 : 0,
+    maximumFractionDigits: interest ? 4 : 6
+  }).format(amount);
+}
+
 function formatInterestDate(value: string) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" })
     .format(new Date(`${value}T00:00:00.000Z`));
@@ -100,7 +107,7 @@ export default async function StudentPointsPage(props: Props) {
                   </span>
                   <div>
                     <p className="text-[52px] font-semibold leading-none tracking-[-0.065em] text-ink">
-                      {points.summary.totalBalance}
+                      {formatPoints(points.summary.totalBalance)}
                     </p>
                     <p className="mt-1 text-lg font-semibold text-[#587443]">
                       {unitName(points.summary.totalBalance, singularName, pluralName)}
@@ -120,7 +127,7 @@ export default async function StudentPointsPage(props: Props) {
                 </div>
                 <div className="rounded-[20px] bg-white/75 px-5 py-4">
                   <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">In the bank</p>
-                  <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.bankBalance}</p>
+                  <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{formatPoints(points.summary.bankBalance)}</p>
                 </div>
               </div>
             </div>
@@ -229,8 +236,8 @@ export default async function StudentPointsPage(props: Props) {
                 </div>
                 <div className="rounded-[18px] border border-[#c7d9b5] bg-[#f1f7e9] px-5 py-4 sm:text-right">
                   <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">Bank balance</p>
-                  <p className="mt-1 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.bankBalance}</p>
-                  <p className="mt-1 text-xs font-semibold text-[#587443]">+{points.summary.bankInterestEarned} earned in interest</p>
+                  <p className="mt-1 text-3xl font-semibold tracking-[-0.05em] text-ink">{formatPoints(points.summary.bankBalance)}</p>
+                  <p className="mt-1 text-xs font-semibold text-[#587443]">+{formatPoints(points.summary.bankInterestEarned, true)} earned in interest</p>
                 </div>
               </div>
               <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -319,7 +326,9 @@ export default async function StudentPointsPage(props: Props) {
                 <article key={transaction.id} className={`flex flex-col gap-3 rounded-[19px] border px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${
                   transaction.reversed
                     ? "border-[#ddd7cc] bg-[#f3f0eb] opacity-60"
-                    : transaction.amount > 0
+                    : transaction.isTransfer
+                      ? "border-[#d8c8af] bg-[#fffaf2]"
+                      : transaction.amount > 0
                       ? "border-[#c6d9b4] bg-[#f4f8ed]"
                       : "border-[#dec9a9] bg-[#fffaf2]"
                 }`}>
@@ -339,16 +348,20 @@ export default async function StudentPointsPage(props: Props) {
                     <p className={`text-xl font-semibold ${
                       transaction.reversed
                         ? "text-ink/40 line-through"
-                        : transaction.amount > 0
+                        : transaction.isTransfer
+                          ? "text-earth"
+                          : transaction.amount > 0
                           ? "text-[#52783e]"
                           : "text-earth"
                     }`}>
-                      {transaction.amount > 0 ? "+" : ""}{transaction.amount} {unitName(transaction.amount, singularName, pluralName)}
+                      {transaction.isTransfer
+                        ? `${formatPoints(Math.abs(transaction.amount))} ${unitName(transaction.amount, singularName, pluralName)} transferred`
+                        : `${transaction.amount > 0 ? "+" : ""}${formatPoints(transaction.amount, transaction.kind === "interest")} ${unitName(transaction.amount, singularName, pluralName)}`}
                     </p>
                     <p className="mt-1 text-xs font-semibold text-ink/48">
-                      {transaction.balanceKind === "bank" ? "Bank balance" : "Available"} after: {transaction.balanceAfter} {unitName(transaction.balanceAfter, singularName, pluralName)}
+                      {transaction.balanceKind === "bank" ? "Bank balance" : "Available"} after: {formatPoints(transaction.balanceAfter)} {unitName(transaction.balanceAfter, singularName, pluralName)}
                       {transaction.balanceKind === "available" && transaction.bankBalanceAfter != null
-                        ? ` · Bank: ${transaction.bankBalanceAfter} ${unitName(transaction.bankBalanceAfter, singularName, pluralName)}`
+                        ? ` · Bank: ${formatPoints(transaction.bankBalanceAfter)} ${unitName(transaction.bankBalanceAfter, singularName, pluralName)}`
                         : ""}
                     </p>
                   </div>

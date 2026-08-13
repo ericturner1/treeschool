@@ -76,6 +76,13 @@ export type AdminFunnelOptions = {
   stepTypes: readonly AdminFunnelStepType[];
   stepStatuses: readonly AdminFunnelStepStatus[];
   sourceTypes: readonly AdminFunnelStepSourceType[];
+  paymentProviders: {
+    stripe: {
+      ready: boolean;
+      checkoutConfigured: boolean;
+      webhookConfigured: boolean;
+    };
+  };
 };
 
 export type ManagedFunnelPageTemplate =
