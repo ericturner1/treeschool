@@ -25,35 +25,40 @@ export function PointsBalanceAllocation({
       aria-labelledby="points-allocation-title"
       className="min-w-0 rounded-[28px] border border-[#d6e4c8] bg-[#fcfef9] px-7 py-7 shadow-[0_7px_0_#e2ecd8,0_16px_34px_rgba(92,121,68,0.07)]"
     >
-      <p className="text-xs font-black uppercase tracking-[0.13em] text-[#709255]">Balance breakdown</p>
-      <h2 id="points-allocation-title" className="mt-2 text-[26px] font-semibold tracking-[-0.045em] text-ink/90">
-        Where the {pluralName.toLowerCase()} are
-      </h2>
-      <div className="mt-7 grid grid-cols-[112px_minmax(0,1fr)] items-center gap-7 sm:grid-cols-[132px_minmax(0,1fr)]">
+      <div className="grid min-w-0 items-center gap-8 xl:grid-cols-[minmax(260px,0.8fr)_160px_minmax(390px,1.2fr)] xl:gap-12">
+        <div className="min-w-0">
+          <p className="text-xs font-black uppercase tracking-[0.13em] text-[#709255]">Balance breakdown</p>
+          <h2 id="points-allocation-title" className="mt-2 text-[28px] font-semibold tracking-[-0.045em] text-ink/90">
+            Where the {pluralName.toLowerCase()} are
+          </h2>
+          <p className="mt-3 max-w-sm text-sm leading-6 text-ink/50">
+            See how the total balance is divided between spendable {pluralName.toLowerCase()} and savings.
+          </p>
+        </div>
         <div
           role="img"
           aria-label={`${formatPoints(availableBalance)} ${unitName(availableBalance)} available and ${formatPoints(bankBalance)} ${unitName(bankBalance)} in the bank`}
-          className="aspect-square w-full rounded-full border-[6px] border-white shadow-[0_5px_0_#dce8d2,0_12px_26px_rgba(92,121,68,0.10)]"
+          className="mx-auto aspect-square w-36 max-w-full rounded-full border-[6px] border-white shadow-[0_5px_0_#dce8d2,0_12px_26px_rgba(92,121,68,0.10)] xl:w-40"
           style={{ background: pieBackground }}
         />
-        <dl className="grid gap-5">
-          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3">
-            <span className="h-3.5 w-3.5 rounded-full bg-[#f4dfbc] ring-1 ring-[#e8cd9f]" aria-hidden="true" />
-            <div>
-              <dt className="text-xs font-bold uppercase tracking-[0.1em] text-ink/45">Available</dt>
-              <dd className="mt-1 text-2xl font-semibold tracking-[-0.045em] text-ink/85">
-                {formatPoints(availableBalance)}
-              </dd>
-            </div>
+        <dl className="grid min-w-0 grid-cols-2 gap-4">
+          <div className="min-w-0 rounded-[20px] border border-[#f0dfc2] bg-[#fff8eb] px-5 py-5">
+            <dt className="flex min-w-0 items-start gap-2 text-[11px] font-bold uppercase leading-4 tracking-[0.08em] text-ink/48">
+              <span className="mt-0.5 h-3 w-3 shrink-0 rounded-full bg-[#f4dfbc] ring-1 ring-[#e8cd9f]" aria-hidden="true" />
+              <span className="min-w-0 break-words">Available</span>
+            </dt>
+            <dd className="mt-2 min-w-0 break-words text-xl font-semibold leading-none tracking-[-0.04em] text-ink/85 sm:text-2xl">
+              {formatPoints(availableBalance)}
+            </dd>
           </div>
-          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 border-t border-[#e3ecd9] pt-5">
-            <span className="h-3.5 w-3.5 rounded-full bg-[#b6d39e] ring-1 ring-[#9fc282]" aria-hidden="true" />
-            <div>
-              <dt className="text-xs font-bold uppercase tracking-[0.1em] text-ink/45">In the bank</dt>
-              <dd className="mt-1 text-2xl font-semibold tracking-[-0.045em] text-ink/85">
-                {formatPoints(bankBalance)}
-              </dd>
-            </div>
+          <div className="min-w-0 rounded-[20px] border border-[#dce9d1] bg-[#f2f8ec] px-5 py-5">
+            <dt className="flex min-w-0 items-start gap-2 text-[11px] font-bold uppercase leading-4 tracking-[0.08em] text-ink/48">
+              <span className="mt-0.5 h-3 w-3 shrink-0 rounded-full bg-[#b6d39e] ring-1 ring-[#9fc282]" aria-hidden="true" />
+              <span className="min-w-0 break-words">In the bank</span>
+            </dt>
+            <dd className="mt-2 min-w-0 break-words text-xl font-semibold leading-none tracking-[-0.04em] text-ink/85 sm:text-2xl">
+              {formatPoints(bankBalance)}
+            </dd>
           </div>
         </dl>
       </div>

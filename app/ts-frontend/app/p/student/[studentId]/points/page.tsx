@@ -124,16 +124,15 @@ export default async function StudentPointsPage(props: Props) {
             </div>
           </section>
 
-          <section className="grid items-stretch gap-5 lg:grid-cols-2 xl:grid-cols-3">
-            <PointsBalanceAllocation
-              availableBalance={points.summary.availableBalance}
-              bankBalance={points.summary.bankBalance}
-              singularName={singularName}
-              pluralName={pluralName}
-            />
+          <PointsBalanceAllocation
+            availableBalance={points.summary.availableBalance}
+            bankBalance={points.summary.bankBalance}
+            singularName={singularName}
+            pluralName={pluralName}
+          />
 
-            {points.canTransact ? (
-              <>
+          {points.canTransact ? (
+            <section className="grid items-stretch gap-5 lg:grid-cols-2">
                 <form
                   key={`award-${searchParams?.resetForm === "award" ? searchParams.resetToken : "initial"}`}
                   action={awardStudentPointsAction}
@@ -209,9 +208,8 @@ export default async function StudentPointsPage(props: Props) {
                   />
                 </div>
                 </form>
-              </>
-            ) : null}
-          </section>
+            </section>
+          ) : null}
 
           {points.canManage ? (
             <section className="site-panel rounded-[28px] px-6 py-7">
