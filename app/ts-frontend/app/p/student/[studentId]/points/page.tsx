@@ -124,20 +124,21 @@ export default async function StudentPointsPage(props: Props) {
             </div>
           </section>
 
-          <PointsBalanceAllocation
-            availableBalance={points.summary.availableBalance}
-            bankBalance={points.summary.bankBalance}
-            singularName={singularName}
-            pluralName={pluralName}
-          />
+          <section className="grid items-stretch gap-5 lg:grid-cols-2 xl:grid-cols-3">
+            <PointsBalanceAllocation
+              availableBalance={points.summary.availableBalance}
+              bankBalance={points.summary.bankBalance}
+              singularName={singularName}
+              pluralName={pluralName}
+            />
 
-          {points.canTransact ? (
-            <section className="grid gap-5 lg:grid-cols-2">
-              <form
-                key={`award-${searchParams?.resetForm === "award" ? searchParams.resetToken : "initial"}`}
-                action={awardStudentPointsAction}
-                className="site-panel rounded-[28px] px-6 py-7"
-              >
+            {points.canTransact ? (
+              <>
+                <form
+                  key={`award-${searchParams?.resetForm === "award" ? searchParams.resetToken : "initial"}`}
+                  action={awardStudentPointsAction}
+                  className="site-panel rounded-[28px] px-6 py-7"
+                >
                 <input type="hidden" name="profileId" value={student.id} />
                 <input type="hidden" name="returnPath" value={returnPath} />
                 <p className="text-xs font-black uppercase tracking-[0.13em] text-[#587443]">Recognize good work</p>
@@ -168,13 +169,13 @@ export default async function StudentPointsPage(props: Props) {
                     prepareAwardSound
                   />
                 </div>
-              </form>
+                </form>
 
-              <form
-                key={`redeem-${searchParams?.resetForm === "redeem" ? searchParams.resetToken : "initial"}`}
-                action={redeemStudentPointsAction}
-                className="site-panel rounded-[28px] px-6 py-7"
-              >
+                <form
+                  key={`redeem-${searchParams?.resetForm === "redeem" ? searchParams.resetToken : "initial"}`}
+                  action={redeemStudentPointsAction}
+                  className="site-panel rounded-[28px] px-6 py-7"
+                >
                 <input type="hidden" name="profileId" value={student.id} />
                 <input type="hidden" name="returnPath" value={returnPath} />
                 <p className="text-xs font-black uppercase tracking-[0.13em] text-earth">Rewards and privileges</p>
@@ -207,9 +208,10 @@ export default async function StudentPointsPage(props: Props) {
                     tone="outline"
                   />
                 </div>
-              </form>
-            </section>
-          ) : null}
+                </form>
+              </>
+            ) : null}
+          </section>
 
           {points.canManage ? (
             <section className="site-panel rounded-[28px] px-6 py-7">
