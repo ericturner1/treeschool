@@ -141,9 +141,8 @@ export default async function StudentPointsPage(props: Props) {
                 >
                 <input type="hidden" name="profileId" value={student.id} />
                 <input type="hidden" name="returnPath" value={returnPath} />
-                <p className="text-xs font-black uppercase tracking-[0.13em] text-[#587443]">Recognize good work</p>
-                <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.05em] text-ink">Award {pluralName}</h2>
-                <div className="mt-5 grid gap-4 sm:grid-cols-[130px_minmax(0,1fr)]">
+                <p className="text-xs font-black uppercase tracking-[0.13em] text-[#587443]">Award {pluralName}</p>
+                <div className="mt-5 grid gap-4 sm:grid-cols-[100px_minmax(0,1fr)]">
                   <label className="text-sm font-semibold text-ink">
                     Amount
                     <input
@@ -162,7 +161,7 @@ export default async function StudentPointsPage(props: Props) {
                     <input name="reason" type="text" maxLength={300} required placeholder="Finished a difficult assignment" className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544]" />
                   </label>
                 </div>
-                <div className="mt-5">
+                <div className="mt-5 [&>button]:!w-full">
                   <PointsSubmitButton
                     idleLabel={`Award ${pluralName}`}
                     pendingLabel="Awarding…"
@@ -183,15 +182,14 @@ export default async function StudentPointsPage(props: Props) {
                 <input type="hidden" name="profileId" value={student.id} />
                 <input type="hidden" name="returnPath" value={returnPath} />
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs font-black uppercase tracking-[0.13em] text-earth">Rewards and privileges</p>
+                  <p className="text-xs font-black uppercase tracking-[0.13em] text-earth">Use {pluralName}</p>
                   {!canRedeemPoints ? (
                     <span className="rounded-full border border-[#d4d1ca] bg-white/75 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-ink/55">
                       No points available
                     </span>
                   ) : null}
                 </div>
-                <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.05em] text-ink">Use {pluralName}</h2>
-                <div className="mt-5 grid gap-4 sm:grid-cols-[130px_minmax(0,1fr)]">
+                <div className="mt-5 grid gap-4 sm:grid-cols-[100px_minmax(0,1fr)]">
                   <label className="text-sm font-semibold text-ink">
                     Amount
                     <input
@@ -211,7 +209,7 @@ export default async function StudentPointsPage(props: Props) {
                     <input name="reason" type="text" maxLength={300} required disabled={!canRedeemPoints} placeholder="Chose tonight's dessert" className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544] disabled:cursor-not-allowed disabled:border-[#d8d5cf] disabled:bg-[#e9e7e2]" />
                   </label>
                 </div>
-                <div className="mt-5">
+                <div className="mt-5 [&>button]:!w-full">
                   <PointsSubmitButton
                     idleLabel={`Use ${pluralName}`}
                     pendingLabel="Using…"
