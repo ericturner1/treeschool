@@ -33,13 +33,7 @@ export function PointsBalanceAllocation({
           style={{ background: pieBackground }}
         />
         <div className="min-w-0">
-          <p className="text-xs font-black uppercase tracking-[0.13em] text-[#709255]">Balance breakdown</p>
-          <h2 id="points-allocation-title" className="mt-2 text-[28px] font-semibold tracking-[-0.045em] text-ink/90">
-            Where the {pluralName.toLowerCase()} are
-          </h2>
-          <p className="mt-3 max-w-sm text-sm leading-6 text-ink/50">
-            See how the total balance is divided between spendable {pluralName.toLowerCase()} and savings.
-          </p>
+          <p id="points-allocation-title" className="text-xs font-black uppercase tracking-[0.13em] text-[#709255]">Balance breakdown</p>
           <dl className="mt-5 grid min-w-0 grid-cols-2 gap-4">
             <div className="min-w-0 rounded-[20px] border border-[#f0dfc2] bg-[#fff8eb] px-5 py-5">
               <dt className="flex min-w-0 items-start gap-2 text-[11px] font-bold uppercase leading-4 tracking-[0.08em] text-ink/48">
