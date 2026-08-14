@@ -76,6 +76,7 @@ export default async function StudentPointsPage(props: Props) {
   const returnPath = studentRoutePath(studentRouteSegment, "/points");
   const redirectTo = studentRoutePath(studentRouteSegment, "/points", searchParams);
   const { singularName, pluralName, iconKey, customIconUrl } = points.settings;
+  const canRedeemPoints = points.summary.availableBalance >= 1;
   const historyPageCount = Math.max(1, Math.ceil(points.history.total / historyPageSize));
   const historyHref = (page: number) => {
     const query = new URLSearchParams();
@@ -173,11 +174,22 @@ export default async function StudentPointsPage(props: Props) {
                 <form
                   key={`redeem-${searchParams?.resetForm === "redeem" ? searchParams.resetToken : "initial"}`}
                   action={redeemStudentPointsAction}
-                  className="site-panel rounded-[28px] px-6 py-7"
+                  className={`site-panel rounded-[28px] px-6 py-7 transition ${
+                    canRedeemPoints
+                      ? ""
+                      : "!border-[#d8d7d2] !bg-[#f4f3f0] !shadow-none opacity-65"
+                  }`}
                 >
                 <input type="hidden" name="profileId" value={student.id} />
                 <input type="hidden" name="returnPath" value={returnPath} />
-                <p className="text-xs font-black uppercase tracking-[0.13em] text-earth">Rewards and privileges</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-black uppercase tracking-[0.13em] text-earth">Rewards and privileges</p>
+                  {!canRedeemPoints ? (
+                    <span className="rounded-full border border-[#d4d1ca] bg-white/75 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-ink/55">
+                      No points available
+                    </span>
+                  ) : null}
+                </div>
                 <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.05em] text-ink">Use {pluralName}</h2>
                 <div className="mt-5 grid gap-4 sm:grid-cols-[130px_minmax(0,1fr)]">
                   <label className="text-sm font-semibold text-ink">
@@ -186,24 +198,24 @@ export default async function StudentPointsPage(props: Props) {
                       name="amount"
                       type="number"
                       min="1"
-                      max={Math.max(1, points.summary.balance)}
+                      max={Math.max(1, points.summary.availableBalance)}
                       step="1"
                       defaultValue={searchParams?.resetForm === "redeem" ? "" : "1"}
                       required
-                      disabled={points.summary.balance < 1}
-                      className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544] disabled:bg-[#eee9e0]"
+                      disabled={!canRedeemPoints}
+                      className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544] disabled:cursor-not-allowed disabled:border-[#d8d5cf] disabled:bg-[#e9e7e2]"
                     />
                   </label>
                   <label className="text-sm font-semibold text-ink">
                     Used for
-                    <input name="reason" type="text" maxLength={300} required disabled={points.summary.balance < 1} placeholder="Chose tonight's dessert" className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544] disabled:bg-[#eee9e0]" />
+                    <input name="reason" type="text" maxLength={300} required disabled={!canRedeemPoints} placeholder="Chose tonight's dessert" className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544] disabled:cursor-not-allowed disabled:border-[#d8d5cf] disabled:bg-[#e9e7e2]" />
                   </label>
                 </div>
                 <div className="mt-5">
                   <PointsSubmitButton
                     idleLabel={`Use ${pluralName}`}
                     pendingLabel="Using…"
-                    disabled={points.summary.balance < 1}
+                    disabled={!canRedeemPoints}
                     tone="outline"
                   />
                 </div>
