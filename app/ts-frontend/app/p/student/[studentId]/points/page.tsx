@@ -100,7 +100,7 @@ export default async function StudentPointsPage(props: Props) {
             playKey={searchParams?.resetForm === "award" ? searchParams.resetToken ?? null : null}
           />
           <section className="overflow-hidden rounded-[30px] border border-[#b7ce9f] bg-[#eef5e4] shadow-[0_8px_0_#cadbb9]">
-            <div className="grid gap-6 px-6 py-7 sm:px-8 xl:grid-cols-[minmax(190px,0.55fr)_minmax(0,2.45fr)] xl:items-center">
+            <div className="grid gap-6 px-6 py-7 sm:px-8 md:grid-cols-[minmax(180px,0.65fr)_minmax(0,2.35fr)] md:items-center">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.14em] text-[#587443]">Total balance</p>
                 <div className="mt-3 flex items-center gap-4">
