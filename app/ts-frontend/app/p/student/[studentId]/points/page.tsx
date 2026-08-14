@@ -17,6 +17,7 @@ import {
   withdrawStudentPointsFromBankAction
 } from "./actions";
 import { PointAwardSuccessSound } from "./point-award-success-sound";
+import { PointsBalanceAllocation } from "./points-balance-allocation";
 import { PointsBalanceChart } from "./points-balance-chart";
 import { PointsSubmitButton } from "./points-submit-button";
 
@@ -98,7 +99,7 @@ export default async function StudentPointsPage(props: Props) {
             playKey={searchParams?.resetForm === "award" ? searchParams.resetToken ?? null : null}
           />
           <section className="overflow-hidden rounded-[30px] border border-[#b7ce9f] bg-[#eef5e4] shadow-[0_8px_0_#cadbb9]">
-            <div className="grid gap-6 px-6 py-7 sm:px-8 xl:grid-cols-[minmax(190px,0.7fr)_minmax(0,2fr)_minmax(150px,0.55fr)] xl:items-center">
+            <div className="grid gap-6 px-6 py-7 sm:px-8 xl:grid-cols-[minmax(190px,0.55fr)_minmax(0,2.45fr)] xl:items-center">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.14em] text-[#587443]">Total balance</p>
                 <div className="mt-3 flex items-center gap-4">
@@ -120,18 +121,15 @@ export default async function StudentPointsPage(props: Props) {
                 timeZone={streakSettings.timeZone}
                 pluralName={pluralName}
               />
-              <div className="grid grid-cols-2 gap-3 xl:grid-cols-1">
-                <div className="rounded-[20px] bg-white/75 px-5 py-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">Available</p>
-                  <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.availableBalance}</p>
-                </div>
-                <div className="rounded-[20px] bg-white/75 px-5 py-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">In the bank</p>
-                  <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{formatPoints(points.summary.bankBalance)}</p>
-                </div>
-              </div>
             </div>
           </section>
+
+          <PointsBalanceAllocation
+            availableBalance={points.summary.availableBalance}
+            bankBalance={points.summary.bankBalance}
+            singularName={singularName}
+            pluralName={pluralName}
+          />
 
           {points.canTransact ? (
             <section className="grid gap-5 lg:grid-cols-2">
