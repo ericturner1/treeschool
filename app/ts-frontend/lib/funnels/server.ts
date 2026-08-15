@@ -71,11 +71,24 @@ export type AdminFunnel = {
   steps: AdminFunnelStep[];
 };
 
+export type FunnelSubscriptionProduct = {
+  id: string;
+  productKind: "subscription";
+  title: string;
+  description: string;
+  priceInCents: number;
+  introductoryPriceInCents: number | null;
+  currencyCode: "USD";
+  planTier: "single" | "standard";
+  billingInterval: "monthly" | "yearly";
+};
+
 export type AdminFunnelOptions = {
   statuses: readonly AdminFunnelStatus[];
   stepTypes: readonly AdminFunnelStepType[];
   stepStatuses: readonly AdminFunnelStepStatus[];
   sourceTypes: readonly AdminFunnelStepSourceType[];
+  subscriptionProducts: FunnelSubscriptionProduct[];
   paymentProviders: {
     stripe: {
       ready: boolean;
@@ -712,6 +725,16 @@ export async function getPublicFunnelOrderForm(path: string) {
       orderBumpProductIds: string[];
       submitLabel: string;
     };
+  }>;
+}
+
+export async function listPublicFunnelProducts() {
+  const response = await requireOk(await backendFetch(
+    `${getBackendUrl()}/public/funnels/products`,
+    { cache: "no-store" }
+  ), "Could not load funnel products.");
+  return response.json() as Promise<{
+    subscriptions: FunnelSubscriptionProduct[];
   }>;
 }
 

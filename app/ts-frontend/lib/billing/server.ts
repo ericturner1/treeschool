@@ -106,6 +106,7 @@ export async function createParentBillingCheckout(input: {
   funnelKey?: string | null;
   landingVariant?: "a" | "b" | null;
   funnelVisitorId?: string | null;
+  nativeCatalogItemIds?: string[];
   funnelAttribution?: ManagedFunnelAttribution | null;
 }) {
   return postBillingJson<{ url: string | null }>(
@@ -118,11 +119,13 @@ export async function createParentBillingCheckout(input: {
 export async function createPublicParentBillingCheckout(input: {
   interval: "monthly" | "yearly";
   planTier: "single" | "standard";
+  email?: string | null;
   successUrl: string;
   cancelUrl: string;
   funnelKey?: string | null;
   landingVariant?: "a" | "b" | null;
   funnelVisitorId?: string | null;
+  nativeCatalogItemIds?: string[];
   funnelAttribution?: ManagedFunnelAttribution | null;
 }) {
   return postBillingJson<{ url: string | null }>(

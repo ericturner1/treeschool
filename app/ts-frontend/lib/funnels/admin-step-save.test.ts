@@ -46,4 +46,16 @@ describe("admin funnel step form input", () => {
       }
     });
   });
+
+  test("preserves a recurring membership product reference", () => {
+    const form = baseForm();
+    form.set("stepType", "upsell");
+    form.set("oneClickProductId", "membership:single:yearly");
+
+    const result = buildAdminFunnelStepSaveInput(form, "admin-1");
+    expect((result.input as { settings?: unknown }).settings).toEqual({
+      journeyNextAction: "button",
+      oneClickOffer: { productId: "membership:single:yearly" }
+    });
+  });
 });

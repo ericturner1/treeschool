@@ -15,7 +15,7 @@ import {
   listNativeWorkbookCatalog,
   type NativeWorkbookCatalogItem
 } from "../../../lib/native-workbooks/server";
-import { getPublicFunnelOrderForm } from "../../../lib/funnels/server";
+import { getPublicFunnelOrderForm, listPublicFunnelProducts } from "../../../lib/funnels/server";
 import { CurriculumCheckoutOptions } from "../../first-grade-homeschool-curriculum/curriculum-checkout-choice";
 
 const PAGE_PATH = "/first-grade-curriculum/choose";
@@ -53,19 +53,38 @@ export default async function FirstGradeCurriculumChoicePage(
     grade: 1,
     subject: null
   }).catch(() => ({ workbooks: [] as NativeWorkbookCatalogItem[] }));
-  const configuredOrderForm = await getPublicFunnelOrderForm(PAGE_PATH).catch(() => null);
-  const configuredPrimary = configuredOrderForm?.orderForm.primaryProductId
+  const [configuredOrderForm, funnelProducts] = await Promise.all([
+    getPublicFunnelOrderForm(PAGE_PATH).catch(() => null),
+    listPublicFunnelProducts().catch(() => ({ subscriptions: [] }))
+  ]);
+  const configuredPrimaryWorkbook = configuredOrderForm?.orderForm.primaryProductId
     ? workbooks.find((item) => item.id === configuredOrderForm.orderForm.primaryProductId) ?? null
     : null;
-  const bundle = configuredPrimary ?? selectFirstGradeBundle(workbooks);
+  const configuredPrimarySubscription = configuredOrderForm?.orderForm.primaryProductId
+    ? funnelProducts.subscriptions.find((item) => item.id === configuredOrderForm.orderForm.primaryProductId) ?? null
+    : null;
+  const fallbackBundle = selectFirstGradeBundle(workbooks);
+  const primary = configuredPrimarySubscription ?? configuredPrimaryWorkbook ?? fallbackBundle;
   const orderBumps = configuredOrderForm
     ? configuredOrderForm.orderForm.orderBumpProductIds
       .map((id) => workbooks.find((item) => item.id === id) ?? null)
-      .filter((item): item is NativeWorkbookCatalogItem => Boolean(item && item.id !== bundle?.id))
+      .filter((item): item is NativeWorkbookCatalogItem => Boolean(
+        item &&
+        item.id !== primary?.id &&
+        (!configuredPrimarySubscription || item.type === "elective")
+      ))
     : [];
-  const bundlePrice = bundle
-    ? formatCurriculumPrice(bundle.priceInCents, bundle.currencyCode)
+  const primaryStartPriceInCents = configuredPrimarySubscription?.introductoryPriceInCents
+    ?? primary?.priceInCents
+    ?? null;
+  const primaryPrice = primary && primaryStartPriceInCents != null
+    ? `${formatCurriculumPrice(primaryStartPriceInCents, primary.currencyCode)}${configuredPrimarySubscription?.introductoryPriceInCents != null ? " first month" : ""}`
     : null;
+  const primaryBillingNote = configuredPrimarySubscription
+    ? configuredPrimarySubscription.billingInterval === "yearly"
+      ? "Billed annually"
+      : `Then ${formatCurriculumPrice(configuredPrimarySubscription.priceInCents, configuredPrimarySubscription.currencyCode)}/month`
+    : "One time";
   const landingVariant = normalizeFirstGradeCurriculumVariant(searchParams?.landingVariant);
   const funnelVisitorId = normalizeFunnelVisitorId(searchParams?.visitor);
   const previewMode = searchParams?.preview === "1";
@@ -112,15 +131,17 @@ export default async function FirstGradeCurriculumChoicePage(
           ) : null}
 
           <div className="mt-7">
-            {bundle && bundlePrice ? (
+            {primary && primaryPrice && primaryStartPriceInCents != null ? (
               <CurriculumCheckoutOptions
-                bundleId={bundle.id}
-                bundleSlug={bundle.slug}
-                bundleTitle={bundle.title}
-                bundleDescription={bundle.description}
-                bundlePrice={bundlePrice}
-                bundlePriceInCents={bundle.priceInCents}
-                currencyCode={bundle.currencyCode}
+                bundleId={primary.id}
+                bundleSlug={configuredPrimarySubscription ? primary.id : configuredPrimaryWorkbook?.slug ?? fallbackBundle?.slug ?? primary.id}
+                bundleTitle={primary.title}
+                bundleDescription={primary.description}
+                bundlePrice={primaryPrice}
+                bundlePriceInCents={primaryStartPriceInCents}
+                currencyCode={primary.currencyCode}
+                primaryProductKind={configuredPrimarySubscription ? "subscription" : "bookstore"}
+                primaryBillingNote={primaryBillingNote}
                 orderBumps={orderBumps.map((item) => ({
                   id: item.id,
                   title: item.title,

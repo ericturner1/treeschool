@@ -19,10 +19,10 @@ export function buildAdminFunnelStepSaveInput(
     .replace(/^-+|-+$/g, "");
 
   if (stepType === "order_form" && !primaryProductId) {
-    throw new Error("Choose a primary bookstore product before saving an order form.");
+    throw new Error("Choose a primary product before saving an order form.");
   }
   if (["upsell", "downsell"].includes(stepType) && !oneClickProductId) {
-    throw new Error("Choose the bookstore product offered on this page.");
+    throw new Error("Choose the product offered on this page.");
   }
 
   return {

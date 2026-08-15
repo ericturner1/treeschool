@@ -44,6 +44,10 @@ import {
   type BillingInterval,
   type MembershipTier
 } from "./membership-plans";
+import {
+  getFunnelMembershipProduct,
+  type FunnelMembershipProduct
+} from "./funnel-products";
 import { withTreeschoolCheckoutBranding } from "./stripe-checkout";
 import { reportMetaCheckoutPurchase } from "./meta-conversions";
 import {
@@ -697,11 +701,13 @@ export async function createCoreSubscriptionCheckout(input: {
 export async function createPublicCoreSubscriptionCheckout(input: {
   interval: string;
   planTier?: string;
+  email?: string | null;
   successUrl: string;
   cancelUrl: string;
   funnelKey?: string | null;
   landingVariant?: string | null;
   funnelVisitorId?: string | null;
+  nativeCatalogItemIds?: string[];
   funnelAttribution?: FunnelCheckoutAttribution | null;
 }) {
   if (!isBillingInterval(input.interval)) {
@@ -712,6 +718,17 @@ export async function createPublicCoreSubscriptionCheckout(input: {
 
   const plan = membership.prices[input.interval];
   const configuredPriceId = await resolveConfiguredSubscriptionPriceId(planTier, input.interval, plan);
+  const email = input.email?.trim().toLowerCase() || null;
+  if (email && !email.includes("@")) throw new Error("Enter a valid email address.");
+  const nativeSelections = await resolveNativeWorkbookCheckoutSelections({
+    ids: input.nativeCatalogItemIds ?? [],
+    userId: null
+  });
+  const paidNativeSelections = nativeSelections.filter((item) => item.type === "elective");
+  if (nativeSelections.some((item) => item.currencyCode.toUpperCase() !== "USD")) {
+    throw new Error("The selected workbook currency cannot be combined with membership checkout.");
+  }
+  const paidNativeIds = new Set(paidNativeSelections.map((item) => item.id));
   const includesMonthlyIntro = input.interval === "monthly";
   const introductoryCouponId = includesMonthlyIntro
     ? await resolveIntroductoryCouponId({
@@ -734,12 +751,16 @@ export async function createPublicCoreSubscriptionCheckout(input: {
       : null;
   const session = await getStripe().checkout.sessions.create(withTreeschoolCheckoutBranding({
     mode: "subscription",
+    customer_email: email ?? undefined,
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
     allow_promotion_codes: introductoryCouponId ? undefined : true,
     discounts: introductoryCouponId ? [{ coupon: introductoryCouponId }] : undefined,
     custom_text: MEMBERSHIP_CHECKOUT_CUSTOM_TEXT,
-    line_items: [buildCoreSubscriptionLineItem(planTier, plan, configuredPriceId)],
+    line_items: [
+      buildCoreSubscriptionLineItem(planTier, plan, configuredPriceId),
+      ...paidNativeSelections.map(buildNativeWorkbookLineItem)
+    ],
     metadata: {
       planTier,
       billingInterval: input.interval,
@@ -749,7 +770,8 @@ export async function createPublicCoreSubscriptionCheckout(input: {
       ...(landingVariant ? { landingVariant } : {}),
       ...(funnelVisitorId ? { funnelVisitorId } : {}),
       ...funnelCheckoutMetadata(input.funnelAttribution),
-      ...(includesMonthlyIntro ? { introductoryOffer: INTRODUCTORY_OFFER_KEY } : {})
+      ...(includesMonthlyIntro ? { introductoryOffer: INTRODUCTORY_OFFER_KEY } : {}),
+      ...nativeSelectionMetadata(nativeSelections, paidNativeIds)
     },
     subscription_data: {
       metadata: {
@@ -1778,6 +1800,142 @@ function appendSourceCheckoutSession(path: string, sourceCheckoutSessionId: stri
   return `${path}${separator}source_session_id=${encodeURIComponent(sourceCheckoutSessionId)}`;
 }
 
+async function createFunnelMembershipOfferCheckout(input: {
+  product: FunnelMembershipProduct;
+  source: Awaited<ReturnType<typeof resolveVerifiedCompletedCheckout>>;
+  sourceCheckoutSessionId: string;
+  offer: Awaited<ReturnType<typeof resolvePublicFunnelOneClickOffer>>;
+  offerKey: string;
+  appBaseUrl: string;
+  cancelPath: string;
+  nextPath: string;
+}) {
+  if (
+    input.source.session.mode === "subscription" ||
+    ["core_subscription", "public_core_subscription"].includes(
+      input.source.session.metadata?.checkoutKind ?? ""
+    )
+  ) {
+    throw new Error("This order already includes a Treeschool membership.");
+  }
+
+  const [matchingParent] = input.source.accountId
+    ? await db.select({
+        accountId: profiles.accountId,
+        userId: profiles.userId
+      }).from(profiles).where(and(
+        eq(profiles.accountId, input.source.accountId),
+        eq(profiles.role, "PARENT")
+      )).limit(1)
+    : await db.select({
+        accountId: profiles.accountId,
+        userId: profiles.userId
+      }).from(users)
+        .innerJoin(profiles, eq(profiles.userId, users.id))
+        .where(and(
+          eq(users.email, input.source.email),
+          eq(profiles.role, "PARENT")
+        ))
+        .limit(1);
+  const accountId = matchingParent?.accountId ?? input.source.accountId;
+  const userId = matchingParent?.userId ?? input.source.session.metadata?.userId ?? null;
+  const [existingSubscription] = accountId
+    ? await db.select({
+        stripeCustomerId: subscriptions.stripeCustomerId,
+        stripeSubscriptionId: subscriptions.stripeSubscriptionId,
+        status: subscriptions.status
+      }).from(subscriptions).where(eq(subscriptions.accountId, accountId)).limit(1)
+    : [];
+  if (existingSubscription && ["trialing", "active", "past_due"].includes(existingSubscription.status)) {
+    throw new Error("This family already has a Treeschool membership.");
+  }
+
+  const membership = getMembershipPlan(input.product.planTier);
+  const [studentUsage] = accountId
+    ? await db.select({ count: sql<number>`count(*)::integer` })
+        .from(profiles)
+        .where(and(eq(profiles.accountId, accountId), eq(profiles.role, "STUDENT")))
+    : [{ count: 0 }];
+  const activeStudentCount = Number(studentUsage?.count ?? 0);
+  if (input.product.planTier === "single" && activeStudentCount > membership.includedStudentCount) {
+    throw new Error("Treeschool Single supports one student. Choose Standard for this family.");
+  }
+  const additionalStudentQuantity = Math.max(
+    0,
+    activeStudentCount - membership.includedStudentCount
+  );
+  const additionalStudentPriceId = additionalStudentQuantity > 0
+    ? await resolveAdditionalStudentPriceId(input.product.billingInterval)
+    : undefined;
+  const plan = membership.prices[input.product.billingInterval];
+  const configuredPriceId = await resolveConfiguredSubscriptionPriceId(
+    input.product.planTier,
+    input.product.billingInterval,
+    plan
+  );
+  const includesMonthlyIntro =
+    input.product.billingInterval === "monthly" &&
+    !existingSubscription?.stripeSubscriptionId;
+  const introductoryCouponId = includesMonthlyIntro
+    ? await resolveIntroductoryCouponId({
+        planTier: input.product.planTier,
+        monthlyPlanAmount: membership.prices.monthly.unitAmount,
+        additionalStudentQuantity
+      })
+    : undefined;
+  const checkoutKind = accountId ? "core_subscription" : "public_core_subscription";
+  const metadata = {
+    ...(accountId ? { accountId } : {}),
+    ...(userId ? { userId } : {}),
+    planTier: input.product.planTier,
+    billingInterval: input.product.billingInterval,
+    additionalStudentQuantity: String(additionalStudentQuantity),
+    checkoutKind,
+    checkoutSource: "funnel_subscription_offer",
+    sourceCheckoutSessionId: input.sourceCheckoutSessionId,
+    funnelId: input.offer.funnelId,
+    funnelSlug: input.offer.funnelSlug,
+    funnelStepId: input.offer.stepId,
+    postCheckoutOfferKey: input.offerKey,
+    subscriptionProductId: input.product.id,
+    deliveryEmail: input.source.email,
+    ...(includesMonthlyIntro ? { introductoryOffer: INTRODUCTORY_OFFER_KEY } : {})
+  };
+  const customerId = existingSubscription?.stripeCustomerId ?? input.source.customerId;
+  const session = await getStripe().checkout.sessions.create(withTreeschoolCheckoutBranding({
+    mode: "subscription",
+    customer: customerId ?? undefined,
+    customer_email: customerId ? undefined : input.source.email,
+    client_reference_id: accountId ?? undefined,
+    success_url: `${input.appBaseUrl}${input.nextPath}`,
+    cancel_url: `${input.appBaseUrl}${appendSourceCheckoutSession(input.cancelPath, input.sourceCheckoutSessionId)}`,
+    allow_promotion_codes: introductoryCouponId ? undefined : true,
+    discounts: introductoryCouponId ? [{ coupon: introductoryCouponId }] : undefined,
+    custom_text: MEMBERSHIP_CHECKOUT_CUSTOM_TEXT,
+    line_items: [
+      buildCoreSubscriptionLineItem(input.product.planTier, plan, configuredPriceId),
+      ...(additionalStudentPriceId
+        ? [buildAdditionalStudentSubscriptionLineItem(additionalStudentPriceId, additionalStudentQuantity)]
+        : [])
+    ],
+    metadata,
+    subscription_data: { metadata }
+  }), {
+    idempotencyKey: `funnel-membership:${input.sourceCheckoutSessionId}:${input.offer.stepId}:${input.product.id}`
+  });
+  await db.update(postCheckoutOffers).set({
+    state: "checkout_required",
+    selectedVariant: input.product.id,
+    stripeCheckoutSessionId: session.id,
+    lastError: null,
+    updatedAt: new Date()
+  }).where(and(
+    eq(postCheckoutOffers.sourceCheckoutSessionId, input.sourceCheckoutSessionId),
+    eq(postCheckoutOffers.offerKey, input.offerKey)
+  ));
+  return { status: "redirect" as const, url: session.url };
+}
+
 export async function decideFunnelOneClickOffer(input: {
   sourceCheckoutSessionId: string;
   funnelStepId: string;
@@ -1786,11 +1944,7 @@ export async function decideFunnelOneClickOffer(input: {
 }) {
   const offer = await resolvePublicFunnelOneClickOffer({ stepId: input.funnelStepId });
   const source = await resolveVerifiedCompletedCheckout(input.sourceCheckoutSessionId);
-  const [selection] = await resolveNativeWorkbookCheckoutSelections({
-    ids: [offer.productId],
-    userId: null
-  });
-  if (!selection) throw new Error("This offer is no longer available.");
+  const membershipProduct = getFunnelMembershipProduct(offer.productId);
 
   const offerKey = `funnel-step:${offer.stepId}`;
   const [record] = await db.insert(postCheckoutOffers).values({
@@ -1823,6 +1977,31 @@ export async function decideFunnelOneClickOffer(input: {
   if (record.state === "accepted") {
     return { status: "complete" as const, nextPath };
   }
+  if (record.state === "checkout_required" && record.stripeCheckoutSessionId) {
+    const existing = await getStripe().checkout.sessions.retrieve(record.stripeCheckoutSessionId).catch(() => null);
+    if (existing?.status === "open" && existing.url) {
+      return { status: "redirect" as const, url: existing.url };
+    }
+  }
+  const cancelPath = input.cancelPath.startsWith("/") ? input.cancelPath : "/";
+  if (membershipProduct) {
+    return createFunnelMembershipOfferCheckout({
+      product: membershipProduct,
+      source,
+      sourceCheckoutSessionId: input.sourceCheckoutSessionId,
+      offer,
+      offerKey,
+      appBaseUrl: input.appBaseUrl,
+      cancelPath,
+      nextPath
+    });
+  }
+
+  const [selection] = await resolveNativeWorkbookCheckoutSelections({
+    ids: [offer.productId],
+    userId: null
+  });
+  if (!selection) throw new Error("This offer is no longer available.");
 
   const metadata = {
     checkoutKind: "native_workbook_cart",
@@ -1886,14 +2065,7 @@ export async function decideFunnelOneClickOffer(input: {
     }
   }
 
-  if (record.state === "checkout_required" && record.stripeCheckoutSessionId) {
-    const existing = await getStripe().checkout.sessions.retrieve(record.stripeCheckoutSessionId).catch(() => null);
-    if (existing?.status === "open" && existing.url) {
-      return { status: "redirect" as const, url: existing.url };
-    }
-  }
   const successUrl = `${input.appBaseUrl}${nextPath}`;
-  const cancelPath = input.cancelPath.startsWith("/") ? input.cancelPath : "/";
   const session = await getStripe().checkout.sessions.create(withTreeschoolCheckoutBranding({
     mode: "payment",
     customer: source.customerId ?? undefined,
@@ -2238,15 +2410,19 @@ export async function handleStripeWebhook(input: {
     await fulfillNativeWorkbookCheckout(event.data.object);
     if (
       event.data.object.metadata?.checkoutSource === "post_checkout_offer" ||
-      event.data.object.metadata?.checkoutSource === "funnel_one_click_offer"
+      event.data.object.metadata?.checkoutSource === "funnel_one_click_offer" ||
+      event.data.object.metadata?.checkoutSource === "funnel_subscription_offer"
     ) {
-      const isManagedFunnelOffer = event.data.object.metadata.checkoutSource === "funnel_one_click_offer";
+      const isManagedFunnelOffer = [
+        "funnel_one_click_offer",
+        "funnel_subscription_offer"
+      ].includes(event.data.object.metadata.checkoutSource);
       await db.update(postCheckoutOffers).set({
         state: !isManagedFunnelOffer && event.data.object.metadata.postCheckoutVariant === "starter"
           ? "downsell_accepted"
           : "accepted",
         selectedVariant: isManagedFunnelOffer
-          ? event.data.object.metadata.item0 ?? null
+          ? event.data.object.metadata.subscriptionProductId ?? event.data.object.metadata.item0 ?? null
           : event.data.object.metadata.postCheckoutVariant ?? null,
         stripePaymentIntentId: stripeObjectId(event.data.object.payment_intent),
         stripeCheckoutSessionId: null,

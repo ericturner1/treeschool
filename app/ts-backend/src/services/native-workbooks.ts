@@ -5031,30 +5031,30 @@ async function expandPurchasedCatalogSelections(input: {
         }]
       : Array.from({
           length: Number(
-            ["plan_pack", "core_subscription"].includes(input.checkoutKind)
+            ["plan_pack", "core_subscription", "public_core_subscription"].includes(input.checkoutKind)
               ? input.metadata.nativeItemCount ?? 0
               : input.metadata.itemCount ?? 0
           )
         }, (_, index) => ({
           catalogKind: input.metadata[
-            ["plan_pack", "core_subscription"].includes(input.checkoutKind) ? `nativeKind${index}` : `kind${index}`
+            ["plan_pack", "core_subscription", "public_core_subscription"].includes(input.checkoutKind) ? `nativeKind${index}` : `kind${index}`
           ]
             ? normalizeCatalogKind(input.metadata[
-                ["plan_pack", "core_subscription"].includes(input.checkoutKind) ? `nativeKind${index}` : `kind${index}`
+                ["plan_pack", "core_subscription", "public_core_subscription"].includes(input.checkoutKind) ? `nativeKind${index}` : `kind${index}`
               ])
             : "workbook",
           id: input.metadata[
-            ["plan_pack", "core_subscription"].includes(input.checkoutKind) ? `nativeItem${index}` : `item${index}`
+            ["plan_pack", "core_subscription", "public_core_subscription"].includes(input.checkoutKind) ? `nativeItem${index}` : `item${index}`
           ] ?? input.metadata[`workbook${index}`] ?? "",
           versionId: input.metadata[`version${index}`] || undefined,
           versionIds: input.metadata[`versions${index}`]?.split("|").filter(Boolean),
           priceInCents: Number(input.metadata[
-            ["plan_pack", "core_subscription"].includes(input.checkoutKind) ? `nativeAmount${index}` : `amount${index}`
+            ["plan_pack", "core_subscription", "public_core_subscription"].includes(input.checkoutKind) ? `nativeAmount${index}` : `amount${index}`
           ] ?? NaN),
-          purchased: !["plan_pack", "core_subscription"].includes(input.checkoutKind) ||
+          purchased: !["plan_pack", "core_subscription", "public_core_subscription"].includes(input.checkoutKind) ||
             input.metadata[`nativePurchased${index}`] === "true"
         })).filter((selection) => selection.purchased);
-  if (selections.length === 0 && ["plan_pack", "core_subscription"].includes(input.checkoutKind)) return [];
+  if (selections.length === 0 && ["plan_pack", "core_subscription", "public_core_subscription"].includes(input.checkoutKind)) return [];
   if (!selections.length || selections.length > MAX_NATIVE_WORKBOOK_CART_ITEMS || selections.some((item) =>
     !item.id || !Number.isInteger(item.priceInCents) || item.priceInCents < 0
   )) throw new Error("Native workbook checkout metadata is incomplete.");
@@ -5132,8 +5132,8 @@ async function expandPurchasedCatalogSelections(input: {
 export async function fulfillNativeWorkbookCheckout(session: Stripe.Checkout.Session) {
   const metadata = session.metadata ?? {};
   const checkoutKind = metadata.checkoutKind;
-  if (!["native_workbook", "native_workbook_bundle", "native_workbook_cart", "plan_pack", "core_subscription"].includes(checkoutKind ?? "")) return { handled: false };
-  if (["plan_pack", "core_subscription"].includes(checkoutKind ?? "") && Number(metadata.nativeItemCount ?? 0) === 0) {
+  if (!["native_workbook", "native_workbook_bundle", "native_workbook_cart", "plan_pack", "core_subscription", "public_core_subscription"].includes(checkoutKind ?? "")) return { handled: false };
+  if (["plan_pack", "core_subscription", "public_core_subscription"].includes(checkoutKind ?? "") && Number(metadata.nativeItemCount ?? 0) === 0) {
     return { handled: false };
   }
   const checkoutItems = await expandPurchasedCatalogSelections({ checkoutKind: checkoutKind!, metadata, session });
@@ -5173,7 +5173,7 @@ export async function fulfillNativeWorkbookCheckout(session: Stripe.Checkout.Ses
   if (items.some((item) => !item.workbook)) throw new Error("A purchased workbook or edition no longer exists.");
 
   const listedTotal = items.reduce((sum, item) => sum + item.priceInCents, 0);
-  const paidTotal = ["plan_pack", "core_subscription"].includes(checkoutKind ?? "")
+  const paidTotal = ["plan_pack", "core_subscription", "public_core_subscription"].includes(checkoutKind ?? "")
     ? listedTotal
     : session.amount_total ?? listedTotal;
   let allocatedTotal = 0;

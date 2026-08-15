@@ -36,7 +36,7 @@ import {
   funnelListTextStyle,
   isCustomizedFunnelList
 } from "../../../lib/funnels/list-style";
-import type { AdminManagedFunnelPagePayload, ManagedFunnelPage } from "../../../lib/funnels/server";
+import type { AdminManagedFunnelPagePayload, FunnelSubscriptionProduct, ManagedFunnelPage } from "../../../lib/funnels/server";
 import type { NativeWorkbookCatalogItem } from "../../../lib/native-workbooks/server";
 import { showGlobalToast } from "../../../lib/toast";
 import { CurriculumCheckoutOptions } from "../../first-grade-homeschool-curriculum/curriculum-checkout-choice";
@@ -881,6 +881,7 @@ export function FunnelPageStudio({
   stepId,
   data,
   orderFormCatalog = [],
+  subscriptionProducts = [],
   editorUserEmail = null
 }: {
   funnelId: string;
@@ -888,6 +889,7 @@ export function FunnelPageStudio({
   stepId: string;
   data: AdminManagedFunnelPagePayload;
   orderFormCatalog?: NativeWorkbookCatalogItem[];
+  subscriptionProducts?: FunnelSubscriptionProduct[];
   editorUserEmail?: string | null;
 }) {
   const [page, setPage] = useState<ManagedFunnelPage | null>(data.page);
@@ -1257,27 +1259,47 @@ export function FunnelPageStudio({
     ? rawOrderFormSettings as Record<string, unknown>
     : {};
   const primaryProductId = typeof orderFormSettings.primaryProductId === "string" ? orderFormSettings.primaryProductId : null;
-  const primaryProduct = primaryProductId ? orderFormCatalog.find((item) => item.id === primaryProductId) ?? null : null;
+  const primaryWorkbook = primaryProductId ? orderFormCatalog.find((item) => item.id === primaryProductId) ?? null : null;
+  const primarySubscription = primaryProductId ? subscriptionProducts.find((item) => item.id === primaryProductId) ?? null : null;
+  const primaryProduct = primaryWorkbook ?? primarySubscription;
   const orderBumpIds = Array.isArray(orderFormSettings.orderBumpProductIds)
     ? orderFormSettings.orderBumpProductIds.filter((id): id is string => typeof id === "string")
     : [];
   const orderBumps = orderBumpIds
     .map((id) => orderFormCatalog.find((item) => item.id === id) ?? null)
-    .filter((item): item is NativeWorkbookCatalogItem => Boolean(item && item.id !== primaryProduct?.id));
+    .filter((item): item is NativeWorkbookCatalogItem => Boolean(
+      item &&
+      item.id !== primaryProduct?.id &&
+      (!primarySubscription || item.type === "elective")
+    ));
   const submitLabel = typeof orderFormSettings.submitLabel === "string" && orderFormSettings.submitLabel.trim()
     ? orderFormSettings.submitLabel.trim()
     : "Continue to secure checkout";
+  const primarySubscriptionStartPrice = primarySubscription?.introductoryPriceInCents ?? primarySubscription?.priceInCents;
+  const primaryPriceInCents = primaryWorkbook?.priceInCents ?? primarySubscriptionStartPrice ?? 0;
+  const formattedPrimaryPrice = primarySubscription?.introductoryPriceInCents != null
+    ? `${new Intl.NumberFormat("en-US", { style: "currency", currency: primarySubscription.currencyCode }).format(primarySubscription.introductoryPriceInCents / 100)} first month`
+    : primaryProduct
+      ? new Intl.NumberFormat("en-US", { style: "currency", currency: primaryProduct.currencyCode }).format(primaryProduct.priceInCents / 100)
+      : "";
+  const primaryBillingNote = primarySubscription
+    ? primarySubscription.billingInterval === "yearly"
+      ? "Billed annually"
+      : `Then ${new Intl.NumberFormat("en-US", { style: "currency", currency: primarySubscription.currencyCode }).format(primarySubscription.priceInCents / 100)}/month`
+    : "One time";
   const orderFormPreview = data.step.stepType === "order_form" ? (
     <section className="pointer-events-none mx-auto mb-12 w-full max-w-[1120px] rounded-[30px] border border-[#d8c7ad] bg-[#fffaf2] p-6 shadow-[0_18px_50px_rgba(79,54,34,.09)] sm:p-9" aria-label="Protected checkout preview">
       {primaryProduct ? (
         <CurriculumCheckoutOptions
           bundleId={primaryProduct.id}
-          bundleSlug={primaryProduct.slug}
+          bundleSlug={primaryWorkbook?.slug ?? primaryProduct.id}
           bundleTitle={primaryProduct.title}
           bundleDescription={primaryProduct.description}
-          bundlePrice={new Intl.NumberFormat("en-US", { style: "currency", currency: primaryProduct.currencyCode }).format(primaryProduct.priceInCents / 100)}
-          bundlePriceInCents={primaryProduct.priceInCents}
+          bundlePrice={formattedPrimaryPrice}
+          bundlePriceInCents={primaryPriceInCents}
           currencyCode={primaryProduct.currencyCode}
+          primaryProductKind={primarySubscription ? "subscription" : "bookstore"}
+          primaryBillingNote={primaryBillingNote}
           orderBumps={orderBumps.map((item) => ({ id: item.id, title: item.title, description: item.description, priceInCents: item.priceInCents, currencyCode: item.currencyCode }))}
           submitLabel={submitLabel}
           userEmail={editorUserEmail}

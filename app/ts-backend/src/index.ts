@@ -251,6 +251,7 @@ import {
   getPublicFunnelPage,
   getPublicFunnelPageByPath,
   getPublicFunnelOrderForm,
+  listPublicFunnelProducts,
   listAdminFunnelContacts,
   listAdminFunnels,
   promoteAdminFunnelExperimentWinner,
@@ -913,6 +914,10 @@ const server = Bun.serve({
       } catch {
         return Response.json({ error: "Order form not found." }, { status: 404 });
       }
+    }
+
+    if (url.pathname === "/public/funnels/products" && request.method === "GET") {
+      return Response.json(listPublicFunnelProducts());
     }
 
     if (url.pathname === "/internal/faqs/admin" && request.method === "GET") {
@@ -2638,6 +2643,7 @@ const server = Bun.serve({
         funnelKey?: string | null;
         landingVariant?: string | null;
         funnelVisitorId?: string | null;
+        nativeCatalogItemIds?: string[];
         funnelAttribution?: Parameters<typeof createCoreSubscriptionCheckout>[0]["funnelAttribution"];
       };
 
@@ -2661,6 +2667,7 @@ const server = Bun.serve({
             funnelKey: body.funnelKey,
             landingVariant: body.landingVariant,
             funnelVisitorId: body.funnelVisitorId,
+            nativeCatalogItemIds: body.nativeCatalogItemIds,
             funnelAttribution: body.funnelAttribution
           })
         );
@@ -2678,11 +2685,13 @@ const server = Bun.serve({
       const body = (await request.json()) as {
         interval?: string;
         planTier?: string;
+        email?: string | null;
         successUrl?: string;
         cancelUrl?: string;
         funnelKey?: string | null;
         landingVariant?: string | null;
         funnelVisitorId?: string | null;
+        nativeCatalogItemIds?: string[];
         funnelAttribution?: Parameters<typeof createPublicCoreSubscriptionCheckout>[0]["funnelAttribution"];
       };
 
@@ -2697,11 +2706,13 @@ const server = Bun.serve({
         return Response.json(await createPublicCoreSubscriptionCheckout({
           interval: body.interval,
           planTier: body.planTier,
+          email: body.email,
           successUrl: body.successUrl,
           cancelUrl: body.cancelUrl,
           funnelKey: body.funnelKey,
           landingVariant: body.landingVariant,
           funnelVisitorId: body.funnelVisitorId,
+          nativeCatalogItemIds: body.nativeCatalogItemIds,
           funnelAttribution: body.funnelAttribution
         }));
       } catch (error) {

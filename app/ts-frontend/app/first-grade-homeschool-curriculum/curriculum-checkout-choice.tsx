@@ -25,6 +25,8 @@ type OptionsProps = Omit<ChoiceProps, "triggerLabel" | "triggerStyle"> & {
   bundleTitle: string;
   bundleDescription: string;
   submitLabel: string;
+  primaryProductKind?: "bookstore" | "subscription";
+  primaryBillingNote?: string;
   funnelKey?: string;
   orderBumps: Array<{
     id: string;
@@ -86,6 +88,8 @@ export function CurriculumCheckoutOptions({
   currencyCode,
   orderBumps,
   submitLabel,
+  primaryProductKind = "bookstore",
+  primaryBillingNote = "One time",
   funnelKey = "first_grade_curriculum",
   userEmail,
   returnPath = "/first-grade-curriculum/choose",
@@ -111,7 +115,8 @@ export function CurriculumCheckoutOptions({
       data-funnel-cta="start-order-form-checkout"
       data-revenue-path="first-grade-curriculum-order-form"
     >
-      <input type="hidden" name="workbookId" value={bundleId} />
+      <input type="hidden" name="primaryProductId" value={bundleId} />
+      {primaryProductKind === "bookstore" ? <input type="hidden" name="workbookId" value={bundleId} /> : null}
       <input type="hidden" name="bundleSlug" value={bundleSlug} />
       <input type="hidden" name="funnelKey" value={funnelKey} />
       <input type="hidden" name="returnPath" value={returnPath} />
@@ -129,7 +134,7 @@ export function CurriculumCheckoutOptions({
           </div>
           <div className="text-right">
             <p className="text-3xl font-semibold tracking-[-0.04em]">{bundlePrice}</p>
-            <p className="mt-1 text-xs font-semibold uppercase tracking-[0.08em] text-ink/50">One time</p>
+            <p className="mt-1 text-xs font-semibold uppercase tracking-[0.08em] text-ink/50">{primaryBillingNote}</p>
           </div>
         </div>
       </article>
@@ -176,13 +181,17 @@ export function CurriculumCheckoutOptions({
             </label>
           )}
           <div className="flex items-center justify-between gap-4 border-t border-[#decdb3] pt-4">
-            <span className="font-semibold">Order total</span>
+            <span className="font-semibold">{primaryProductKind === "subscription" ? "Starting total" : "Order total"}</span>
             <span className="text-2xl font-semibold">{money(totalInCents, currencyCode)}</span>
           </div>
           <button type="submit" className="cta-button cta-button--light w-full justify-center">
             {submitLabel}
           </button>
-          <p className="text-center text-xs leading-5 text-ink/50">You will review this order once more on Stripe before you pay.</p>
+          <p className="text-center text-xs leading-5 text-ink/50">
+            {primaryProductKind === "subscription"
+              ? "Stripe will show the recurring price, any introductory offer you qualify for, and one-time additions before you subscribe."
+              : "You will review this order once more on Stripe before you pay."}
+          </p>
         </div>
       </section>
     </form>

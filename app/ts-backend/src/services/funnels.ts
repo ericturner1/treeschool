@@ -44,6 +44,10 @@ import {
   nextActiveFunnelJourneyStep,
   pairedUpsellForDownsell
 } from "./funnel-offer-flow";
+import {
+  getFunnelMembershipProduct,
+  listFunnelMembershipProducts
+} from "./funnel-products";
 
 export const FUNNEL_STATUSES = ["draft", "live", "paused", "archived"] as const;
 export const FUNNEL_STEP_STATUSES = ["draft", "active", "inactive"] as const;
@@ -1221,6 +1225,7 @@ async function resolveNextStepHref(
 }
 
 async function isAvailableFunnelProduct(productId: string) {
+  if (getFunnelMembershipProduct(productId)) return true;
   const [[workbook], [bundle]] = await Promise.all([
     db.select({ id: nativeWorkbooks.id })
       .from(nativeWorkbooks)
@@ -1539,6 +1544,7 @@ export async function listAdminFunnels(userId: string) {
     stepTypes: FUNNEL_STEP_TYPES,
     stepStatuses: FUNNEL_STEP_STATUSES,
     sourceTypes: FUNNEL_STEP_SOURCE_TYPES,
+    subscriptionProducts: listFunnelMembershipProducts(),
     paymentProviders: configuredFunnelPaymentProviders()
   };
 }
@@ -1561,6 +1567,7 @@ export async function getAdminFunnel(input: { userId: string; idOrSlug: string }
     stepTypes: FUNNEL_STEP_TYPES,
     stepStatuses: FUNNEL_STEP_STATUSES,
     sourceTypes: FUNNEL_STEP_SOURCE_TYPES,
+    subscriptionProducts: listFunnelMembershipProducts(),
     paymentProviders: configuredFunnelPaymentProviders()
   };
 }
@@ -1959,6 +1966,10 @@ export async function getPublicFunnelOrderForm(input: { path: string }) {
         : "Continue to secure checkout"
     }
   };
+}
+
+export function listPublicFunnelProducts() {
+  return { subscriptions: listFunnelMembershipProducts() };
 }
 
 export async function saveAdminFunnelAutomation(
@@ -2838,11 +2849,11 @@ export async function publishAdminFunnelPage(input: {
       ? orderForm.primaryProductId.trim()
       : "";
     if (!primaryProductId) {
-      throw new Error("Choose a primary bookstore product in the order form settings before publishing.");
+      throw new Error("Choose a primary product in the order form settings before publishing.");
     }
 
     if (!(await isAvailableFunnelProduct(primaryProductId))) {
-      throw new Error("The selected primary product is no longer available. Choose a published bookstore product before publishing.");
+      throw new Error("The selected primary product is no longer available. Choose an available membership or published bookstore product before publishing.");
     }
   }
   if (step.stepType === "upsell" || step.stepType === "downsell") {
@@ -2855,10 +2866,10 @@ export async function publishAdminFunnelPage(input: {
       : {};
     const productId = typeof offer.productId === "string" ? offer.productId.trim() : "";
     if (!productId) {
-      throw new Error("Choose a bookstore product for this one-click offer before publishing.");
+      throw new Error("Choose a product for this offer before publishing.");
     }
     if (!(await isAvailableFunnelProduct(productId))) {
-      throw new Error("The selected one-click product is no longer available. Choose a published bookstore product before publishing.");
+      throw new Error("The selected offer product is no longer available. Choose an available membership or published bookstore product before publishing.");
     }
   }
   const publicPath = managedPagePath(

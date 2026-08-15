@@ -148,12 +148,15 @@ function StepFields({
     ? rawOneClickOffer as Record<string, unknown>
     : {};
   const oneClickProductId = typeof oneClickOffer.productId === "string" ? oneClickOffer.productId : "";
+  const subscriptionProducts = options.subscriptionProducts ?? [];
+  const primarySubscription = subscriptionProducts.find((item) => item.id === primaryProductId) ?? null;
+  const oneClickSubscription = subscriptionProducts.find((item) => item.id === oneClickProductId) ?? null;
   const stripeConfiguration = options.paymentProviders?.stripe ?? {
     ready: false,
     checkoutConfigured: false,
     webhookConfigured: false
   };
-  const money = (item: NativeWorkbookCatalogItem) => new Intl.NumberFormat("en-US", {
+  const money = (item: { currencyCode: string; priceInCents: number }) => new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: item.currencyCode
   }).format(item.priceInCents / 100);
@@ -208,18 +211,28 @@ function StepFields({
             <div>
               <p className="text-base font-semibold">Products and order bumps</p>
               <p className="mt-1 text-sm leading-6 text-ink/55">
-                Choose the main bookstore item sold on this page. Optional additions appear as checkboxes before the customer continues to Stripe.
+                Choose a membership or bookstore item as the main purchase. Workbook additions appear as optional one-time checkboxes before the customer continues to Stripe.
               </p>
             </div>
             <label className="grid gap-2 text-sm font-semibold text-ink/82">
-              Primary digital product
+              Primary product
               <select name="orderPrimaryProductId" required defaultValue={primaryProductId} className={STEP_SELECT_CLASS}>
-                <option value="">Select a bookstore product…</option>
-                {catalog.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.title} · {money(item)}{item.catalogKind === "bundle" ? " · bundle" : ""}
-                  </option>
-                ))}
+                <option value="">Select a product…</option>
+                {subscriptionProducts.length ? <optgroup label="Treeschool memberships">
+                  {subscriptionProducts.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.title} · {money(item)}/{item.billingInterval === "yearly" ? "year" : "month"}
+                      {item.introductoryPriceInCents != null ? " · eligible new members start at $6" : ""}
+                    </option>
+                  ))}
+                </optgroup> : null}
+                {catalog.length ? <optgroup label="Bookstore products">
+                  {catalog.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.title} · {money(item)}{item.catalogKind === "bundle" ? " · bundle" : ""}
+                    </option>
+                  ))}
+                </optgroup> : null}
               </select>
             </label>
             <fieldset className="grid gap-2">
@@ -232,17 +245,24 @@ function StepFields({
                       name="orderBumpProductId"
                       value={item.id}
                       defaultChecked={bumpIds.has(item.id)}
-                      disabled={item.id === primaryProductId}
+                      disabled={item.id === primaryProductId || Boolean(primarySubscription && item.type !== "elective")}
                       className="h-5 w-5 rounded border-[#bca88a] accent-[#739655]"
                     />
                     <span className="min-w-0 flex-1 font-semibold">{item.title}</span>
-                    <span className="shrink-0 text-ink/50">{money(item)}</span>
+                    <span className="shrink-0 text-ink/50">
+                      {primarySubscription && item.type !== "elective" ? "Included with membership" : money(item)}
+                    </span>
                   </label>
                 )) : (
-                  <p className="px-2 py-3 text-sm text-ink/55">Publish a bookstore product before configuring this order form.</p>
+                  <p className="px-2 py-3 text-sm text-ink/55">No published workbook additions are currently available.</p>
                 )}
               </div>
             </fieldset>
+            {primarySubscription ? (
+              <p className="rounded-[14px] border border-[#c9d9b8] bg-[#f2f8ec] px-4 py-3 text-sm leading-6 text-[#4d6a39]">
+                Stripe creates a recurring {primarySubscription.billingInterval === "yearly" ? "annual" : "monthly"} membership. Workbook order bumps are charged once on the first invoice.
+              </p>
+            ) : null}
             <label className="grid gap-2 text-sm font-semibold text-ink/82">
               Checkout button label
               <input name="orderSubmitLabel" defaultValue={submitLabel} className={STEP_FIELD_CLASS} />
@@ -251,22 +271,37 @@ function StepFields({
         ) : null}
         {["upsell", "downsell"].includes(step?.stepType ?? "") ? (
           <section className="grid gap-5 rounded-[18px] border border-[#d8c5a8] bg-[#fffdf8] p-4 sm:col-span-2 sm:p-5">
-            <StripeConfigurationStatus stripe={stripeConfiguration} mode="one_click" />
+            <StripeConfigurationStatus stripe={stripeConfiguration} mode={oneClickSubscription ? "checkout" : "one_click"} />
             <div>
               <p className="text-base font-semibold">One-click offer</p>
               <p className="mt-1 text-sm leading-6 text-ink/55">
-                Choose the bookstore item offered here. After the initial checkout, Treeschool charges the customer&apos;s saved payment method with one click; Stripe only reopens if the bank requires confirmation.
+                Choose the membership or bookstore item offered here. One-time products use the saved payment method when possible; recurring memberships open Stripe for clear subscription confirmation.
               </p>
             </div>
             <label className="grid gap-2 text-sm font-semibold text-ink/82">
               Product
               <select name="oneClickProductId" required defaultValue={oneClickProductId} className={STEP_SELECT_CLASS}>
-                <option value="">Select a bookstore product…</option>
-                {catalog.map((item) => (
-                  <option key={item.id} value={item.id}>{item.title} · {money(item)}{item.catalogKind === "bundle" ? " · bundle" : ""}</option>
-                ))}
+                <option value="">Select a product…</option>
+                {subscriptionProducts.length ? <optgroup label="Treeschool memberships">
+                  {subscriptionProducts.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.title} · {money(item)}/{item.billingInterval === "yearly" ? "year" : "month"}
+                      {item.introductoryPriceInCents != null ? " · eligible new members start at $6" : ""}
+                    </option>
+                  ))}
+                </optgroup> : null}
+                {catalog.length ? <optgroup label="Bookstore products">
+                  {catalog.map((item) => (
+                    <option key={item.id} value={item.id}>{item.title} · {money(item)}{item.catalogKind === "bundle" ? " · bundle" : ""}</option>
+                  ))}
+                </optgroup> : null}
               </select>
             </label>
+            {oneClickSubscription ? (
+              <p className="rounded-[14px] border border-[#c9d9b8] bg-[#f2f8ec] px-4 py-3 text-sm leading-6 text-[#4d6a39]">
+                Accepting this offer opens Stripe to confirm the {oneClickSubscription.billingInterval === "yearly" ? "annual" : "monthly"} recurring membership before it begins.
+              </p>
+            ) : null}
             <p className="text-sm leading-6 text-ink/55">
               Edit the page itself to control the accept button and decline-link copy.
             </p>

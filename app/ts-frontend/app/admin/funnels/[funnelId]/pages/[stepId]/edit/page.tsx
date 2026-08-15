@@ -112,5 +112,5 @@ export default async function FunnelPageEditorRoute(
 
   const orderFormCatalog = catalog;
 
-  return <FunnelPageStudio funnelId={resolvedData.funnel.id} funnelSlug={resolvedData.funnel.slug} stepId={resolvedData.step.id} data={resolvedData} orderFormCatalog={orderFormCatalog} editorUserEmail={user.email ?? null} />;
+  return <FunnelPageStudio funnelId={resolvedData.funnel.id} funnelSlug={resolvedData.funnel.slug} stepId={resolvedData.step.id} data={resolvedData} orderFormCatalog={orderFormCatalog} subscriptionProducts={funnelData.subscriptionProducts} editorUserEmail={user.email ?? null} />;
 }

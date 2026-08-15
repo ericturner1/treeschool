@@ -1,5 +1,8 @@
 import { getCurrentUser } from "../lib/auth/server";
-import type { ManagedFunnelPagePayload } from "../lib/funnels/server";
+import {
+  listPublicFunnelProducts,
+  type ManagedFunnelPagePayload
+} from "../lib/funnels/server";
 import {
   listNativeWorkbookCatalog,
   type NativeWorkbookCatalogItem
@@ -24,7 +27,7 @@ function orderFormSettings(step: ManagedFunnelPagePayload["step"]) {
   };
 }
 
-function price(item: NativeWorkbookCatalogItem) {
+function price(item: { currencyCode: string; priceInCents: number }) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: item.currencyCode
@@ -42,29 +45,52 @@ export async function ManagedFunnelOrderForm({
 
   const settings = orderFormSettings(data.step);
   const user = await getCurrentUser().catch(() => null);
-  const { workbooks } = await listNativeWorkbookCatalog({
-    userId: user?.id,
-    grade: null,
-    subject: null
-  }).catch(() => ({ workbooks: [] as NativeWorkbookCatalogItem[] }));
-  const primary = settings.primaryProductId
+  const [{ workbooks }, funnelProducts] = await Promise.all([
+    listNativeWorkbookCatalog({
+      userId: user?.id,
+      grade: null,
+      subject: null
+    }).catch(() => ({ workbooks: [] as NativeWorkbookCatalogItem[] })),
+    listPublicFunnelProducts().catch(() => ({ subscriptions: [] }))
+  ]);
+  const primaryWorkbook = settings.primaryProductId
     ? workbooks.find((item) => item.id === settings.primaryProductId) ?? null
     : null;
+  const primarySubscription = settings.primaryProductId
+    ? funnelProducts.subscriptions.find((item) => item.id === settings.primaryProductId) ?? null
+    : null;
+  const primary = primaryWorkbook ?? primarySubscription;
   const orderBumps = settings.orderBumpProductIds
     .map((id) => workbooks.find((item) => item.id === id) ?? null)
-    .filter((item): item is NativeWorkbookCatalogItem => Boolean(item && item.id !== primary?.id));
+    .filter((item): item is NativeWorkbookCatalogItem => Boolean(
+      item &&
+      item.id !== primary?.id &&
+      (!primarySubscription || item.type === "elective")
+    ));
+  const subscriptionStartPrice = primarySubscription?.introductoryPriceInCents ?? primarySubscription?.priceInCents;
+  const primaryPriceInCents = primaryWorkbook?.priceInCents ?? subscriptionStartPrice ?? 0;
+  const primaryPrice = primarySubscription?.introductoryPriceInCents != null
+    ? `${price({ ...primarySubscription, priceInCents: primarySubscription.introductoryPriceInCents })} first month`
+    : primary ? price(primary) : "";
+  const primaryBillingNote = primarySubscription
+    ? primarySubscription.billingInterval === "yearly"
+      ? "Billed annually"
+      : `Then ${price(primarySubscription)}/month`
+    : "One time";
 
   return (
     <section className="mx-auto mb-12 w-full max-w-[1120px] rounded-[30px] border border-[#d8c7ad] bg-[#fffaf2] p-6 shadow-[0_18px_50px_rgba(79,54,34,.09)] sm:p-9">
       {primary ? (
         <CurriculumCheckoutOptions
           bundleId={primary.id}
-          bundleSlug={primary.slug}
+          bundleSlug={primaryWorkbook?.slug ?? primary.id}
           bundleTitle={primary.title}
           bundleDescription={primary.description}
-          bundlePrice={price(primary)}
-          bundlePriceInCents={primary.priceInCents}
+          bundlePrice={primaryPrice}
+          bundlePriceInCents={primaryPriceInCents}
           currencyCode={primary.currencyCode}
+          primaryProductKind={primarySubscription ? "subscription" : "bookstore"}
+          primaryBillingNote={primaryBillingNote}
           orderBumps={orderBumps.map((item) => ({
             id: item.id,
             title: item.title,

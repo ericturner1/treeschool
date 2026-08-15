@@ -1,13 +1,19 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { bootstrapParentAccount } from "../../lib/accounts/server";
 import { getCurrentUser } from "../../lib/auth/server";
+import {
+  createParentBillingCheckout,
+  createPublicParentBillingCheckout
+} from "../../lib/billing/server";
 import {
   normalizeFirstGradeCurriculumVariant,
   normalizeFunnelVisitorId
 } from "../../lib/first-grade-curriculum/experiment";
 import { createNativeWorkbookCartCheckout, createNativeWorkbookCheckout, getNativeWorkbookProduct } from "../../lib/native-workbooks/server";
 import { getFunnelAttributionFromCookies } from "../../lib/funnels/attribution";
+import { parseFunnelSubscriptionProductId } from "../../lib/funnels/products";
 
 function appUrl() {
   return (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3100").replace(/\/$/, "");
@@ -109,6 +115,7 @@ export async function startWorkbookCartCheckoutAction(formData: FormData) {
 
 export async function startFunnelOrderCheckoutAction(formData: FormData) {
   const workbookIds = Array.from(new Set(formData.getAll("workbookId").map(String).filter(Boolean)));
+  const subscription = parseFunnelSubscriptionProductId(formData.get("primaryProductId"));
   const email = String(formData.get("email") ?? "").trim();
   const isExperimentPreview = String(formData.get("experimentPreview") ?? "") === "true";
   const landingVariant = isExperimentPreview ? null : normalizeFirstGradeCurriculumVariant(String(formData.get("landingVariant") ?? ""));
@@ -120,7 +127,44 @@ export async function startFunnelOrderCheckoutAction(formData: FormData) {
   const funnelKey = /^[a-z0-9_-]{1,80}$/.test(rawFunnelKey) ? rawFunnelKey : null;
   try {
     const user = await getCurrentUser();
+    const userId = user?.id;
+    const userEmail = user?.email;
     const base = appUrl();
+    if (subscription) {
+      const successUrl = successPath
+        ? `${base}${appendCheckoutSession(successPath)}`
+        : funnelKey === "first_grade_curriculum"
+          ? `${base}/offers/us/first-grade-japanese?session_id={CHECKOUT_SESSION_ID}`
+          : userId
+            ? `${base}/p/dashboard?checkout=success`
+            : `${base}/membership/complete?session_id={CHECKOUT_SESSION_ID}`;
+      const shared = {
+        interval: subscription.billingInterval,
+        planTier: subscription.planTier,
+        nativeCatalogItemIds: workbookIds,
+        successUrl,
+        cancelUrl: `${base}${returnPath}?checkout=canceled`,
+        funnelKey: funnelKey === "first_grade_curriculum" ? funnelKey : null,
+        landingVariant,
+        funnelVisitorId,
+        funnelAttribution: managedFunnelAttribution
+      } as const;
+      const session = userId && userEmail
+        ? await (async () => {
+            await bootstrapParentAccount({
+              userId,
+              email: userEmail,
+              firstName:
+                user.user_metadata?.first_name ??
+                user.user_metadata?.full_name ??
+                user.user_metadata?.name
+            });
+            return createParentBillingCheckout({ userId, ...shared });
+          })()
+        : await createPublicParentBillingCheckout({ email, ...shared });
+      if (!session.url) throw new Error("Stripe did not return a checkout link.");
+      redirect(session.url);
+    }
     const session = await createNativeWorkbookCartCheckout({
       userId: user?.id,
       email: user?.email || email,
