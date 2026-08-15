@@ -254,12 +254,12 @@ export default async function WorkbookProductPage(props: Props) {
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 pb-16 pt-2 sm:px-6 lg:px-8">
         {searchParams?.checkout === "canceled" ? <p className="mt-5 rounded-[16px] bg-[#fffaf2] px-4 py-3 text-sm font-semibold text-earth">Checkout was canceled. Nothing was charged.</p> : null}
         {searchParams?.error ? <p className="mt-5 rounded-[16px] bg-[#fff1ec] px-4 py-3 text-sm font-semibold text-[#8b3e2f]">{decodeURIComponent(searchParams.error)}</p> : null}
 
-        <section className="mt-6 overflow-hidden rounded-[34px] bg-[#fffaf2] shadow-[0_12px_34px_rgba(91,63,39,0.08)] lg:grid lg:grid-cols-2">
-          <div className="bg-[#fffaf2] p-5 sm:p-8">
+        <section className="mt-2 overflow-hidden rounded-[34px] lg:grid lg:grid-cols-2">
+          <div className="p-5 sm:p-8">
             <WorkbookImageGallery
               images={galleryImages}
               primaryClassName={isBundle ? "mx-auto aspect-square w-full max-w-[280px]" : undefined}
@@ -277,7 +277,7 @@ export default async function WorkbookProductPage(props: Props) {
               </div>
             ) : null}
           </div>
-          <div className="bg-[#fffaf2] p-6 sm:p-10 lg:p-12">
+          <div className="p-6 sm:p-10 lg:p-12">
             <h1 className="text-4xl font-semibold leading-[1.06] tracking-[-0.05em] sm:text-6xl">{workbook.title}</h1>
             <div className="mt-5 flex flex-wrap gap-2">
               {isBundle ? <span className="rounded-full bg-[#dfead4] px-3 py-1.5 text-xs font-bold text-[#4d6a39]">Bundle · {workbook.memberCount} workbooks</span> : null}
