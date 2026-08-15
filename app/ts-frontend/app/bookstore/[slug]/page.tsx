@@ -292,7 +292,9 @@ export default async function WorkbookProductPage(props: Props) {
               <div className="mt-5">
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {bundleMembers.map((member) => (
-                    <BundleMemberGallery key={member.id} member={member} frameless />
+                    <div key={member.id} className="mx-auto w-[70%]">
+                      <BundleMemberGallery member={member} frameless />
+                    </div>
                   ))}
                 </div>
                 <p className="mt-4 text-center text-sm leading-6 text-ink/58">Select a cover to browse its table of contents and sample pages.</p>
