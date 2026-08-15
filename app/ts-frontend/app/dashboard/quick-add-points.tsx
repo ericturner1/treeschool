@@ -18,6 +18,10 @@ const COMMON_REASONS = [
   "Completed schoolwork"
 ] as const;
 
+function formatPoints(amount: number) {
+  return new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(amount);
+}
+
 export function QuickAddPoints({
   profileId,
   studentName,
@@ -227,7 +231,7 @@ export function QuickAddPoints({
     <>
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center rounded-full bg-[#e7efdc] px-3 py-1.5 text-sm font-semibold text-[#4f703c]">
-          {balance}
+          {formatPoints(balance)}
         </span>
         <button
           type="button"

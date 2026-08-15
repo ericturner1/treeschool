@@ -34,6 +34,10 @@ function formatSchoolYearDate(value: string) {
   }).format(new Date(`${value}T00:00:00.000Z`));
 }
 
+function formatPoints(amount: number) {
+  return new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(amount);
+}
+
 function dateKeyInTimeZone(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -281,10 +285,10 @@ export default async function ParentStudentOverviewPage(props: ParentStudentOver
                     </span>
                   </div>
                   <p className="mt-3 text-[36px] font-semibold leading-none tracking-[-0.06em] text-ink">
-                    {points.summary.totalBalance}
+                    {formatPoints(points.summary.totalBalance)}
                   </p>
                   <p className="mt-3 text-sm leading-[1.55] text-ink/65">
-                    {points.summary.lifetimeEarned} earned over time · {points.summary.bankBalance} in the bank. Award, use, save, and customize {points.settings.pluralName.toLowerCase()}.
+                    {formatPoints(points.summary.lifetimeEarned)} earned over time · {formatPoints(points.summary.bankBalance)} in the bank. Award, use, save, and customize {points.settings.pluralName.toLowerCase()}.
                   </p>
                   <span className="mt-3 inline-flex text-sm font-semibold text-[#4f703c] underline decoration-[#99b782] underline-offset-4">
                     Open {points.settings.pluralName.toLowerCase()}
