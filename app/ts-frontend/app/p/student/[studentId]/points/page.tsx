@@ -221,7 +221,7 @@ export default async function StudentPointsPage(props: Props) {
             </section>
           ) : null}
 
-          {points.canManage ? (
+          {points.canTransact ? (
             <section className="site-panel rounded-[28px] px-6 py-7">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>

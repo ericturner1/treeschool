@@ -757,7 +757,7 @@ export async function depositStudentPointsToBank(input: {
   amount: number;
 }) {
   await requirePremiumFeatureAccess(input.parentUserId);
-  await requireAccountRole(input.parentUserId, ["OWNER", "ADMIN"]);
+  await requireAccountRole(input.parentUserId, ["OWNER", "ADMIN", "TEACHER"]);
   await getManageableStudentProfile(input.parentUserId, input.profileId);
   await ensureStudentPointSettings(input.profileId);
   const amount = normalizeAmount(input.amount);
@@ -836,7 +836,7 @@ export async function withdrawStudentPointsFromBank(input: {
   amount: number;
 }) {
   await requirePremiumFeatureAccess(input.parentUserId);
-  await requireAccountRole(input.parentUserId, ["OWNER", "ADMIN"]);
+  await requireAccountRole(input.parentUserId, ["OWNER", "ADMIN", "TEACHER"]);
   await getManageableStudentProfile(input.parentUserId, input.profileId);
   await ensureStudentPointSettings(input.profileId);
   const amount = normalizeAmount(input.amount);
