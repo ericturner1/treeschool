@@ -267,8 +267,7 @@ export default async function WorkbookProductPage(props: Props) {
             />
             {bundleMembers.length ? (
               <div className="mt-5">
-                <p className="text-center text-xs font-black uppercase tracking-[0.13em] text-[#567b40]">Explore every workbook</p>
-                <p className="mt-2 text-center text-sm leading-6 text-ink/58">Select a cover to browse its table of contents and sample pages.</p>
+                <p className="text-center text-sm leading-6 text-ink/58">Select a cover to browse its table of contents and sample pages.</p>
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {bundleMembers.map((member) => (
                     <BundleMemberGallery key={member.id} member={member} caption={member.title} />
@@ -279,12 +278,13 @@ export default async function WorkbookProductPage(props: Props) {
           </div>
           <div className="p-6 sm:p-10 lg:p-12">
             <h1 className="text-4xl font-semibold leading-[1.06] tracking-[-0.05em] sm:text-6xl">{workbook.title}</h1>
-            <div className="mt-5 flex flex-wrap gap-2">
-              {isBundle ? <span className="rounded-full bg-[#dfead4] px-3 py-1.5 text-xs font-bold text-[#4d6a39]">Bundle · {workbook.memberCount} workbooks</span> : null}
-              <span className="rounded-full bg-[#eef5e4] px-3 py-1.5 text-xs font-bold text-[#4d6a39]">{workbook.type === "core" ? "Core subject" : "Elective"}</span>
-              <span className="rounded-full bg-[#f2e6d3] px-3 py-1.5 text-xs font-bold text-earth">{gradeLabel}</span>
-              {workbook.pageCount ? <span className="rounded-full border border-[#d8c7ad] bg-white px-3 py-1.5 text-xs font-bold text-ink/62">{workbook.pageCount.toLocaleString()} printable pages</span> : null}
-            </div>
+            {!isBundle ? (
+              <div className="mt-5 flex flex-wrap gap-2">
+                <span className="rounded-full bg-[#eef5e4] px-3 py-1.5 text-xs font-bold text-[#4d6a39]">{workbook.type === "core" ? "Core subject" : "Elective"}</span>
+                <span className="rounded-full bg-[#f2e6d3] px-3 py-1.5 text-xs font-bold text-earth">{gradeLabel}</span>
+                {workbook.pageCount ? <span className="rounded-full border border-[#d8c7ad] bg-white px-3 py-1.5 text-xs font-bold text-ink/62">{workbook.pageCount.toLocaleString()} printable pages</span> : null}
+              </div>
+            ) : null}
             <p className="mt-6 text-lg leading-8 text-ink/70">{workbook.description}</p>
             <ul className="mt-5 grid gap-3 text-sm font-semibold text-ink/72 sm:grid-cols-3" aria-label="Purchase highlights">
               <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Downloadable PDF</li>
