@@ -50,10 +50,12 @@ function productDescription(input: {
 
 function BundleMemberGallery({
   member,
-  caption = ""
+  caption = "",
+  frameless = false
 }: {
   member: NativeWorkbookCatalogItem;
   caption?: string;
+  frameless?: boolean;
 }) {
   return (
     <WorkbookGallery
@@ -71,7 +73,10 @@ function BundleMemberGallery({
       previewEndpoint={`/api/native-workbooks/product-previews?slug=${encodeURIComponent(member.slug)}`}
       caption={caption}
       sizes="(min-width: 1024px) 180px, (min-width: 640px) 24vw, 42vw"
-      thumbnailClassName="aspect-[3/4] rounded-[16px] border border-[#d8c7ad] bg-white shadow-[0_8px_20px_rgba(80,58,39,0.1)]"
+      thumbnailClassName={frameless
+        ? "aspect-[3/4] rounded-[16px]"
+        : "aspect-[3/4] rounded-[16px] border border-[#d8c7ad] bg-white shadow-[0_8px_20px_rgba(80,58,39,0.1)]"}
+      imageClassName={frameless ? "transition duration-200 group-hover:brightness-[0.52] group-focus-visible:brightness-[0.52]" : undefined}
     />
   );
 }
@@ -224,7 +229,9 @@ export default async function WorkbookProductPage(props: Props) {
     }))
   };
   const purchaseHighlights = (rightAligned = false) => (
-    <ul className={`mt-5 grid gap-3 text-sm font-semibold text-ink/72 sm:grid-cols-3 ${rightAligned ? "justify-items-end text-right" : ""}`} aria-label="Purchase highlights">
+    <ul className={rightAligned
+      ? "mt-5 flex flex-wrap justify-end gap-x-6 gap-y-3 text-right text-sm font-semibold text-ink/72"
+      : "mt-5 grid gap-3 text-sm font-semibold text-ink/72 sm:grid-cols-3"} aria-label="Purchase highlights">
       <li className={`flex items-center gap-2 ${rightAligned ? "justify-end" : ""}`}><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Downloadable PDF</li>
       <li className={`flex items-center gap-2 ${rightAligned ? "justify-end" : ""}`}><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Print at home</li>
       <li className={`flex items-center gap-2 ${rightAligned ? "justify-end" : ""}`}><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Delivered by email</li>
@@ -277,7 +284,7 @@ export default async function WorkbookProductPage(props: Props) {
               <div className="mt-5">
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {bundleMembers.map((member) => (
-                    <BundleMemberGallery key={member.id} member={member} />
+                    <BundleMemberGallery key={member.id} member={member} frameless />
                   ))}
                 </div>
                 <p className="mt-4 text-center text-sm leading-6 text-ink/58">Select a cover to browse its table of contents and sample pages.</p>
