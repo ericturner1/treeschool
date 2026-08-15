@@ -303,29 +303,6 @@ export default async function WorkbookProductPage(props: Props) {
           </div>
         </section>
 
-        <section className="grid gap-8 py-16 lg:grid-cols-[1.15fr_0.85fr]" aria-labelledby="workbook-overview-title">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.15em] text-[#567b40]">Paper-first homeschooling</p>
-            <h2 id="workbook-overview-title" className="mt-3 text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">A printable resource for learning away from the screen.</h2>
-            <p className="mt-5 max-w-3xl text-lg leading-8 text-ink/68">{workbook.title} gives homeschool parents a concrete {workbook.subjectLabel.toLowerCase()} resource they can hold, mark up, and teach from. Download the PDF, print the pages you need, and keep the lesson at the kitchen table instead of moving your child onto another app.</p>
-            {workbook.coverageTags.length ? <div className="mt-7"><h3 className="text-lg font-semibold">Topics and skills</h3><div className="mt-3 flex flex-wrap gap-2">{workbook.coverageTags.map((tag) => <span key={tag} className="rounded-full border border-[#c8d9b8] bg-[#f2f7ed] px-3 py-1.5 text-sm font-semibold text-[#4d6a39]">{tag}</span>)}</div></div> : null}
-          </div>
-          <aside className="rounded-[26px] border border-[#dcc8aa] bg-[#fffaf2] p-6 sm:p-8" aria-label="Workbook details">
-            <h2 className="text-2xl font-semibold tracking-[-0.035em]">Workbook details</h2>
-            <dl className="mt-5 divide-y divide-[#e4d4bb] text-sm">
-              {[
-                ["Format", "Printable PDF download"],
-                ["Grade level", gradeLabel],
-                ["Subject", workbook.subjectLabel],
-                ["Curriculum area", areaLabel],
-                ["Language of Workbook", languageLabel(workbook.languageCode)],
-                ...(workbook.pageCount ? [["Length", `${workbook.pageCount.toLocaleString()} pages`]] : []),
-                ["Delivery", "Secure link sent by email"]
-              ].map(([label, value]) => <div key={label} className="flex items-start justify-between gap-5 py-3"><dt className="text-ink/52">{label}</dt><dd className="text-right font-semibold">{value}</dd></div>)}
-            </dl>
-          </aside>
-        </section>
-
         {bundleMembers.length ? (
           <section className="rounded-[30px] border border-[#cbd9bd] bg-[#eef5e4] p-6 sm:p-9">
             <p className="text-xs font-black uppercase tracking-[0.15em] text-[#567b40]">Complete collection</p>
@@ -345,6 +322,31 @@ export default async function WorkbookProductPage(props: Props) {
             </div>
           </section>
         ) : null}
+
+        <section className="relative left-1/2 my-10 w-screen -translate-x-1/2 bg-[#e7efdd] py-12 sm:py-14" aria-labelledby="workbook-overview-title">
+          <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[1.15fr_0.85fr] lg:px-8">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.15em] text-[#567b40]">Paper-first homeschooling</p>
+              <h2 id="workbook-overview-title" className="mt-3 text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">A printable resource for learning away from the screen.</h2>
+              <p className="mt-5 max-w-3xl text-lg leading-8 text-ink/68">{workbook.title} gives homeschool parents a concrete {workbook.subjectLabel.toLowerCase()} resource they can hold, mark up, and teach from. Download the PDF, print the pages you need, and keep the lesson at the kitchen table instead of moving your child onto another app.</p>
+              {workbook.coverageTags.length ? <div className="mt-7"><h3 className="text-lg font-semibold">Topics and skills</h3><div className="mt-3 flex flex-wrap gap-2">{workbook.coverageTags.map((tag) => <span key={tag} className="rounded-full border border-[#c8d9b8] bg-[#f2f7ed] px-3 py-1.5 text-sm font-semibold text-[#4d6a39]">{tag}</span>)}</div></div> : null}
+            </div>
+            <aside className="rounded-[26px] border border-[#dcc8aa] bg-[#fffaf2] p-6 sm:p-8" aria-label="Workbook details">
+              <h2 className="text-2xl font-semibold tracking-[-0.035em]">Workbook details</h2>
+              <dl className="mt-5 divide-y divide-[#e4d4bb] text-sm">
+                {[
+                  ["Format", "Printable PDF download"],
+                  ["Grade level", gradeLabel],
+                  ["Subject", workbook.subjectLabel],
+                  ["Curriculum area", areaLabel],
+                  ["Language of Workbook", languageLabel(workbook.languageCode)],
+                  ...(workbook.pageCount ? [["Length", `${workbook.pageCount.toLocaleString()} pages`]] : []),
+                  ["Delivery", "Secure link sent by email"]
+                ].map(([label, value]) => <div key={label} className="flex items-start justify-between gap-5 py-3"><dt className="text-ink/52">{label}</dt><dd className="text-right font-semibold">{value}</dd></div>)}
+              </dl>
+            </aside>
+          </div>
+        </section>
 
         <section className="py-16" aria-labelledby="how-it-works-title">
           <div className="text-center"><p className="text-xs font-black uppercase tracking-[0.15em] text-[#567b40]">Simple delivery</p><h2 id="how-it-works-title" className="mt-3 text-4xl font-semibold tracking-[-0.045em]">From checkout to the school table.</h2></div>
