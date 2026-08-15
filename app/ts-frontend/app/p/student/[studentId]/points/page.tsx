@@ -40,7 +40,7 @@ function unitName(amount: number, singularName: string, pluralName: string) {
 function formatPoints(amount: number, interest = false) {
   return new Intl.NumberFormat("en", {
     minimumFractionDigits: interest ? 2 : 0,
-    maximumFractionDigits: interest ? 4 : 6
+    maximumFractionDigits: 2
   }).format(amount);
 }
 
@@ -100,15 +100,15 @@ export default async function StudentPointsPage(props: Props) {
             playKey={searchParams?.resetForm === "award" ? searchParams.resetToken ?? null : null}
           />
           <section className="overflow-hidden rounded-[30px] border border-[#b7ce9f] bg-[#eef5e4] shadow-[0_8px_0_#cadbb9]">
-            <div className="grid gap-6 px-6 py-7 sm:px-8 md:grid-cols-[minmax(180px,0.65fr)_minmax(0,2.35fr)] md:items-center">
-              <div>
+            <div className="grid gap-6 px-6 py-7 sm:px-8 md:grid-cols-[minmax(260px,320px)_minmax(0,760px)] md:items-center md:justify-between">
+              <div className="min-w-0">
                 <p className="text-xs font-black uppercase tracking-[0.14em] text-[#587443]">Total balance</p>
                 <div className="mt-3 flex items-center gap-4">
-                  <span className="grid h-16 w-16 place-items-center rounded-[20px] bg-[#6f9852] text-white shadow-[0_5px_0_#4d7137]">
+                  <span className="grid h-16 w-16 shrink-0 place-items-center rounded-[20px] bg-[#6f9852] text-white shadow-[0_5px_0_#4d7137]">
                     <PointIcon iconKey={iconKey} customIconUrl={customIconUrl} className="text-[34px]" />
                   </span>
-                  <div>
-                    <p className="text-[52px] font-semibold leading-none tracking-[-0.065em] text-ink">
+                  <div className="min-w-0">
+                    <p className="whitespace-nowrap text-[46px] font-semibold leading-none tracking-[-0.065em] text-ink xl:text-[52px]">
                       {formatPoints(points.summary.totalBalance)}
                     </p>
                     <p className="mt-1 text-lg font-semibold text-[#587443]">
@@ -311,11 +311,11 @@ export default async function StudentPointsPage(props: Props) {
           <section aria-label="Lifetime points summary" className="grid gap-4 sm:grid-cols-2">
             <div className="site-panel rounded-[24px] px-6 py-5">
               <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">Lifetime earned</p>
-              <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.lifetimeEarned}</p>
+              <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{formatPoints(points.summary.lifetimeEarned)}</p>
             </div>
             <div className="site-panel rounded-[24px] px-6 py-5">
               <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">Used</p>
-              <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{points.summary.lifetimeUsed}</p>
+              <p className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-ink">{formatPoints(points.summary.lifetimeUsed)}</p>
             </div>
           </section>
 

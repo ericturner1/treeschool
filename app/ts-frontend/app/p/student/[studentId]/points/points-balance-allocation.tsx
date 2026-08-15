@@ -1,5 +1,5 @@
 function formatPoints(amount: number) {
-  return new Intl.NumberFormat("en", { maximumFractionDigits: 6 }).format(amount);
+  return new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(amount);
 }
 
 export function PointsBalanceAllocation({

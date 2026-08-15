@@ -4,6 +4,10 @@ type BalancePoint = {
   createdAt: string;
 };
 
+function formatPoints(amount: number) {
+  return new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(amount);
+}
+
 function compactTimeline(points: BalancePoint[], maximumPoints = 120) {
   if (points.length <= maximumPoints) return points;
   const stride = Math.ceil(points.length / maximumPoints);
@@ -63,16 +67,16 @@ export function PointsBalanceChart({
   const first = points[0]!;
   const last = points.at(-1)!;
   return (
-    <div className="rounded-[20px] border border-white/70 bg-white/45 px-4 pb-3 pt-4">
+    <div className="w-full max-w-[760px] justify-self-end rounded-[20px] border border-white/70 bg-white/45 px-4 pb-3 pt-4">
       <div className="mb-2 flex items-center justify-between gap-4">
         <p className="text-xs font-bold uppercase tracking-[0.1em] text-ink/48">Balance over time</p>
-        <p className="text-xs font-semibold text-[#587443]">{last.balance} {pluralName}</p>
+        <p className="text-xs font-semibold text-[#587443]">{formatPoints(last.balance)} {pluralName}</p>
       </div>
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="h-28 w-full overflow-visible"
         role="img"
-        aria-label={`${pluralName} balance over time, ending at ${last.balance}`}
+        aria-label={`${pluralName} balance over time, ending at ${formatPoints(last.balance)}`}
       >
         <defs>
           <linearGradient id="points-balance-area" x1="0" y1="0" x2="0" y2="1">
@@ -103,7 +107,7 @@ export function PointsBalanceChart({
                 fontSize="11"
                 fontWeight="700"
               >
-                {value}
+                {formatPoints(value)}
               </text>
             </g>
           );
