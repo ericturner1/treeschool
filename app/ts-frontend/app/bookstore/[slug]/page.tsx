@@ -282,7 +282,7 @@ export default async function WorkbookProductPage(props: Props) {
         {searchParams?.checkout === "canceled" ? <p className="mt-5 rounded-[16px] bg-[#fffaf2] px-4 py-3 text-sm font-semibold text-earth">Checkout was canceled. Nothing was charged.</p> : null}
         {searchParams?.error ? <p className="mt-5 rounded-[16px] bg-[#fff1ec] px-4 py-3 text-sm font-semibold text-[#8b3e2f]">{decodeURIComponent(searchParams.error)}</p> : null}
 
-        <section className="overflow-hidden rounded-[34px] lg:grid lg:grid-cols-2">
+        <section className="mb-8 overflow-hidden rounded-[34px] lg:grid lg:grid-cols-2">
           <div className="p-5 sm:p-8">
             <WorkbookImageGallery
               images={galleryImages}
