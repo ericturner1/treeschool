@@ -238,13 +238,11 @@ export default async function WorkbookProductPage(props: Props) {
       acceptedAnswer: { "@type": "Answer", text: faq.answer }
     }))
   };
-  const purchaseHighlights = (rightAligned = false) => (
-    <ul className={rightAligned
-      ? "mt-5 flex flex-wrap justify-end gap-x-6 gap-y-3 text-right text-sm font-semibold text-ink/72"
-      : "mt-5 grid gap-3 text-sm font-semibold text-ink/72 sm:grid-cols-3"} aria-label="Purchase highlights">
-      <li className={`flex items-center gap-2 ${rightAligned ? "justify-end" : ""}`}><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Downloadable PDF</li>
-      <li className={`flex items-center gap-2 ${rightAligned ? "justify-end" : ""}`}><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Print at home</li>
-      <li className={`flex items-center gap-2 ${rightAligned ? "justify-end" : ""}`}><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Delivered by email</li>
+  const purchaseHighlights = () => (
+    <ul className="mt-5 grid gap-3 text-left text-sm font-semibold text-ink/72 sm:grid-cols-3" aria-label="Purchase highlights">
+      <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Downloadable PDF</li>
+      <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Print at home</li>
+      <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Delivered by email</li>
     </ul>
   );
 
@@ -303,7 +301,7 @@ export default async function WorkbookProductPage(props: Props) {
           </div>
           <div className="p-6 sm:p-10 lg:p-12">
             <h1 className="text-4xl font-semibold leading-[1.06] tracking-[-0.05em] sm:text-6xl">{workbook.title}</h1>
-            {isBundle ? purchaseHighlights(true) : null}
+            {isBundle ? purchaseHighlights() : null}
             {!isBundle ? (
               <div className="mt-5 flex flex-wrap gap-2">
                 <span className="rounded-full bg-[#eef5e4] px-3 py-1.5 text-xs font-bold text-[#4d6a39]">{workbook.type === "core" ? "Core subject" : "Elective"}</span>
