@@ -223,6 +223,13 @@ export default async function WorkbookProductPage(props: Props) {
       acceptedAnswer: { "@type": "Answer", text: faq.answer }
     }))
   };
+  const purchaseHighlights = (
+    <ul className="mt-5 grid gap-3 text-sm font-semibold text-ink/72 sm:grid-cols-3" aria-label="Purchase highlights">
+      <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Downloadable PDF</li>
+      <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Print at home</li>
+      <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Delivered by email</li>
+    </ul>
+  );
 
   return (
     <main className="min-h-screen bg-[#f8f1e4] text-ink">
@@ -254,15 +261,16 @@ export default async function WorkbookProductPage(props: Props) {
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-4 pb-16 pt-2 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 pb-16 pt-1 sm:px-6 lg:px-8">
         {searchParams?.checkout === "canceled" ? <p className="mt-5 rounded-[16px] bg-[#fffaf2] px-4 py-3 text-sm font-semibold text-earth">Checkout was canceled. Nothing was charged.</p> : null}
         {searchParams?.error ? <p className="mt-5 rounded-[16px] bg-[#fff1ec] px-4 py-3 text-sm font-semibold text-[#8b3e2f]">{decodeURIComponent(searchParams.error)}</p> : null}
 
-        <section className="mt-2 overflow-hidden rounded-[34px] lg:grid lg:grid-cols-2">
+        <section className="overflow-hidden rounded-[34px] lg:grid lg:grid-cols-2">
           <div className="p-5 sm:p-8">
             <WorkbookImageGallery
               images={galleryImages}
               primaryClassName={isBundle ? "mx-auto aspect-square w-full max-w-[280px]" : undefined}
+              framelessPrimary={isBundle}
               showLabel={!isBundle}
             />
             {bundleMembers.length ? (
@@ -278,6 +286,7 @@ export default async function WorkbookProductPage(props: Props) {
           </div>
           <div className="p-6 sm:p-10 lg:p-12">
             <h1 className="text-4xl font-semibold leading-[1.06] tracking-[-0.05em] sm:text-6xl">{workbook.title}</h1>
+            {isBundle ? purchaseHighlights : null}
             {!isBundle ? (
               <div className="mt-5 flex flex-wrap gap-2">
                 <span className="rounded-full bg-[#eef5e4] px-3 py-1.5 text-xs font-bold text-[#4d6a39]">{workbook.type === "core" ? "Core subject" : "Elective"}</span>
@@ -286,11 +295,7 @@ export default async function WorkbookProductPage(props: Props) {
               </div>
             ) : null}
             <p className="mt-6 text-lg leading-8 text-ink/70">{workbook.description}</p>
-            <ul className="mt-5 grid gap-3 text-sm font-semibold text-ink/72 sm:grid-cols-3" aria-label="Purchase highlights">
-              <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Downloadable PDF</li>
-              <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Print at home</li>
-              <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Delivered by email</li>
-            </ul>
+            {!isBundle ? purchaseHighlights : null}
 
             <div className="mt-8 rounded-[22px] border border-[#d8c7ad] bg-white p-5 sm:p-6">
               {owned ? <><p className="text-lg font-semibold text-[#4d6a39]">You own {isBundle ? "every workbook in this bundle" : "this workbook"}.</p><Link href="/p/purchased-workbooks" className="cta-button cta-button--light mt-4">Open Purchased Workbooks</Link></> : included ? <><p className="text-lg font-semibold text-[#4d6a39]">Included for lesson planning with your active Treeschool membership.</p><p className="mt-2 text-sm leading-6 text-ink/58">Add {isBundle ? "the collection" : "it"} directly from the lesson-plan generator. The standalone PDF{isBundle ? "s are sold separately and remain" : " is sold separately and remains"} yours permanently.</p><form action={startWorkbookCheckoutAction} className="mt-5" data-revenue-path="bookstore-product" data-analytics-item-id={workbook.id} data-analytics-item-name={workbook.title} data-analytics-item-category={workbook.catalogKind} data-analytics-currency={workbook.currencyCode} data-analytics-value={(workbook.priceInCents / 100).toFixed(2)}><input type="hidden" name="slug" value={workbook.slug} /><input type="hidden" name="email" value={user?.email ?? ""} /><button className="cta-button cta-button--outline">Buy {isBundle ? "bundle" : "standalone PDF"} · {price}</button></form></> : <form action={startWorkbookCheckoutAction} data-revenue-path="bookstore-product" data-analytics-item-id={workbook.id} data-analytics-item-name={workbook.title} data-analytics-item-category={workbook.catalogKind} data-analytics-currency={workbook.currencyCode} data-analytics-value={(workbook.priceInCents / 100).toFixed(2)}><input type="hidden" name="slug" value={workbook.slug} />{searchParams?.addToLearningYearId ? <input type="hidden" name="addToLearningYearId" value={searchParams.addToLearningYearId} /> : null}{user ? <input type="hidden" name="email" value={user.email ?? ""} /> : null}<button className="cta-button cta-button--dark w-full justify-center">Buy and download · {price}</button><p className="mt-3 text-center text-xs leading-5 text-ink/48">Secure checkout by Stripe. Enter your delivery email there, then receive a time-limited download link after payment.</p></form>}

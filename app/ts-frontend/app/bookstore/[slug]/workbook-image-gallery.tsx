@@ -12,10 +12,12 @@ type GalleryImage = {
 export function WorkbookImageGallery({
   images,
   primaryClassName = "aspect-[4/5]",
+  framelessPrimary = false,
   showLabel = true
 }: {
   images: GalleryImage[];
   primaryClassName?: string;
+  framelessPrimary?: boolean;
   showLabel?: boolean;
 }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -24,8 +26,8 @@ export function WorkbookImageGallery({
 
   return (
     <div>
-      <div className={`relative overflow-hidden rounded-[20px] border border-[#e4d4bb] bg-white ${primaryClassName}`}>
-        <Image src={selected.url} alt={selected.alt} fill unoptimized className="object-contain p-4 sm:p-6" />
+      <div className={`relative overflow-hidden ${framelessPrimary ? "" : "rounded-[20px] border border-[#e4d4bb] bg-white"} ${primaryClassName}`}>
+        <Image src={selected.url} alt={selected.alt} fill unoptimized className={`object-contain ${framelessPrimary ? "" : "p-4 sm:p-6"}`} />
       </div>
       {showLabel ? <p className="mt-3 text-center text-sm font-semibold text-ink/62">{selected.label}</p> : null}
       {images.length > 1 ? (
