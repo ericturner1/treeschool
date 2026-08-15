@@ -57,6 +57,7 @@ function BundleMemberGallery({
   caption?: string;
   frameless?: boolean;
 }) {
+  const trimBrandRefreshCover = frameless && member.thumbnailUrl?.includes("/thumbnail/brand-refresh-");
   return (
     <WorkbookGallery
       title={member.title}
@@ -77,6 +78,15 @@ function BundleMemberGallery({
         ? "aspect-[3/4] rounded-[16px]"
         : "aspect-[3/4] rounded-[16px] border border-[#d8c7ad] bg-white shadow-[0_8px_20px_rgba(80,58,39,0.1)]"}
       imageClassName={frameless ? "transition duration-200 group-hover:brightness-[0.52] group-focus-visible:brightness-[0.52]" : undefined}
+      imageStyle={trimBrandRefreshCover ? {
+        width: "106.83%",
+        height: "113.6%",
+        left: "-3.41%",
+        top: "-3.01%",
+        right: "auto",
+        bottom: "auto",
+        maxWidth: "none"
+      } : undefined}
     />
   );
 }

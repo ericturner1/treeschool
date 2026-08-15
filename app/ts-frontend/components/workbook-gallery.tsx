@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useId, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 
 export type WorkbookGalleryImage = {
@@ -20,6 +20,7 @@ type WorkbookGalleryProps = {
   sizes?: string;
   thumbnailClassName?: string;
   imageClassName?: string;
+  imageStyle?: CSSProperties;
   previewEndpoint?: string;
 };
 
@@ -33,6 +34,7 @@ export function WorkbookGallery({
   sizes = "(min-width: 1024px) 210px, (min-width: 640px) 26vw, 42vw",
   thumbnailClassName = "aspect-[3/4] rounded-[16px] border border-[#d8c7ad] bg-white shadow-[0_8px_20px_rgba(80,58,39,0.1)]",
   imageClassName = "p-2.5",
+  imageStyle,
   previewEndpoint
 }: WorkbookGalleryProps) {
   const dialogTitleId = useId();
@@ -158,6 +160,7 @@ export function WorkbookGallery({
             unoptimized={thumbnail.url.startsWith("http")}
             sizes={sizes}
             className={`${fit === "cover" ? "object-cover" : "object-contain"} ${imageClassName}`}
+            style={imageStyle}
             onError={() => setCoverFailed(true)}
           />
         ) : (
