@@ -75,7 +75,7 @@ function BundleMemberGallery({
       caption={caption}
       sizes="(min-width: 1024px) 180px, (min-width: 640px) 24vw, 42vw"
       thumbnailClassName={frameless
-        ? "aspect-[3/4] rounded-[16px]"
+        ? "aspect-[3/4] rounded-[8px]"
         : "aspect-[3/4] rounded-[16px] border border-[#d8c7ad] bg-white shadow-[0_8px_20px_rgba(80,58,39,0.1)]"}
       imageClassName={frameless ? "transition duration-200 group-hover:brightness-[0.52] group-focus-visible:brightness-[0.52]" : undefined}
       imageStyle={trimBrandRefreshCover ? {
@@ -238,8 +238,10 @@ export default async function WorkbookProductPage(props: Props) {
       acceptedAnswer: { "@type": "Answer", text: faq.answer }
     }))
   };
-  const purchaseHighlights = (stacked = false) => (
-    <ul className={`mt-5 grid gap-3 text-left text-sm font-semibold text-ink/72 ${stacked ? "" : "sm:grid-cols-3"}`} aria-label="Purchase highlights">
+  const purchaseHighlights = (compactRow = false) => (
+    <ul className={compactRow
+      ? "mt-5 flex flex-wrap justify-start gap-x-6 gap-y-3 text-left text-sm font-semibold text-ink/72"
+      : "mt-5 grid gap-3 text-left text-sm font-semibold text-ink/72 sm:grid-cols-3"} aria-label="Purchase highlights">
       <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Downloadable PDF</li>
       <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Print at home</li>
       <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Delivered by email</li>
