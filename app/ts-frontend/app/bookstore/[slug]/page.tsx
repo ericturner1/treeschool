@@ -258,14 +258,18 @@ export default async function WorkbookProductPage(props: Props) {
         {searchParams?.checkout === "canceled" ? <p className="mt-5 rounded-[16px] bg-[#fffaf2] px-4 py-3 text-sm font-semibold text-earth">Checkout was canceled. Nothing was charged.</p> : null}
         {searchParams?.error ? <p className="mt-5 rounded-[16px] bg-[#fff1ec] px-4 py-3 text-sm font-semibold text-[#8b3e2f]">{decodeURIComponent(searchParams.error)}</p> : null}
 
-        <section className="mt-6 overflow-hidden rounded-[34px] border border-[#dcc8aa] bg-[#fffaf2] shadow-[0_12px_34px_rgba(91,63,39,0.08)] lg:grid lg:grid-cols-[0.82fr_1.18fr]">
-          <div className="border-b border-[#dcc8aa] bg-[#f5ecdd] p-5 sm:p-8 lg:border-b-0 lg:border-r">
-            <WorkbookImageGallery images={galleryImages} />
+        <section className="mt-6 overflow-hidden rounded-[34px] bg-[#fffaf2] shadow-[0_12px_34px_rgba(91,63,39,0.08)] lg:grid lg:grid-cols-2">
+          <div className="bg-[#fffaf2] p-5 sm:p-8">
+            <WorkbookImageGallery
+              images={galleryImages}
+              primaryClassName={isBundle ? "mx-auto aspect-square w-full max-w-[280px]" : undefined}
+              showLabel={!isBundle}
+            />
             {bundleMembers.length ? (
-              <div className="mt-7 border-t border-[#dcc8aa] pt-6">
+              <div className="mt-5">
                 <p className="text-center text-xs font-black uppercase tracking-[0.13em] text-[#567b40]">Explore every workbook</p>
                 <p className="mt-2 text-center text-sm leading-6 text-ink/58">Select a cover to browse its table of contents and sample pages.</p>
-                <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {bundleMembers.map((member) => (
                     <BundleMemberGallery key={member.id} member={member} caption={member.title} />
                   ))}
@@ -273,9 +277,8 @@ export default async function WorkbookProductPage(props: Props) {
               </div>
             ) : null}
           </div>
-          <div className="p-6 sm:p-10 lg:p-12">
-            <p className="text-sm font-black uppercase tracking-[0.12em] text-[#567b40]">Printable {gradeLabel} {workbook.subjectLabel} homeschool {isBundle ? "curriculum" : "workbook"}</p>
-            <h1 className="mt-3 text-4xl font-semibold leading-[1.06] tracking-[-0.05em] sm:text-6xl">{workbook.title}</h1>
+          <div className="bg-[#fffaf2] p-6 sm:p-10 lg:p-12">
+            <h1 className="text-4xl font-semibold leading-[1.06] tracking-[-0.05em] sm:text-6xl">{workbook.title}</h1>
             <div className="mt-5 flex flex-wrap gap-2">
               {isBundle ? <span className="rounded-full bg-[#dfead4] px-3 py-1.5 text-xs font-bold text-[#4d6a39]">Bundle · {workbook.memberCount} workbooks</span> : null}
               <span className="rounded-full bg-[#eef5e4] px-3 py-1.5 text-xs font-bold text-[#4d6a39]">{workbook.type === "core" ? "Core subject" : "Elective"}</span>
