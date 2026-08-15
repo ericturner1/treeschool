@@ -275,12 +275,12 @@ export default async function WorkbookProductPage(props: Props) {
             />
             {bundleMembers.length ? (
               <div className="mt-5">
-                <p className="text-center text-sm leading-6 text-ink/58">Select a cover to browse its table of contents and sample pages.</p>
-                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {bundleMembers.map((member) => (
                     <BundleMemberGallery key={member.id} member={member} />
                   ))}
                 </div>
+                <p className="mt-4 text-center text-sm leading-6 text-ink/58">Select a cover to browse its table of contents and sample pages.</p>
               </div>
             ) : null}
           </div>
