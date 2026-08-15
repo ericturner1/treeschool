@@ -4654,7 +4654,7 @@ export async function createNativeWorkbookCheckout(input: {
 }) {
   const parent = await getOptionalParentContext(input.userId);
   const email = normalizeText(parent?.email || input.email, 320).toLowerCase();
-  if (!email || !email.includes("@")) throw new Error("Enter a valid delivery email address.");
+  if (email && !email.includes("@")) throw new Error("Enter a valid delivery email address.");
   const [workbook] = await resolveCheckoutCatalogItems([input.workbookId], input.userId);
   if (!workbook || (workbook.catalogKind === "workbook" && !workbook.activeVersionId)) {
     throw new Error("This catalog item is not currently available.");
@@ -4687,7 +4687,7 @@ export async function createNativeWorkbookCheckout(input: {
           nativeWorkbookBundleVersionIds: bundleVersionIds.join("|")
         }
       : { nativeWorkbookId: workbook.id, nativeWorkbookVersionId: workbook.activeVersionId! }),
-    deliveryEmail: email,
+    ...(email ? { deliveryEmail: email } : {}),
     ...(parent ? { accountId: parent.accountId, userId: input.userId! } : {}),
     ...(input.addToLearningYearId ? { addToLearningYearId: input.addToLearningYearId } : {}),
     ...(funnelKey ? { funnelKey } : {}),
@@ -4699,7 +4699,7 @@ export async function createNativeWorkbookCheckout(input: {
   const session = await stripe.checkout.sessions.create(withTreeschoolCheckoutBranding({
     mode: "payment",
     customer: subscription?.stripeCustomerId ?? undefined,
-    customer_email: subscription?.stripeCustomerId ? undefined : email,
+    customer_email: subscription?.stripeCustomerId ? undefined : email || undefined,
     customer_creation: isFirstGradeFunnel && !subscription?.stripeCustomerId ? "always" : undefined,
     client_reference_id: parent?.accountId,
     success_url: input.successUrl,

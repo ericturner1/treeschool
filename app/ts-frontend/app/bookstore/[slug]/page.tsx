@@ -5,8 +5,13 @@ import { notFound } from "next/navigation";
 import { getCurrentUser } from "../../../lib/auth/server";
 import { curriculumAreaLabel } from "../../../lib/native-workbooks/curriculum-areas";
 import { formatNativeWorkbookGradeRange } from "../../../lib/native-workbooks/grades";
-import { getNativeWorkbookProduct, listNativeWorkbookCatalog } from "../../../lib/native-workbooks/server";
+import {
+  getNativeWorkbookProduct,
+  listNativeWorkbookCatalog,
+  type NativeWorkbookCatalogItem
+} from "../../../lib/native-workbooks/server";
 import { ViewItemAnalytics } from "../../../components/commerce-analytics";
+import { WorkbookGallery } from "../../../components/workbook-gallery";
 import { startWorkbookCheckoutAction } from "../actions";
 import { WorkbookImageGallery } from "./workbook-image-gallery";
 
@@ -41,6 +46,34 @@ function productDescription(input: {
 }) {
   const pages = input.pageCount ? ` with ${input.pageCount.toLocaleString()} printable pages` : "";
   return `${input.title} is a printable ${input.gradeLabel} ${input.subjectLabel.toLowerCase()} homeschool ${input.isBundle ? "workbook bundle" : "workbook"}${pages}. Download the PDF and teach with less screen time.`;
+}
+
+function BundleMemberGallery({
+  member,
+  caption = ""
+}: {
+  member: NativeWorkbookCatalogItem;
+  caption?: string;
+}) {
+  return (
+    <WorkbookGallery
+      title={member.title}
+      cover={member.thumbnailUrl ? {
+        url: member.thumbnailUrl,
+        alt: `${member.title} printable workbook cover`,
+        label: "Cover"
+      } : null}
+      images={(member.previewImages ?? []).map((image) => ({
+        url: image.url,
+        alt: `${member.title}: ${image.label}`,
+        label: image.label
+      }))}
+      previewEndpoint={`/api/native-workbooks/product-previews?slug=${encodeURIComponent(member.slug)}`}
+      caption={caption}
+      sizes="(min-width: 1024px) 180px, (min-width: 640px) 24vw, 42vw"
+      thumbnailClassName="aspect-[3/4] rounded-[16px] border border-[#d8c7ad] bg-white shadow-[0_8px_20px_rgba(80,58,39,0.1)]"
+    />
+  );
 }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
@@ -111,21 +144,14 @@ export default async function WorkbookProductPage(props: Props) {
       label: preview.label
     }))
   ];
-  const catalog = await listNativeWorkbookCatalog({ userId: user?.id, grade: null, subject: null }).catch(() => ({ workbooks: [] }));
-  const relatedWorkbooks = catalog.workbooks
-    .filter((item) => item.id !== workbook.id)
-    .map((item) => ({
-      item,
-      score:
-        (item.curriculumAreaKey === workbook.curriculumAreaKey ? 3 : 0)
-        + (item.subjectKey === workbook.subjectKey ? 3 : 0)
-        + (item.gradeMin <= workbook.gradeMax && item.gradeMax >= workbook.gradeMin ? 2 : 0)
-        + (item.type === workbook.type ? 1 : 0)
-    }))
-    .filter(({ score }) => score > 0)
-    .sort((left, right) => right.score - left.score || left.item.title.localeCompare(right.item.title))
-    .slice(0, 4)
-    .map(({ item }) => item);
+  const catalog = isBundle
+    ? await listNativeWorkbookCatalog({ userId: user?.id, grade: null, subject: null }).catch(() => ({ workbooks: [] }))
+    : { workbooks: [] as NativeWorkbookCatalogItem[] };
+  const catalogById = new Map(catalog.workbooks.map((item) => [item.id, item]));
+  const bundleMembers = (workbook.members ?? []).flatMap((member) => {
+    const product = catalogById.get(member.id);
+    return product?.catalogKind === "workbook" ? [product] : [];
+  });
 
   const productSchema = {
     "@context": "https://schema.org",
@@ -179,7 +205,7 @@ export default async function WorkbookProductPage(props: Props) {
     },
     {
       question: "Do I need a Treeschool membership to buy it?",
-      answer: `No. You can purchase the standalone PDF for ${price} without a membership. Enter your delivery email at checkout and Treeschool will send the download link after payment.`
+      answer: `No. You can purchase the standalone PDF for ${price} without a membership. Stripe collects your delivery email during secure checkout, and Treeschool sends the download link after payment.`
     },
     {
       question: "Can I use it with the Treeschool lesson planner?",
@@ -229,18 +255,23 @@ export default async function WorkbookProductPage(props: Props) {
       </header>
 
       <div className="mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 lg:px-8">
-        <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-sm text-ink/55">
-          <Link href="/" className="hover:text-[#567b40] hover:underline">Home</Link><span aria-hidden="true">/</span>
-          <Link href="/bookstore" className="hover:text-[#567b40] hover:underline">Printable workbooks</Link><span aria-hidden="true">/</span>
-          <span className="font-semibold text-ink/75" aria-current="page">{workbook.title}</span>
-        </nav>
-
         {searchParams?.checkout === "canceled" ? <p className="mt-5 rounded-[16px] bg-[#fffaf2] px-4 py-3 text-sm font-semibold text-earth">Checkout was canceled. Nothing was charged.</p> : null}
         {searchParams?.error ? <p className="mt-5 rounded-[16px] bg-[#fff1ec] px-4 py-3 text-sm font-semibold text-[#8b3e2f]">{decodeURIComponent(searchParams.error)}</p> : null}
 
         <section className="mt-6 overflow-hidden rounded-[34px] border border-[#dcc8aa] bg-[#fffaf2] shadow-[0_12px_34px_rgba(91,63,39,0.08)] lg:grid lg:grid-cols-[0.82fr_1.18fr]">
           <div className="border-b border-[#dcc8aa] bg-[#f5ecdd] p-5 sm:p-8 lg:border-b-0 lg:border-r">
             <WorkbookImageGallery images={galleryImages} />
+            {bundleMembers.length ? (
+              <div className="mt-7 border-t border-[#dcc8aa] pt-6">
+                <p className="text-center text-xs font-black uppercase tracking-[0.13em] text-[#567b40]">Explore every workbook</p>
+                <p className="mt-2 text-center text-sm leading-6 text-ink/58">Select a cover to browse its table of contents and sample pages.</p>
+                <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+                  {bundleMembers.map((member) => (
+                    <BundleMemberGallery key={member.id} member={member} caption={member.title} />
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
           <div className="p-6 sm:p-10 lg:p-12">
             <p className="text-sm font-black uppercase tracking-[0.12em] text-[#567b40]">Printable {gradeLabel} {workbook.subjectLabel} homeschool {isBundle ? "curriculum" : "workbook"}</p>
@@ -252,7 +283,6 @@ export default async function WorkbookProductPage(props: Props) {
               {workbook.pageCount ? <span className="rounded-full border border-[#d8c7ad] bg-white px-3 py-1.5 text-xs font-bold text-ink/62">{workbook.pageCount.toLocaleString()} printable pages</span> : null}
             </div>
             <p className="mt-6 text-lg leading-8 text-ink/70">{workbook.description}</p>
-            <p className="mt-7 text-4xl font-semibold tracking-[-0.04em]">{price}</p>
             <ul className="mt-5 grid gap-3 text-sm font-semibold text-ink/72 sm:grid-cols-3" aria-label="Purchase highlights">
               <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Downloadable PDF</li>
               <li className="flex items-center gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#dfead4] text-[#4d6a39]">✓</span>Print at home</li>
@@ -260,7 +290,7 @@ export default async function WorkbookProductPage(props: Props) {
             </ul>
 
             <div className="mt-8 rounded-[22px] border border-[#d8c7ad] bg-white p-5 sm:p-6">
-              {owned ? <><p className="text-lg font-semibold text-[#4d6a39]">You own {isBundle ? "every workbook in this bundle" : "this workbook"}.</p><Link href="/p/purchased-workbooks" className="cta-button cta-button--light mt-4">Open Purchased Workbooks</Link></> : included ? <><p className="text-lg font-semibold text-[#4d6a39]">Included for lesson planning with your active Treeschool membership.</p><p className="mt-2 text-sm leading-6 text-ink/58">Add {isBundle ? "the collection" : "it"} directly from the lesson-plan generator. The standalone PDF{isBundle ? "s are sold separately and remain" : " is sold separately and remains"} yours permanently.</p><form action={startWorkbookCheckoutAction} className="mt-5" data-revenue-path="bookstore-product" data-analytics-item-id={workbook.id} data-analytics-item-name={workbook.title} data-analytics-item-category={workbook.catalogKind} data-analytics-currency={workbook.currencyCode} data-analytics-value={(workbook.priceInCents / 100).toFixed(2)}><input type="hidden" name="slug" value={workbook.slug} /><input type="hidden" name="email" value={user?.email ?? ""} /><button className="cta-button cta-button--outline">Buy {isBundle ? "bundle" : "standalone PDF"} · {price}</button></form></> : <form action={startWorkbookCheckoutAction} data-revenue-path="bookstore-product" data-analytics-item-id={workbook.id} data-analytics-item-name={workbook.title} data-analytics-item-category={workbook.catalogKind} data-analytics-currency={workbook.currencyCode} data-analytics-value={(workbook.priceInCents / 100).toFixed(2)}><input type="hidden" name="slug" value={workbook.slug} />{searchParams?.addToLearningYearId ? <input type="hidden" name="addToLearningYearId" value={searchParams.addToLearningYearId} /> : null}{!user ? <label className="grid gap-2 text-sm font-semibold">Where should we send your workbook?<input required name="email" type="email" autoComplete="email" placeholder="you@example.com" className="rounded-[14px] border border-[#dcc8aa] bg-white px-4 py-3" /></label> : <input type="hidden" name="email" value={user.email ?? ""} />}<button className="cta-button cta-button--dark mt-4 w-full justify-center">Buy and download · {price}</button><p className="mt-3 text-center text-xs leading-5 text-ink/48">Secure checkout by Stripe. A time-limited download link is emailed after payment.</p></form>}
+              {owned ? <><p className="text-lg font-semibold text-[#4d6a39]">You own {isBundle ? "every workbook in this bundle" : "this workbook"}.</p><Link href="/p/purchased-workbooks" className="cta-button cta-button--light mt-4">Open Purchased Workbooks</Link></> : included ? <><p className="text-lg font-semibold text-[#4d6a39]">Included for lesson planning with your active Treeschool membership.</p><p className="mt-2 text-sm leading-6 text-ink/58">Add {isBundle ? "the collection" : "it"} directly from the lesson-plan generator. The standalone PDF{isBundle ? "s are sold separately and remain" : " is sold separately and remains"} yours permanently.</p><form action={startWorkbookCheckoutAction} className="mt-5" data-revenue-path="bookstore-product" data-analytics-item-id={workbook.id} data-analytics-item-name={workbook.title} data-analytics-item-category={workbook.catalogKind} data-analytics-currency={workbook.currencyCode} data-analytics-value={(workbook.priceInCents / 100).toFixed(2)}><input type="hidden" name="slug" value={workbook.slug} /><input type="hidden" name="email" value={user?.email ?? ""} /><button className="cta-button cta-button--outline">Buy {isBundle ? "bundle" : "standalone PDF"} · {price}</button></form></> : <form action={startWorkbookCheckoutAction} data-revenue-path="bookstore-product" data-analytics-item-id={workbook.id} data-analytics-item-name={workbook.title} data-analytics-item-category={workbook.catalogKind} data-analytics-currency={workbook.currencyCode} data-analytics-value={(workbook.priceInCents / 100).toFixed(2)}><input type="hidden" name="slug" value={workbook.slug} />{searchParams?.addToLearningYearId ? <input type="hidden" name="addToLearningYearId" value={searchParams.addToLearningYearId} /> : null}{user ? <input type="hidden" name="email" value={user.email ?? ""} /> : null}<button className="cta-button cta-button--dark w-full justify-center">Buy and download · {price}</button><p className="mt-3 text-center text-xs leading-5 text-ink/48">Secure checkout by Stripe. Enter your delivery email there, then receive a time-limited download link after payment.</p></form>}
             </div>
           </div>
         </section>
@@ -280,25 +310,39 @@ export default async function WorkbookProductPage(props: Props) {
                 ["Grade level", gradeLabel],
                 ["Subject", workbook.subjectLabel],
                 ["Curriculum area", areaLabel],
-                ["Language", languageLabel(workbook.languageCode)],
+                ["Language of Workbook", languageLabel(workbook.languageCode)],
                 ...(workbook.pageCount ? [["Length", `${workbook.pageCount.toLocaleString()} pages`]] : []),
                 ["Delivery", "Secure link sent by email"]
               ].map(([label, value]) => <div key={label} className="flex items-start justify-between gap-5 py-3"><dt className="text-ink/52">{label}</dt><dd className="text-right font-semibold">{value}</dd></div>)}
             </dl>
-            <div className="mt-6 flex flex-wrap gap-3 text-sm font-semibold">
-              <Link href={{ pathname: "/bookstore", query: { grade: workbook.gradeMin } }} className="text-[#567b40] underline underline-offset-4">More {gradeLabel} workbooks</Link>
-              <Link href={{ pathname: "/bookstore", query: { subject: workbook.subjectLabel } }} className="text-[#567b40] underline underline-offset-4">More {workbook.subjectLabel}</Link>
-            </div>
           </aside>
         </section>
 
-        {isBundle && workbook.members?.length ? <section className="rounded-[30px] border border-[#cbd9bd] bg-[#eef5e4] p-6 sm:p-9"><p className="text-xs font-black uppercase tracking-[0.15em] text-[#567b40]">Complete collection</p><h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em]">What’s included in {workbook.title}</h2><ul className="mt-6 grid gap-3 sm:grid-cols-2">{workbook.members.map((member) => <li key={member.id} className="rounded-[16px] border border-[#cbd9bd] bg-white px-4 py-3"><Link href={`/bookstore/${member.slug}`} className="font-semibold hover:text-[#567b40] hover:underline">{member.title}</Link><p className="mt-1 text-sm text-ink/55">{member.subjectLabel}{member.pageCount ? ` · ${member.pageCount} pages` : ""}</p></li>)}</ul></section> : null}
+        {bundleMembers.length ? (
+          <section className="rounded-[30px] border border-[#cbd9bd] bg-[#eef5e4] p-6 sm:p-9">
+            <p className="text-xs font-black uppercase tracking-[0.15em] text-[#567b40]">Complete collection</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em]">What’s included in {workbook.title}</h2>
+            <div className="mt-7 grid gap-5 lg:grid-cols-2">
+              {bundleMembers.map((member) => (
+                <article key={member.id} className="grid gap-5 rounded-[22px] border border-[#cbd9bd] bg-white p-5 sm:grid-cols-[150px_1fr] sm:items-start">
+                  <BundleMemberGallery member={member} />
+                  <div>
+                    <h3 className="text-2xl font-semibold tracking-[-0.035em]">{member.title}</h3>
+                    <p className="mt-2 text-sm font-semibold text-[#567b40]">{member.subjectLabel}{member.pageCount ? ` · ${member.pageCount.toLocaleString()} pages` : ""}</p>
+                    <p className="mt-4 leading-7 text-ink/65">{member.description}</p>
+                    <p className="mt-4 text-xs font-bold uppercase tracking-[0.1em] text-ink/42">Select the cover to view sample pages</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="py-16" aria-labelledby="how-it-works-title">
           <div className="text-center"><p className="text-xs font-black uppercase tracking-[0.15em] text-[#567b40]">Simple delivery</p><h2 id="how-it-works-title" className="mt-3 text-4xl font-semibold tracking-[-0.045em]">From checkout to the school table.</h2></div>
           <ol className="mt-8 grid gap-5 md:grid-cols-3">
             {[
-              ["1", "Purchase securely", "Pay through Stripe using the email where you want your workbook delivered."],
+              ["1", "Purchase securely", "Stripe securely collects your payment and delivery email in one checkout."],
               ["2", "Download and print", "Open the secure link from your email and print the pages that fit your homeschool routine."],
               ["3", "Teach your way", "Use the workbook on its own or organize it into a year of printable weekly plans with Treeschool."]
             ].map(([number, title, copy]) => <li key={number} className="rounded-[24px] border border-[#dcc8aa] bg-[#fffaf2] p-6"><span className="grid h-10 w-10 place-items-center rounded-full bg-[#dfead4] font-black text-[#4d6a39]">{number}</span><h3 className="mt-5 text-2xl font-semibold tracking-[-0.035em]">{title}</h3><p className="mt-3 leading-7 text-ink/62">{copy}</p></li>)}
@@ -316,7 +360,6 @@ export default async function WorkbookProductPage(props: Props) {
           <div className="mt-7 grid gap-4 lg:grid-cols-2">{faqs.map((faq) => <details key={faq.question} className="group rounded-[20px] border border-[#dcc8aa] bg-[#fffaf2] p-5"><summary className="cursor-pointer list-none pr-8 text-lg font-semibold marker:content-none">{faq.question}<span className="float-right text-[#567b40] group-open:rotate-45">+</span></summary><p className="mt-4 leading-7 text-ink/65">{faq.answer}</p></details>)}</div>
         </section>
 
-        {relatedWorkbooks.length ? <section className="border-t border-[#dfcfb7] py-14" aria-labelledby="related-workbooks-title"><div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.15em] text-[#567b40]">Keep exploring</p><h2 id="related-workbooks-title" className="mt-2 text-3xl font-semibold tracking-[-0.04em]">Related printable homeschool workbooks</h2></div><Link href="/bookstore" className="font-semibold text-[#567b40] underline underline-offset-4">Browse the bookstore</Link></div><div className="mt-7 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">{relatedWorkbooks.map((related) => <article key={related.id}><Link href={`/bookstore/${related.slug}`} className="group block"><div className="relative aspect-[3/4] overflow-hidden rounded-[18px] border border-[#dcc8aa] bg-white shadow-[0_8px_20px_rgba(80,58,39,0.08)]">{related.thumbnailUrl ? <Image src={related.thumbnailUrl} alt={`${related.title} printable homeschool workbook cover`} fill unoptimized className="object-contain p-3 transition group-hover:scale-[1.02]" /> : <span className="absolute inset-0 grid place-items-center text-[#a9835c]">Printable workbook</span>}</div><h3 className="mt-4 text-xl font-semibold leading-tight group-hover:text-[#567b40] group-hover:underline">{related.title}</h3></Link><p className="mt-2 text-sm text-ink/55">{formatNativeWorkbookGradeRange(related.gradeMin, related.gradeMax)} · {related.subjectLabel}</p><p className="mt-2 font-semibold">{formatPrice(related.priceInCents, related.currencyCode)}</p></article>)}</div></section> : null}
       </div>
 
       <footer className="border-t border-[#e4d4bb] bg-[#fffaf2]">
