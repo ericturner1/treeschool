@@ -478,6 +478,17 @@ export async function getAdminWorkbookStudioProject(
   return response.json() as Promise<WorkbookStudioProjectDetail>;
 }
 
+export function getAdminWorkbookStudioCoverPreviewResponse(
+  userId: string,
+  projectId: string,
+) {
+  const query = new URLSearchParams({ userId, projectId });
+  return backendFetch(
+    `${getBackendUrl()}/internal/workbook-studio/admin/project/cover-preview?${query}`,
+    { cache: "no-store" },
+  );
+}
+
 export async function getAdminWorkbookStudioCurriculum(
   userId: string,
   curriculumId: string,

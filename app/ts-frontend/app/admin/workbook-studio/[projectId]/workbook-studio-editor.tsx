@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition, type DragEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type {
   WorkbookBoxStyle,
@@ -784,15 +785,26 @@ function WorkbookExerciseLeafFields({
 export function WorkbookStudioEditor({
   detail,
   themes,
+  initialChapter = 0,
 }: {
   detail: WorkbookStudioProjectDetail;
   themes: WorkbookStudioSummary["themes"];
+  initialChapter?: number;
 }) {
   const router = useRouter();
   const [content, setContent] = useState<WorkbookContent>(() =>
     structuredClone(detail.currentRevision!.contentJson),
   );
-  const [selected, setSelected] = useState({ chapter: 0, lesson: 0 });
+  const [selected, setSelected] = useState({
+    chapter: Math.min(
+      Math.max(initialChapter, 0),
+      detail.currentRevision!.contentJson.chapters.length - 1,
+    ),
+    lesson: 0,
+  });
+  const [leftPanel, setLeftPanel] = useState<"lessons" | "elements">(
+    "lessons",
+  );
   const [editorDrag, setEditorDrag] = useState<WorkbookEditorDrag | null>(null);
   const [dropTarget, setDropTarget] = useState<WorkbookDropTarget | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -1005,68 +1017,54 @@ export function WorkbookStudioEditor({
       <aside className={`border-b border-[#d2c2aa] bg-[#f8f1e5] xl:min-h-[calc(100vh-65px)] xl:border-b-0 xl:border-r ${leftSidebarCollapsed ? "p-2" : "p-4"}`}>
         <div className={`flex items-center gap-2 ${leftSidebarCollapsed ? "justify-center" : "justify-between"}`}>
           {!leftSidebarCollapsed ? <h2 className="text-xs font-black uppercase tracking-[0.13em] text-earth">
-            Workbook structure
+            Editor tools
           </h2> : null}
-          <div className="flex items-center gap-2">
-            {!leftSidebarCollapsed ? <button
-            type="button"
-            onClick={() =>
-              mutate((draft) => {
-                const chapterNumber = draft.chapters.length + 1;
-                draft.chapters.push({
-                  id: newStableId(`chapter-${chapterNumber}`),
-                  title: `Chapter ${chapterNumber}`,
-                  lessons: [
-                    {
-                      id: newStableId(`lesson-${chapterNumber}-1`),
-                      title: "New lesson",
-                      standardsCodes: [],
-                      needsIllustration: false,
-                      learnBlocks: [
-                        { type: "paragraph", text: "Add lesson text." },
-                      ],
-                      exercises: [makeExercise("short_answer")],
-                    },
-                  ],
-                });
-              })
-            }
-            className="rounded-full border border-[#bca98a] bg-white px-2.5 py-1 text-xs font-bold"
-          >
-            + Chapter
-            </button> : null}
-            <button type="button" onClick={() => setLeftSidebarCollapsed((collapsed) => !collapsed)} aria-label={leftSidebarCollapsed ? "Expand workbook structure sidebar" : "Collapse workbook structure sidebar"} title={leftSidebarCollapsed ? "Expand workbook structure sidebar" : "Collapse workbook structure sidebar"} className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#bca98a] bg-white text-lg font-black text-earth shadow-sm hover:border-[#739655] hover:text-[#486a38]">{leftSidebarCollapsed ? "›" : "‹"}</button>
-          </div>
+          <button type="button" onClick={() => setLeftSidebarCollapsed((collapsed) => !collapsed)} aria-label={leftSidebarCollapsed ? "Expand editor tools sidebar" : "Collapse editor tools sidebar"} title={leftSidebarCollapsed ? "Expand editor tools sidebar" : "Collapse editor tools sidebar"} className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#bca98a] bg-white text-lg font-black text-earth shadow-sm hover:border-[#739655] hover:text-[#486a38]">{leftSidebarCollapsed ? "›" : "‹"}</button>
         </div>
-        {!leftSidebarCollapsed ? <><div className="mt-3 grid gap-3">
-          {content.chapters.map((item, chapterIndex) => (
-            <div
-              key={item.id}
-              className="rounded-[14px] border border-[#d8c8ae] bg-white/70 p-2"
-            >
+        {!leftSidebarCollapsed ? <>
+          <div className="mt-3 grid grid-cols-2 rounded-[12px] border border-[#d8c8ae] bg-white p-1">
+            {(["lessons", "elements"] as const).map((panel) => (
               <button
                 type="button"
-                onClick={() =>
-                  setSelected({ chapter: chapterIndex, lesson: 0 })
-                }
-                className="w-full rounded-[9px] px-2 py-1.5 text-left text-sm font-bold"
+                key={panel}
+                onClick={() => setLeftPanel(panel)}
+                className={`rounded-[9px] px-2 py-2 text-xs font-bold capitalize ${leftPanel === panel ? "bg-[#e3edd9] text-[#486a38]" : "text-ink/48"}`}
               >
-                {chapterIndex + 1}. {item.title}
+                {panel}
               </button>
-              <div className="mt-1 grid gap-1">
-                {item.lessons.map((child, lessonIndex) => (
+            ))}
+          </div>
+
+          {leftPanel === "lessons" ? (
+            <div className="mt-4">
+              <Link
+                href={`/admin/workbook-studio/${detail.project.id}#chapters`}
+                className="text-xs font-bold text-earth"
+              >
+                ← Change chapter
+              </Link>
+              <div className="mt-3 rounded-[14px] border border-[#d8c8ae] bg-white/70 p-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-ink/40">
+                  Chapter {selected.chapter + 1}
+                </p>
+                <p className="mt-1 text-sm font-bold leading-5">
+                  {chapter.title}
+                </p>
+              </div>
+              <div className="mt-3 grid gap-1">
+                {chapter.lessons.map((child, lessonIndex) => (
                   <button
                     type="button"
                     key={child.id}
                     onClick={() =>
                       setSelected({
-                        chapter: chapterIndex,
+                        chapter: selected.chapter,
                         lesson: lessonIndex,
                       })
                     }
-                    className={`rounded-[9px] px-3 py-2 text-left text-xs ${selected.chapter === chapterIndex && selected.lesson === lessonIndex ? "bg-[#dfead4] font-bold text-[#486a38]" : "text-ink/58 hover:bg-[#f6eddd]"}`}
+                    className={`rounded-[10px] px-3 py-2.5 text-left text-xs ${selected.lesson === lessonIndex ? "bg-[#dfead4] font-bold text-[#486a38]" : "text-ink/58 hover:bg-white"}`}
                   >
-                    {chapterIndex + 1}.{lessonIndex + 1} {child.title}
+                    {selected.chapter + 1}.{lessonIndex + 1} {child.title}
                   </button>
                 ))}
               </div>
@@ -1075,9 +1073,9 @@ export function WorkbookStudioEditor({
                 onClick={() =>
                   mutate((draft) => {
                     const number =
-                      draft.chapters[chapterIndex].lessons.length + 1;
-                    draft.chapters[chapterIndex].lessons.push({
-                      id: newStableId(`lesson-${chapterIndex + 1}-${number}`),
+                      draft.chapters[selected.chapter].lessons.length + 1;
+                    draft.chapters[selected.chapter].lessons.push({
+                      id: newStableId(`lesson-${selected.chapter + 1}-${number}`),
                       title: "New lesson",
                       standardsCodes: [],
                       needsIllustration: false,
@@ -1086,22 +1084,183 @@ export function WorkbookStudioEditor({
                       ],
                       exercises: [makeExercise("short_answer")],
                     });
-                    setSelected({ chapter: chapterIndex, lesson: number - 1 });
+                    setSelected({
+                      chapter: selected.chapter,
+                      lesson: number - 1,
+                    });
                   })
                 }
-                className="mt-1 px-3 py-1 text-[11px] font-bold text-earth"
+                className="mt-3 w-full rounded-[10px] border border-[#bca98a] bg-white px-3 py-2 text-xs font-bold text-earth"
               >
                 + Add lesson
               </button>
+              <button
+                type="button"
+                onClick={() =>
+                  mutate((draft) => {
+                    const chapterNumber = draft.chapters.length + 1;
+                    draft.chapters.push({
+                      id: newStableId(`chapter-${chapterNumber}`),
+                      title: `Chapter ${chapterNumber}`,
+                      lessons: [
+                        {
+                          id: newStableId(`lesson-${chapterNumber}-1`),
+                          title: "New lesson",
+                          standardsCodes: [],
+                          needsIllustration: false,
+                          learnBlocks: [
+                            { type: "paragraph", text: "Add lesson text." },
+                          ],
+                          exercises: [makeExercise("short_answer")],
+                        },
+                      ],
+                    });
+                    setSelected({ chapter: chapterNumber - 1, lesson: 0 });
+                  })
+                }
+                className="mt-2 w-full px-3 py-2 text-xs font-bold text-ink/48"
+              >
+                + New chapter
+              </button>
+              <div className="mt-5 rounded-[14px] bg-[#efe4d2] p-3 text-xs leading-5 text-ink/58">
+                Adding, deleting, or replacing a lesson ID makes the next
+                release a new edition.
+              </div>
             </div>
-          ))}
-        </div>
-        <div className="mt-5 rounded-[14px] bg-[#efe4d2] p-3 text-xs leading-5 text-ink/58">
-          <strong className="text-ink">Release rule</strong>
-          <br />
-          PDF page count may change. Adding, deleting, or replacing a lesson ID
-          makes a new edition.
-        </div>
+          ) : (
+            <div className="mt-4 grid gap-5">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-earth">
+                  Learning content
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {([
+                    ["paragraph", "Paragraph"],
+                    ["vocabulary_list", "Vocabulary"],
+                    ["reading_passage", "Passage"],
+                    ["character_practice", "Characters"],
+                  ] as Array<[AddableLearnBlockType, string]>).map(
+                    ([type, label]) => (
+                      <button
+                        type="button"
+                        draggable
+                        key={type}
+                        onClick={() =>
+                          mutateLesson((draft) => {
+                            draft.learnBlocks.push(makeLearnBlock(type));
+                          })
+                        }
+                        onDragStart={(event) =>
+                          startEditorDrag(event, {
+                            collection: "learn",
+                            mode: "new",
+                            blockType: type,
+                          })
+                        }
+                        onDragEnd={endEditorDrag}
+                        className="cursor-grab rounded-[10px] border border-dashed border-[#9fbd89] bg-white px-2 py-2.5 text-xs font-bold text-[#486a38] active:cursor-grabbing"
+                      >
+                        ⠿ {label}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-earth">
+                  Exercises
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {([
+                    ["circle_choice", "Circle choice"],
+                    ["multiple_choice", "Multiple choice"],
+                    ["fill_in_blank", "Fill blank"],
+                    ["short_answer", "Short answer"],
+                    ["matching", "Matching"],
+                    ["write", "Writing"],
+                    ["draw_box", "Drawing"],
+                  ] as Array<[ExerciseType, string]>).map(([type, label]) => (
+                    <button
+                      type="button"
+                      draggable
+                      key={type}
+                      onClick={() =>
+                        mutateLesson((draft) => {
+                          draft.exercises.push(makeExercise(type));
+                        })
+                      }
+                      onDragStart={(event) =>
+                        startEditorDrag(event, {
+                          collection: "exercise",
+                          mode: "new",
+                          exerciseType: type,
+                        })
+                      }
+                      onDragEnd={endEditorDrag}
+                      className="cursor-grab rounded-[10px] border border-dashed border-[#c2ae8e] bg-white px-2 py-2.5 text-xs font-bold text-ink/65 active:cursor-grabbing"
+                    >
+                      ⠿ {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {(["learn", "exercise"] as WorkbookEditorCollection[]).map(
+                (collection) => (
+                  <div key={collection}>
+                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-earth">
+                      {collection === "learn" ? "Learning" : "Exercise"} rows
+                    </p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {([1, 2, 3, 4] as WorkbookLayoutColumnCount[]).map(
+                        (columnCount) => (
+                          <button
+                            type="button"
+                            draggable
+                            key={columnCount}
+                            onClick={() =>
+                              mutateLesson((draft) => {
+                                if (collection === "learn") {
+                                  draft.learnBlocks.push(
+                                    makeWorkbookLayoutRow(
+                                      collection,
+                                      columnCount,
+                                    ) as WorkbookLearnBlock,
+                                  );
+                                } else {
+                                  draft.exercises.push(
+                                    makeWorkbookLayoutRow(
+                                      collection,
+                                      columnCount,
+                                    ) as WorkbookExercise,
+                                  );
+                                }
+                              })
+                            }
+                            onDragStart={(event) =>
+                              startEditorDrag(event, {
+                                collection,
+                                mode: "new_row",
+                                columnCount,
+                              })
+                            }
+                            onDragEnd={endEditorDrag}
+                            className="cursor-grab rounded-[10px] border border-[#b7cda3] bg-[#edf5e7] px-2 py-2 text-xs font-bold text-[#486a38] active:cursor-grabbing"
+                          >
+                            ⠿ {columnCount} col
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                ),
+              )}
+              <p className="rounded-[12px] bg-white/65 p-3 text-xs leading-5 text-ink/48">
+                Click to append, or drag an element directly into the canvas.
+              </p>
+            </div>
+          )}
         </> : null}
       </aside>
 
@@ -1388,62 +1547,6 @@ export function WorkbookStudioEditor({
             ))}
             {editorDrag ? <WorkbookDropZone target={{ collection: "learn", container: "root", index: lesson.learnBlocks.length }} drag={editorDrag} active={sameWorkbookDropTarget(dropTarget, { collection: "learn", container: "root", index: lesson.learnBlocks.length })} onTarget={updateDropTarget} onDrop={dropEditorItem} /> : null}
           </div>
-          <div className="mt-4 grid gap-3 rounded-[12px] border border-[#dfd1bc] bg-white/45 p-3">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[.12em] text-[var(--studio-leaf-dark)]">Layout</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {([1, 2, 3, 4] as WorkbookLayoutColumnCount[]).map((columnCount) => (
-                <button
-                  type="button"
-                  draggable
-                  key={columnCount}
-                  onClick={() =>
-                    mutateLesson((draft) => {
-                      draft.learnBlocks.push(
-                        makeWorkbookLayoutRow("learn", columnCount) as WorkbookLearnBlock,
-                      );
-                    })
-                  }
-                  onDragStart={(event) =>
-                    startEditorDrag(event, {
-                      collection: "learn",
-                      mode: "new_row",
-                      columnCount,
-                    })
-                  }
-                  onDragEnd={endEditorDrag}
-                  className="cursor-grab rounded-[10px] border border-[#b7cda3] bg-[#edf5e7] px-3 py-2 text-xs font-bold text-[var(--studio-leaf-dark)] active:cursor-grabbing"
-                >
-                  ⠿ {columnCount}-column row
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-          <p className="text-[10px] font-black uppercase tracking-[.12em] text-[var(--studio-leaf-dark)]">Learning content</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {([
-              ["paragraph", "Paragraph"],
-              ["vocabulary_list", "Vocabulary"],
-              ["reading_passage", "Passage"],
-              ["character_practice", "Character practice"],
-            ] as Array<[AddableLearnBlockType, string]>).map(([type, label]) => (
-              <button
-                type="button"
-                draggable
-                key={type}
-                onClick={() => mutateLesson((draft) => { draft.learnBlocks.push(makeLearnBlock(type)); })}
-                onDragStart={(event) => startEditorDrag(event, { collection: "learn", mode: "new", blockType: type })}
-                onDragEnd={endEditorDrag}
-                className="cursor-grab rounded-[10px] border border-dashed border-[var(--studio-leaf)] px-3 py-2 text-xs font-bold text-[var(--studio-leaf-dark)] active:cursor-grabbing"
-              >
-                ⠿ + {label}
-              </button>
-            ))}
-          </div>
-          </div>
-          </div>
-
           <p className="mt-8 inline-block border-b-2 border-[var(--studio-leaf)] text-sm font-bold text-[var(--studio-leaf-dark)]">
             Part 2: Practice
           </p>
@@ -1652,55 +1755,6 @@ export function WorkbookStudioEditor({
               </div>
             ))}
             {editorDrag ? <WorkbookDropZone target={{ collection: "exercise", container: "root", index: lesson.exercises.length }} drag={editorDrag} active={sameWorkbookDropTarget(dropTarget, { collection: "exercise", container: "root", index: lesson.exercises.length })} onTarget={updateDropTarget} onDrop={dropEditorItem} /> : null}
-          </div>
-          <div className="mt-4 grid gap-3 rounded-[12px] border border-[#dfd1bc] bg-white/45 p-3">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[.12em] text-[var(--studio-leaf-dark)]">Layout</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {([1, 2, 3, 4] as WorkbookLayoutColumnCount[]).map((columnCount) => (
-                  <button
-                    type="button"
-                    draggable
-                    key={columnCount}
-                    onClick={() =>
-                      mutateLesson((draft) => {
-                        draft.exercises.push(
-                          makeWorkbookLayoutRow("exercise", columnCount) as WorkbookExercise,
-                        );
-                      })
-                    }
-                    onDragStart={(event) =>
-                      startEditorDrag(event, {
-                        collection: "exercise",
-                        mode: "new_row",
-                        columnCount,
-                      })
-                    }
-                    onDragEnd={endEditorDrag}
-                    className="cursor-grab rounded-[10px] border border-[#b7cda3] bg-[#edf5e7] px-3 py-2 text-xs font-bold text-[var(--studio-leaf-dark)] active:cursor-grabbing"
-                  >
-                    ⠿ {columnCount}-column row
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[.12em] text-[var(--studio-leaf-dark)]">Exercises</p>
-              <button
-                type="button"
-                draggable
-                onClick={() =>
-                  mutateLesson((draft) => {
-                    draft.exercises.push(makeExercise("short_answer"));
-                  })
-                }
-                onDragStart={(event) => startEditorDrag(event, { collection: "exercise", mode: "new", exerciseType: "short_answer" })}
-                onDragEnd={endEditorDrag}
-                className="mt-2 cursor-grab rounded-[10px] border border-dashed border-[var(--studio-leaf)] px-3 py-2 text-xs font-bold text-[var(--studio-leaf-dark)] active:cursor-grabbing"
-              >
-                ⠿ + Exercise
-              </button>
-            </div>
           </div>
         </div>
       </section>

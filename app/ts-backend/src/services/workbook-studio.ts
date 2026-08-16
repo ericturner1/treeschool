@@ -25,7 +25,9 @@ import {
   type WorkbookStudioRevisionSource,
 } from "ts-db";
 import { z } from "zod";
+import { PDFDocument } from "pdf-lib";
 import { db } from "../db";
+import { downloadPrivateFile } from "./media";
 import {
   parseWorkbookCatalogPlan,
   workbookGenerationModel,
@@ -557,6 +559,40 @@ export async function getAdminWorkbookStudioProject(input: {
     generationRuns,
     renderRuns,
   };
+}
+
+export async function getAdminWorkbookStudioCoverPreview(input: {
+  userId: string;
+  projectId: string;
+}) {
+  await requireAdmin(input.userId);
+  const projectId = uuidSchema.parse(input.projectId);
+  const [render] = await db
+    .select({ pdfObjectPath: workbookRenderRuns.pdfObjectPath })
+    .from(workbookRenderRuns)
+    .where(
+      and(
+        eq(workbookRenderRuns.projectId, projectId),
+        eq(workbookRenderRuns.status, "completed"),
+      ),
+    )
+    .orderBy(desc(workbookRenderRuns.createdAt))
+    .limit(1);
+  if (!render?.pdfObjectPath) {
+    throw new Error("Render a workbook PDF before previewing its cover.");
+  }
+
+  const source = await PDFDocument.load(
+    await downloadPrivateFile(render.pdfObjectPath),
+  );
+  if (!source.getPageCount()) {
+    throw new Error("The latest workbook PDF does not contain a cover page.");
+  }
+  const preview = await PDFDocument.create();
+  const [cover] = await preview.copyPages(source, [0]);
+  preview.addPage(cover);
+  preview.setTitle("Workbook cover preview");
+  return preview.save({ useObjectStreams: false });
 }
 
 export async function createWorkbookStudioProject(

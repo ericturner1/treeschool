@@ -214,6 +214,7 @@ import {
   createWorkbookStudioCurriculum,
   createWorkbookStudioProject,
   createWorkbookThemeVersion,
+  getAdminWorkbookStudioCoverPreview,
   getAdminWorkbookStudioCurriculum,
   getAdminWorkbookStudioProject,
   listAdminWorkbookStudio,
@@ -375,6 +376,25 @@ const server = Bun.serve({
         return Response.json(await getAdminWorkbookStudioProject({ userId, projectId }));
       } catch (error) {
         return Response.json({ error: publicErrorMessage(error, "Could not load the workbook project.") }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/cover-preview" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        const projectId = url.searchParams.get("projectId");
+        if (!userId || !projectId) return Response.json({ error: "userId and projectId are required." }, { status: 400 });
+        const pdf = await getAdminWorkbookStudioCoverPreview({ userId, projectId });
+        return new Response(pdf, {
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": "inline; filename=workbook-cover-preview.pdf",
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
+      } catch (error) {
+        return Response.json({ error: publicErrorMessage(error, "Could not load the workbook cover preview.") }, { status: 400 });
       }
     }
 
