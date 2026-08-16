@@ -131,6 +131,13 @@ const learnBlockLeafSchema = z.discriminatedUnion("type", [
     pronunciation: z.string().trim().optional(),
     meaning: z.string().trim().optional(),
     traceRows: z.number().int().min(1).max(8).default(3),
+    columns: z.number().int().min(1).max(12).default(4),
+    boxBackground: z
+      .enum(["quadrant", "blank", "handwriting_lines"])
+      .default("quadrant"),
+    fadeOut: z.boolean().default(true),
+    startingOpacityPercent: z.number().int().min(0).max(100).default(35),
+    fadeStepPercent: z.number().int().min(0).max(100).default(10),
   }),
 ]);
 

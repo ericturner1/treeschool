@@ -112,6 +112,11 @@ export type WorkbookLearnBlockLeaf = (
       pronunciation?: string;
       meaning?: string;
       traceRows: number;
+      columns: number;
+      boxBackground: "quadrant" | "blank" | "handwriting_lines";
+      fadeOut: boolean;
+      startingOpacityPercent: number;
+      fadeStepPercent: number;
     }
 ) & { boxStyle?: WorkbookBoxStyle };
 

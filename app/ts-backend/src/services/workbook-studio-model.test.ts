@@ -73,6 +73,33 @@ describe("Workbook Studio content compatibility", () => {
     );
   });
 
+  test("normalizes legacy traceable elements with current guide defaults", () => {
+    const content = validContent();
+    const raw = structuredClone(content) as unknown as {
+      chapters: Array<{
+        lessons: Array<{ learnBlocks: unknown[] }>;
+      }>;
+    };
+    raw.chapters[0]!.lessons[0]!.learnBlocks = [
+      {
+        type: "character_practice",
+        character: "木",
+        traceRows: 2,
+      },
+    ];
+
+    const parsed = parseWorkbookContent(raw);
+    const traceable = parsed.chapters[0]!.lessons[0]!.learnBlocks[0]!;
+    expect(traceable).toMatchObject({
+      type: "character_practice",
+      columns: 4,
+      boxBackground: "quadrant",
+      fadeOut: true,
+      startingOpacityPercent: 35,
+      fadeStepPercent: 10,
+    });
+  });
+
   test("persists layout rows without changing lesson compatibility", () => {
     const previous = validContent();
     const next = structuredClone(previous);

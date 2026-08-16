@@ -565,15 +565,20 @@ export async function getAdminWorkbookStudioProject(input: {
   ]);
   if (!themeVersion)
     throw new Error("The effective workbook theme version was not found.");
+  const normalizedRevisions = revisions.map((revision) => ({
+    ...revision,
+    contentJson: parseWorkbookContent(revision.contentJson),
+  }));
 
   return {
     project,
-    revisions,
+    revisions: normalizedRevisions,
     currentRevision:
-      revisions.find((revision) => revision.id === project.currentRevisionId) ??
-      null,
+      normalizedRevisions.find(
+        (revision) => revision.id === project.currentRevisionId,
+      ) ?? null,
     publishedRevision:
-      revisions.find(
+      normalizedRevisions.find(
         (revision) => revision.id === project.publishedRevisionId,
       ) ?? null,
     effectiveTheme: { ...themeVersion, componentTokens },

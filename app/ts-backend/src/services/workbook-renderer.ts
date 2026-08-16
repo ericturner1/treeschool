@@ -36,7 +36,7 @@ import {
 } from "./workbook-theme-compiler";
 
 const PAGED_JS_VERSION = "0.4.3";
-const RENDERER_VERSION = "workbook-studio-v1";
+const RENDERER_VERSION = "workbook-studio-v2";
 const FONT_MANIFEST = {
   source: "fontsource",
   packageVersion: "5.3.0",
@@ -440,7 +440,19 @@ function renderLearnBlockContent(
   if (block.type === "reading_passage") {
     return `<article class="reader-passage">${block.title ? `<h4>${escapeHtml(block.title)}</h4>` : ""}${block.paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")}${block.attribution ? `<p class="passage-attribution">${escapeHtml(block.attribution)}</p>` : ""}</article>`;
   }
-  return `<section class="character-practice"><div class="character-model">${escapeHtml(block.character)}</div><p>${[block.pronunciation, block.meaning].filter(Boolean).map(escapeHtml).join(" · ")}</p>${Array.from({ length: block.traceRows }, () => `<div class="character-trace-row"><span>${escapeHtml(block.character)}</span><span></span><span></span><span></span></div>`).join("")}</section>`;
+  const guideClass = `character-trace-cell--${block.boxBackground}`;
+  const traceRows = Array.from({ length: block.traceRows }, () => {
+    const cells = Array.from({ length: block.columns }, (_, columnIndex) => {
+      const opacityPercent = Math.max(
+        0,
+        block.startingOpacityPercent -
+          (block.fadeOut ? columnIndex * block.fadeStepPercent : 0),
+      );
+      return `<span class="character-trace-cell ${guideClass}"><span class="character-trace-glyph" style="opacity:${opacityPercent / 100}">${escapeHtml(block.character)}</span></span>`;
+    }).join("");
+    return `<div class="character-trace-row" style="grid-template-columns:repeat(${block.columns},minmax(0,1fr))">${cells}</div>`;
+  }).join("");
+  return `<section class="character-practice"><div class="character-model">${escapeHtml(block.character)}</div><p>${[block.pronunciation, block.meaning].filter(Boolean).map(escapeHtml).join(" · ")}</p>${traceRows}</section>`;
 }
 
 function renderLearnBlock(
@@ -752,9 +764,14 @@ export async function buildWorkbookHtml(input: {
 .reader-vocabulary dd { margin: 0; }
 .passage-attribution { color: var(--earth); font-size: 10pt; text-align: right; }
 .character-model { font-family: "Noto Sans JP", sans-serif; font-size: 42pt; color: var(--leaf-dark); text-align: center; }
-.character-trace-row { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 6px; }
-.character-trace-row span { display: grid; min-height: 22mm; place-items: center; border: 1px dashed var(--earth); font-family: "Noto Sans JP", sans-serif; font-size: 28pt; }
-.character-trace-row span:first-child { color: color-mix(in srgb, var(--earth) 35%, transparent); }
+.character-trace-row { display: grid; gap: 1.5mm; margin-top: 6px; }
+.character-trace-cell { position: relative; display: grid; min-width: 0; min-height: 22mm; overflow: hidden; place-items: center; }
+.character-trace-cell--quadrant, .character-trace-cell--blank { border: 1px solid color-mix(in srgb, var(--earth) 55%, transparent); }
+.character-trace-cell--quadrant::before { position: absolute; top: 0; bottom: 0; left: 50%; border-left: 1px solid color-mix(in srgb, var(--earth) 28%, transparent); content: ""; }
+.character-trace-cell--quadrant::after { position: absolute; top: 50%; right: 0; left: 0; border-top: 1px solid color-mix(in srgb, var(--earth) 28%, transparent); content: ""; }
+.character-trace-cell--handwriting_lines { border-top: 1px solid color-mix(in srgb, var(--earth) 55%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--earth) 55%, transparent); }
+.character-trace-cell--handwriting_lines::after { position: absolute; top: 50%; right: 0; left: 0; border-top: 1px dashed color-mix(in srgb, var(--earth) 40%, transparent); content: ""; }
+.character-trace-glyph { position: relative; z-index: 1; padding: 0 1mm; color: var(--earth); font-family: "Noto Sans JP", sans-serif; font-size: 28pt; font-style: normal; line-height: 1; white-space: nowrap; }
 </style>
 <script>window.PagedConfig={auto:false};</script>
 <script>${safeInlineScript(pagedJs)}</script>

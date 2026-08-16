@@ -68,6 +68,11 @@ function rendererFixture() {
       pronunciation: "き",
       meaning: "tree",
       traceRows: 2,
+      columns: 5,
+      boxBackground: "handwriting_lines",
+      fadeOut: true,
+      startingOpacityPercent: 40,
+      fadeStepPercent: 10,
     },
     {
       type: "illustration",
@@ -155,6 +160,10 @@ describe("Workbook Studio deterministic renderer", () => {
     expect(html).toContain("Copyright &copy; 2024 Treeschool");
     expect(html).toContain("reader-vocabulary");
     expect(html).toContain("character-practice");
+    expect(html).toContain("character-trace-cell--handwriting_lines");
+    expect(html).toContain("grid-template-columns:repeat(5,minmax(0,1fr))");
+    expect(html).toContain('style="opacity:0.4"');
+    expect(html).toContain('style="opacity:0"');
     expect(html).toContain("background-color:#fffaf2");
     expect(html).toContain(
       "border-width:1px;border-style:dashed;border-color:#739e56",

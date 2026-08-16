@@ -327,7 +327,16 @@ function makeLearnBlock(type: AddableLearnBlockType): WorkbookLearnBlockLeaf {
     return { type, title: "Passage", paragraphs: ["Write the passage here."] };
   }
   if (type === "character_practice") {
-    return { type, character: "字", traceRows: 3 };
+    return {
+      type,
+      character: "字",
+      traceRows: 3,
+      columns: 4,
+      boxBackground: "quadrant",
+      fadeOut: true,
+      startingOpacityPercent: 35,
+      fadeStepPercent: 10,
+    };
   }
   return { type, text: "New learning paragraph." };
 }
@@ -1445,27 +1454,175 @@ function WorkbookLearnLeafFields({
   }
   if (block.type === "character_practice") {
     return (
-      <div className="grid gap-2 sm:grid-cols-3">
-        {([
-          ["Character", "character"],
-          ["Pronunciation", "pronunciation"],
-          ["Meaning", "meaning"],
-        ] as const).map(([label, field]) => (
-          <label key={field} className="grid gap-1 text-xs font-bold">
-            {label}
+      <div className="grid gap-4 rounded-[12px] bg-white p-3">
+        <strong className="text-xs uppercase tracking-wide text-[var(--studio-leaf-dark)]">
+          Traceable
+        </strong>
+        <label className="grid gap-1 text-xs font-bold">
+          Character or text
+          <input
+            value={block.character}
+            onChange={(event) =>
+              update((draft) => {
+                if (draft.type === "character_practice") {
+                  draft.character = event.target.value;
+                }
+              })
+            }
+            className="rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 text-2xl"
+          />
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            ["Pronunciation", "pronunciation"],
+            ["Meaning", "meaning"],
+          ] as const).map(([label, field]) => (
+            <label key={field} className="grid min-w-0 gap-1 text-xs font-bold">
+              {label}
+              <input
+                value={block[field] ?? ""}
+                onChange={(event) =>
+                  update((draft) => {
+                    if (draft.type === "character_practice") {
+                      draft[field] = event.target.value;
+                    }
+                  })
+                }
+                className="min-w-0 rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm"
+              />
+            </label>
+          ))}
+        </div>
+        <label className="grid gap-1 text-xs font-bold">
+          Box background
+          <select
+            value={block.boxBackground}
+            onChange={(event) =>
+              update((draft) => {
+                if (draft.type === "character_practice") {
+                  draft.boxBackground = event.target.value as typeof draft.boxBackground;
+                }
+              })
+            }
+            className="rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"
+          >
+            <option value="quadrant">Quadrant box</option>
+            <option value="blank">Blank box</option>
+            <option value="handwriting_lines">
+              Top, dashed middle, bottom lines
+            </option>
+          </select>
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="grid gap-1 text-xs font-bold">
+            Rows
             <input
-              value={block[field] ?? ""}
+              type="number"
+              min={1}
+              max={8}
+              value={block.traceRows}
               onChange={(event) =>
                 update((draft) => {
                   if (draft.type === "character_practice") {
-                    draft[field] = event.target.value;
+                    draft.traceRows = Math.min(
+                      Math.max(Number(event.target.value) || 1, 1),
+                      8,
+                    );
                   }
                 })
               }
-              className={`rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 ${field === "character" ? "text-2xl" : "text-sm"}`}
+              className="rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"
             />
           </label>
-        ))}
+          <label className="grid gap-1 text-xs font-bold">
+            Columns
+            <input
+              type="number"
+              min={1}
+              max={12}
+              value={block.columns}
+              onChange={(event) =>
+                update((draft) => {
+                  if (draft.type === "character_practice") {
+                    draft.columns = Math.min(
+                      Math.max(Number(event.target.value) || 1, 1),
+                      12,
+                    );
+                  }
+                })
+              }
+              className="rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"
+            />
+          </label>
+        </div>
+        <label className="flex items-center gap-2 text-xs font-bold">
+          <input
+            type="checkbox"
+            checked={block.fadeOut}
+            onChange={(event) =>
+              update((draft) => {
+                if (draft.type === "character_practice") {
+                  draft.fadeOut = event.target.checked;
+                }
+              })
+            }
+            className="h-4 w-4 accent-[var(--studio-leaf)]"
+          />
+          Fade tracing text across columns
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="grid gap-1 text-xs font-bold">
+            Starting opacity
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={block.startingOpacityPercent}
+                onChange={(event) =>
+                  update((draft) => {
+                    if (draft.type === "character_practice") {
+                      draft.startingOpacityPercent = Math.min(
+                        Math.max(Number(event.target.value) || 0, 0),
+                        100,
+                      );
+                    }
+                  })
+                }
+                className="min-w-0 rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"
+              />
+              <span>%</span>
+            </div>
+          </label>
+          <label className="grid gap-1 text-xs font-bold">
+            Drop per column
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={block.fadeStepPercent}
+                disabled={!block.fadeOut}
+                onChange={(event) =>
+                  update((draft) => {
+                    if (draft.type === "character_practice") {
+                      draft.fadeStepPercent = Math.min(
+                        Math.max(Number(event.target.value) || 0, 0),
+                        100,
+                      );
+                    }
+                  })
+                }
+                className="min-w-0 rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal disabled:bg-[#eee8de] disabled:text-ink/40"
+              />
+              <span>%</span>
+            </div>
+          </label>
+        </div>
+        <p className="text-[11px] leading-5 text-ink/50">
+          Opacity drops by the selected percentage points in each successive
+          column, stopping at zero.
+        </p>
       </div>
     );
   }
@@ -1839,14 +1996,48 @@ function WorkbookLearnLeafPreview({
           {[block.pronunciation, block.meaning].filter(Boolean).join(" · ")}
         </p>
         <div className="mt-3 grid gap-2">
-          {Array.from({ length: block.traceRows }, (_, index) => (
-            <div key={index} className="grid grid-cols-4 border border-[var(--studio-leaf)]/45 text-3xl text-ink/15">
-              <span className="border-r border-[var(--studio-leaf)]/35 py-2">
-                {block.character}
-              </span>
-              <span className="border-r border-[var(--studio-leaf)]/35" />
-              <span className="border-r border-[var(--studio-leaf)]/35" />
-              <span />
+          {Array.from({ length: block.traceRows }, (_, rowIndex) => (
+            <div
+              key={rowIndex}
+              className="grid gap-1.5"
+              style={{
+                gridTemplateColumns: `repeat(${block.columns}, minmax(0, 1fr))`,
+              }}
+            >
+              {Array.from({ length: block.columns }, (_, columnIndex) => {
+                const opacityPercent = Math.max(
+                  0,
+                  block.startingOpacityPercent -
+                    (block.fadeOut
+                      ? columnIndex * block.fadeStepPercent
+                      : 0),
+                );
+                const hasBoxBorder =
+                  block.boxBackground === "quadrant" ||
+                  block.boxBackground === "blank";
+                return (
+                  <span
+                    key={columnIndex}
+                    className={`relative grid aspect-square min-h-10 place-items-center overflow-hidden ${hasBoxBorder ? "border border-[var(--studio-leaf)]/45" : "border-y border-[var(--studio-leaf)]/45"}`}
+                  >
+                    {block.boxBackground === "quadrant" ? (
+                      <>
+                        <span className="pointer-events-none absolute inset-y-0 left-1/2 border-l border-[var(--studio-leaf)]/25" />
+                        <span className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-[var(--studio-leaf)]/25" />
+                      </>
+                    ) : null}
+                    {block.boxBackground === "handwriting_lines" ? (
+                      <span className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-[var(--studio-leaf)]/35" />
+                    ) : null}
+                    <span
+                      className="relative z-10 whitespace-nowrap px-1 text-[clamp(1rem,3.2vw,1.875rem)] font-bold text-earth"
+                      style={{ opacity: opacityPercent / 100 }}
+                    >
+                      {block.character}
+                    </span>
+                  </span>
+                );
+              })}
             </div>
           ))}
         </div>
@@ -2111,9 +2302,11 @@ function WorkbookItemInspector({
 }) {
   const label = item.type === "layout_row"
     ? "Layout"
-    : location.collection === "learn"
-      ? "Learning element"
-      : "Exercise";
+    : item.type === "character_practice"
+      ? "Traceable"
+      : location.collection === "learn"
+        ? "Learning element"
+        : "Exercise";
   return (
     <div className="mt-4 grid gap-4">
       <div className="flex items-center justify-between gap-2">
@@ -2946,7 +3139,7 @@ export function WorkbookStudioEditor({
                     ["sound_asset", "Sound"],
                     ["vocabulary_list", "Vocabulary"],
                     ["reading_passage", "Passage"],
-                    ["character_practice", "Characters"],
+                    ["character_practice", "Traceable"],
                   ] as Array<[AddableLearnBlockType, string]>).map(
                     ([type, label]) => (
                       <button
