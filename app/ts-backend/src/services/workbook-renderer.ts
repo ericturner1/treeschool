@@ -36,7 +36,7 @@ import {
 } from "./workbook-theme-compiler";
 
 const PAGED_JS_VERSION = "0.4.3";
-const RENDERER_VERSION = "workbook-studio-v2";
+const RENDERER_VERSION = "workbook-studio-v3";
 const FONT_MANIFEST = {
   source: "fontsource",
   packageVersion: "5.3.0",
@@ -438,7 +438,13 @@ function renderLearnBlockContent(
     return `<section class="reader-vocabulary"><h4>${escapeHtml(block.title ?? "Vocabulary")}</h4><dl>${block.entries.map((entry) => `<div><dt>${escapeHtml(entry.term)}${entry.pronunciation ? ` <span>${escapeHtml(entry.pronunciation)}</span>` : ""}</dt><dd>${escapeHtml(entry.definition)}</dd></div>`).join("")}</dl></section>`;
   }
   if (block.type === "reading_passage") {
-    return `<article class="reader-passage">${block.title ? `<h4>${escapeHtml(block.title)}</h4>` : ""}${block.paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")}${block.attribution ? `<p class="passage-attribution">${escapeHtml(block.attribution)}</p>` : ""}</article>`;
+    const renderedParagraphs = block.richParagraphs
+      ? block.richParagraphs.map(
+          (paragraph) =>
+            `<p>${paragraph.runs.map((run) => run.bold ? `<strong>${escapeHtml(run.text)}</strong>` : escapeHtml(run.text)).join("")}</p>`,
+        )
+      : block.paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`);
+    return `<article class="reader-passage" style="font-size:${block.fontSizePt}pt">${block.title ? `<h4>${escapeHtml(block.title)}</h4>` : ""}${renderedParagraphs.join("")}${block.attribution ? `<p class="passage-attribution">${escapeHtml(block.attribution)}</p>` : ""}</article>`;
   }
   const guideClass = `character-trace-cell--${block.boxBackground}`;
   const traceRows = Array.from({ length: block.traceRows }, () => {
@@ -452,7 +458,7 @@ function renderLearnBlockContent(
     }).join("");
     return `<div class="character-trace-row" style="grid-template-columns:repeat(${block.columns},minmax(0,1fr))">${cells}</div>`;
   }).join("");
-  return `<section class="character-practice"><div class="character-model">${escapeHtml(block.character)}</div><p>${[block.pronunciation, block.meaning].filter(Boolean).map(escapeHtml).join(" · ")}</p>${traceRows}</section>`;
+  return `<section class="character-practice" style="--character-font-size:${block.fontSizePt}pt;--character-model-font-size:${block.fontSizePt * 1.5}pt"><div class="character-model">${escapeHtml(block.character)}</div><p>${[block.pronunciation, block.meaning].filter(Boolean).map(escapeHtml).join(" · ")}</p>${traceRows}</section>`;
 }
 
 function renderLearnBlock(
@@ -763,7 +769,7 @@ export async function buildWorkbookHtml(input: {
 .reader-vocabulary dt { font-weight: 700; color: var(--leaf-dark); }
 .reader-vocabulary dd { margin: 0; }
 .passage-attribution { color: var(--earth); font-size: 10pt; text-align: right; }
-.character-model { font-family: "Noto Sans JP", sans-serif; font-size: 42pt; color: var(--leaf-dark); text-align: center; }
+.character-model { font-family: "Noto Sans JP", sans-serif; font-size: var(--character-model-font-size, 42pt); color: var(--leaf-dark); text-align: center; }
 .character-trace-row { display: grid; gap: 1.5mm; margin-top: 6px; }
 .character-trace-cell { position: relative; display: grid; min-width: 0; min-height: 22mm; overflow: hidden; place-items: center; }
 .character-trace-cell--quadrant, .character-trace-cell--blank { border: 1px solid color-mix(in srgb, var(--earth) 55%, transparent); }
@@ -771,7 +777,7 @@ export async function buildWorkbookHtml(input: {
 .character-trace-cell--quadrant::after { position: absolute; top: 50%; right: 0; left: 0; border-top: 1px solid color-mix(in srgb, var(--earth) 28%, transparent); content: ""; }
 .character-trace-cell--handwriting_lines { border-top: 1px solid color-mix(in srgb, var(--earth) 55%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--earth) 55%, transparent); }
 .character-trace-cell--handwriting_lines::after { position: absolute; top: 50%; right: 0; left: 0; border-top: 1px dashed color-mix(in srgb, var(--earth) 40%, transparent); content: ""; }
-.character-trace-glyph { position: relative; z-index: 1; padding: 0 1mm; color: var(--earth); font-family: "Noto Sans JP", sans-serif; font-size: 28pt; font-style: normal; line-height: 1; white-space: nowrap; }
+.character-trace-glyph { position: relative; z-index: 1; padding: 0 1mm; color: var(--earth); font-family: "Noto Sans JP", sans-serif; font-size: var(--character-font-size, 28pt); font-style: normal; line-height: 1; white-space: nowrap; }
 </style>
 <script>window.PagedConfig={auto:false};</script>
 <script>${safeInlineScript(pagedJs)}</script>

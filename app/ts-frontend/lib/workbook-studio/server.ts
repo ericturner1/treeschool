@@ -104,6 +104,10 @@ export type WorkbookLearnBlockLeaf = (
       type: "reading_passage";
       title?: string;
       paragraphs: string[];
+      richParagraphs?: Array<{
+        runs: Array<{ text: string; bold: boolean }>;
+      }>;
+      fontSizePt: number;
       attribution?: string;
     }
   | {
@@ -113,6 +117,7 @@ export type WorkbookLearnBlockLeaf = (
       meaning?: string;
       traceRows: number;
       columns: number;
+      fontSizePt: number;
       boxBackground: "quadrant" | "blank" | "handwriting_lines";
       fadeOut: boolean;
       startingOpacityPercent: number;

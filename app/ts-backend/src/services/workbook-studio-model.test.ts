@@ -93,10 +93,51 @@ describe("Workbook Studio content compatibility", () => {
     expect(traceable).toMatchObject({
       type: "character_practice",
       columns: 4,
+      fontSizePt: 28,
       boxBackground: "quadrant",
       fadeOut: true,
       startingOpacityPercent: 35,
       fadeStepPercent: 10,
+    });
+  });
+
+  test("normalizes legacy passages and preserves structured bold text", () => {
+    const content = validContent();
+    const raw = structuredClone(content) as unknown as {
+      chapters: Array<{
+        lessons: Array<{ learnBlocks: unknown[] }>;
+      }>;
+    };
+    raw.chapters[0]!.lessons[0]!.learnBlocks = [
+      {
+        type: "reading_passage",
+        paragraphs: ["Read this carefully."],
+        richParagraphs: [
+          {
+            runs: [
+              { text: "Read this ", bold: false },
+              { text: "carefully", bold: true },
+              { text: ".", bold: false },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const parsed = parseWorkbookContent(raw);
+    const passage = parsed.chapters[0]!.lessons[0]!.learnBlocks[0]!;
+    expect(passage).toMatchObject({
+      type: "reading_passage",
+      fontSizePt: 12,
+      richParagraphs: [
+        {
+          runs: [
+            { text: "Read this ", bold: false },
+            { text: "carefully", bold: true },
+            { text: ".", bold: false },
+          ],
+        },
+      ],
     });
   });
 

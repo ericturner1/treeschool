@@ -122,6 +122,22 @@ const learnBlockLeafSchema = z.discriminatedUnion("type", [
     type: z.literal("reading_passage"),
     title: z.string().trim().optional(),
     paragraphs: z.array(z.string().trim().min(1)).min(1),
+    richParagraphs: z
+      .array(
+        z.object({
+          runs: z
+            .array(
+              z.object({
+                text: z.string().min(1),
+                bold: z.boolean().default(false),
+              }),
+            )
+            .min(1),
+        }),
+      )
+      .min(1)
+      .optional(),
+    fontSizePt: z.number().int().min(8).max(36).default(12),
     attribution: z.string().trim().optional(),
   }),
   z.object({
@@ -132,6 +148,7 @@ const learnBlockLeafSchema = z.discriminatedUnion("type", [
     meaning: z.string().trim().optional(),
     traceRows: z.number().int().min(1).max(8).default(3),
     columns: z.number().int().min(1).max(12).default(4),
+    fontSizePt: z.number().int().min(8).max(72).default(28),
     boxBackground: z
       .enum(["quadrant", "blank", "handwriting_lines"])
       .default("quadrant"),

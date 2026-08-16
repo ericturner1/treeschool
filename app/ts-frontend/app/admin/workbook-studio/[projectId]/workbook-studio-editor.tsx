@@ -66,9 +66,19 @@ type WorkbookEditorDrag =
       columnCount: WorkbookLayoutColumnCount;
     };
 type WorkbookDropTarget = WorkbookItemLocation;
+type WorkbookPendingNavigation =
+  | { kind: "href"; href: string }
+  | { kind: "back" };
 type WorkbookLessonContent =
   WorkbookContent["chapters"][number]["lessons"][number];
 type WorkbookEditorItem = WorkbookLearnBlock | WorkbookExercise;
+type WorkbookPassageBlock = Extract<
+  WorkbookLearnBlockLeaf,
+  { type: "reading_passage" }
+>;
+type WorkbookPassageParagraph = NonNullable<
+  WorkbookPassageBlock["richParagraphs"]
+>[number];
 
 function WorkbookPaletteIcon({
   type,
@@ -324,7 +334,12 @@ function makeLearnBlock(type: AddableLearnBlockType): WorkbookLearnBlockLeaf {
     };
   }
   if (type === "reading_passage") {
-    return { type, title: "Passage", paragraphs: ["Write the passage here."] };
+    return {
+      type,
+      title: "Passage",
+      paragraphs: ["Write the passage here."],
+      fontSizePt: 12,
+    };
   }
   if (type === "character_practice") {
     return {
@@ -332,6 +347,7 @@ function makeLearnBlock(type: AddableLearnBlockType): WorkbookLearnBlockLeaf {
       character: "字",
       traceRows: 3,
       columns: 4,
+      fontSizePt: 28,
       boxBackground: "quadrant",
       fadeOut: true,
       startingOpacityPercent: 35,
@@ -1365,6 +1381,186 @@ function WorkbookSoundFields({
   );
 }
 
+function passageParagraphs(block: WorkbookPassageBlock) {
+  return (
+    block.richParagraphs ??
+    block.paragraphs.map((paragraph) => ({
+      runs: [{ text: paragraph, bold: false }],
+    }))
+  );
+}
+
+function escapePassageEditorHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;")
+    .replaceAll("\n", "<br>");
+}
+
+function passageEditorHtml(block: WorkbookPassageBlock) {
+  return passageParagraphs(block)
+    .map(
+      (paragraph) =>
+        `<p>${paragraph.runs
+          .map((run) => {
+            const text = escapePassageEditorHtml(run.text);
+            return run.bold ? `<strong>${text}</strong>` : text;
+          })
+          .join("")}</p>`,
+    )
+    .join("");
+}
+
+function appendPassageRun(
+  runs: WorkbookPassageParagraph["runs"],
+  text: string,
+  bold: boolean,
+) {
+  const normalized = text.replaceAll("\u00a0", " ");
+  if (!normalized) return;
+  const previous = runs.at(-1);
+  if (previous?.bold === bold) {
+    previous.text += normalized;
+    return;
+  }
+  runs.push({ text: normalized, bold });
+}
+
+function passageRunsFromNode(
+  node: Node,
+  inheritedBold: boolean,
+  runs: WorkbookPassageParagraph["runs"],
+) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    appendPassageRun(runs, node.textContent ?? "", inheritedBold);
+    return;
+  }
+  if (!(node instanceof HTMLElement)) return;
+  if (node.tagName === "BR") {
+    appendPassageRun(runs, "\n", inheritedBold);
+    return;
+  }
+  const fontWeight = Number(node.style.fontWeight);
+  const bold =
+    inheritedBold ||
+    node.tagName === "B" ||
+    node.tagName === "STRONG" ||
+    node.style.fontWeight === "bold" ||
+    (!Number.isNaN(fontWeight) && fontWeight >= 600);
+  node.childNodes.forEach((child) => passageRunsFromNode(child, bold, runs));
+}
+
+function trimPassageRuns(runs: WorkbookPassageParagraph["runs"]) {
+  const trimmed = runs
+    .map((run) => ({ ...run }))
+    .filter((run) => run.text.length > 0);
+  if (!trimmed.length) return trimmed;
+  trimmed[0]!.text = trimmed[0]!.text.replace(/^\s+/, "");
+  trimmed[trimmed.length - 1]!.text = trimmed[
+    trimmed.length - 1
+  ]!.text.replace(/\s+$/, "");
+  return trimmed.filter((run) => run.text.length > 0);
+}
+
+function passageParagraphsFromEditor(editor: HTMLDivElement) {
+  const paragraphs: WorkbookPassageParagraph[] = [];
+  let pendingRuns: WorkbookPassageParagraph["runs"] = [];
+
+  function finishParagraph() {
+    const runs = trimPassageRuns(pendingRuns);
+    if (runs.length) paragraphs.push({ runs });
+    pendingRuns = [];
+  }
+
+  editor.childNodes.forEach((node) => {
+    const isBlock =
+      node instanceof HTMLElement &&
+      ["DIV", "P", "LI"].includes(node.tagName);
+    if (isBlock) {
+      finishParagraph();
+      passageRunsFromNode(node, false, pendingRuns);
+      finishParagraph();
+      return;
+    }
+    if (node instanceof HTMLElement && node.tagName === "BR") {
+      finishParagraph();
+      return;
+    }
+    passageRunsFromNode(node, false, pendingRuns);
+  });
+  finishParagraph();
+  return paragraphs;
+}
+
+function PassageRichTextEditor({
+  block,
+  onChange,
+}: {
+  block: WorkbookPassageBlock;
+  onChange: (paragraphs: WorkbookPassageParagraph[]) => void;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const html = useMemo(() => passageEditorHtml(block), [block]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || document.activeElement === editor) return;
+    if (editor.innerHTML !== html) editor.innerHTML = html;
+  }, [html]);
+
+  function emitChange() {
+    const editor = editorRef.current;
+    if (editor) onChange(passageParagraphsFromEditor(editor));
+  }
+
+  return (
+    <div className="overflow-hidden rounded-[8px] border border-[var(--studio-leaf)] bg-white">
+      <div className="flex items-center gap-1 border-b border-[var(--studio-leaf)]/35 bg-[#f7f3eb] px-2 py-1.5">
+        <button
+          type="button"
+          title="Bold selected text"
+          aria-label="Bold selected text"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            editorRef.current?.focus();
+            document.execCommand("bold", false);
+            emitChange();
+          }}
+          className="grid h-8 w-8 place-items-center rounded-[6px] border border-[#d8c8ae] bg-white font-bold text-ink hover:bg-[#edf4e7]"
+        >
+          B
+        </button>
+        <span className="ml-1 text-[11px] text-ink/50">
+          Select text, then press Bold
+        </span>
+      </div>
+      <div
+        ref={editorRef}
+        role="textbox"
+        aria-label="Passage text"
+        aria-multiline="true"
+        contentEditable
+        suppressContentEditableWarning
+        onInput={emitChange}
+        onBlur={emitChange}
+        onPaste={(event) => {
+          event.preventDefault();
+          document.execCommand(
+            "insertText",
+            false,
+            event.clipboardData.getData("text/plain"),
+          );
+          emitChange();
+        }}
+        className="min-h-40 px-3 py-2 text-sm leading-7 outline-none [&_p]:mb-3 [&_p:last-child]:mb-0"
+      />
+    </div>
+  );
+}
+
 function WorkbookLearnLeafFields({
   block,
   projectId,
@@ -1432,22 +1628,48 @@ function WorkbookLearnLeafFields({
   }
   if (block.type === "reading_passage") {
     return (
-      <div>
-        <strong className="text-xs uppercase tracking-wide text-[var(--studio-leaf-dark)]">
-          Reading passage
-        </strong>
-        <textarea
-          value={block.paragraphs.join("\n\n")}
-          onChange={(event) =>
+      <div className="grid gap-3">
+        <div className="flex items-end justify-between gap-3">
+          <strong className="pb-2 text-xs uppercase tracking-wide text-[var(--studio-leaf-dark)]">
+            Reading passage
+          </strong>
+          <label className="grid w-28 gap-1 text-xs font-bold">
+            Font size
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min={8}
+                max={36}
+                value={block.fontSizePt}
+                onChange={(event) =>
+                  update((draft) => {
+                    if (draft.type === "reading_passage") {
+                      draft.fontSizePt = Math.min(
+                        Math.max(Number(event.target.value) || 8, 8),
+                        36,
+                      );
+                    }
+                  })
+                }
+                className="min-w-0 flex-1 rounded-[8px] border border-[#d8c8ae] bg-white px-2 py-1.5 text-sm font-normal"
+              />
+              <span className="font-normal text-ink/50">pt</span>
+            </div>
+          </label>
+        </div>
+        <PassageRichTextEditor
+          block={block}
+          onChange={(paragraphs) =>
             update((draft) => {
               if (draft.type !== "reading_passage") return;
-              draft.paragraphs = event.target.value
-                .split(/\n\s*\n/)
-                .map((paragraph) => paragraph.trim())
-                .filter(Boolean);
+              draft.richParagraphs = paragraphs.length
+                ? paragraphs
+                : undefined;
+              draft.paragraphs = paragraphs.map((paragraph) =>
+                paragraph.runs.map((run) => run.text).join(""),
+              );
             })
           }
-          className="mt-2 min-h-40 w-full resize-y rounded-[8px] border border-[var(--studio-leaf)] bg-white p-3 leading-7 outline-none"
         />
       </div>
     );
@@ -1512,6 +1734,29 @@ function WorkbookLearnLeafFields({
               Top, dashed middle, bottom lines
             </option>
           </select>
+        </label>
+        <label className="grid gap-1 text-xs font-bold">
+          Font size
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={8}
+              max={72}
+              value={block.fontSizePt}
+              onChange={(event) =>
+                update((draft) => {
+                  if (draft.type === "character_practice") {
+                    draft.fontSizePt = Math.min(
+                      Math.max(Number(event.target.value) || 8, 8),
+                      72,
+                    );
+                  }
+                })
+              }
+              className="min-w-0 flex-1 rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"
+            />
+            <span className="text-xs font-normal text-ink/55">pt</span>
+          </div>
         </label>
         <div className="grid grid-cols-2 gap-2">
           <label className="grid gap-1 text-xs font-bold">
@@ -1974,15 +2219,21 @@ function WorkbookLearnLeafPreview({
   }
   if (block.type === "reading_passage") {
     return (
-      <article>
+      <article style={{ fontSize: `${block.fontSizePt}pt` }}>
         {block.title ? (
           <h4 className="mb-2 font-bold text-[var(--studio-leaf-dark)]">
             {block.title}
           </h4>
         ) : null}
-        {block.paragraphs.map((paragraph, index) => (
+        {passageParagraphs(block).map((paragraph, index) => (
           <p key={index} className="mb-3 leading-7 last:mb-0">
-            {paragraph}
+            {paragraph.runs.map((run, runIndex) =>
+              run.bold ? (
+                <strong key={runIndex}>{run.text}</strong>
+              ) : (
+                <span key={runIndex}>{run.text}</span>
+              ),
+            )}
           </p>
         ))}
       </article>
@@ -1991,7 +2242,15 @@ function WorkbookLearnLeafPreview({
   if (block.type === "character_practice") {
     return (
       <section className="text-center">
-        <div className="text-6xl font-bold">{block.character}</div>
+        <div
+          className="font-bold"
+          style={{
+            fontSize: `${block.fontSizePt * 1.5}pt`,
+            lineHeight: 1,
+          }}
+        >
+          {block.character}
+        </div>
         <p className="mt-1 text-sm text-ink/55">
           {[block.pronunciation, block.meaning].filter(Boolean).join(" · ")}
         </p>
@@ -2030,8 +2289,12 @@ function WorkbookLearnLeafPreview({
                       <span className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-[var(--studio-leaf)]/35" />
                     ) : null}
                     <span
-                      className="relative z-10 whitespace-nowrap px-1 text-[clamp(1rem,3.2vw,1.875rem)] font-bold text-earth"
-                      style={{ opacity: opacityPercent / 100 }}
+                      className="relative z-10 whitespace-nowrap px-1 font-bold text-earth"
+                      style={{
+                        fontSize: `${block.fontSizePt}pt`,
+                        lineHeight: 1,
+                        opacity: opacityPercent / 100,
+                      }}
                     >
                       {block.character}
                     </span>
@@ -2683,7 +2946,9 @@ export function WorkbookStudioEditor({
   const [selectedItem, setSelectedItem] = useState<WorkbookItemLocation | null>(
     null,
   );
-  const [dirty, setDirty] = useState(false);
+  const [savedContentSnapshot, setSavedContentSnapshot] = useState(() =>
+    JSON.stringify(detail.currentRevision!.contentJson),
+  );
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [releaseOpen, setReleaseOpen] = useState(false);
@@ -2691,7 +2956,13 @@ export function WorkbookStudioEditor({
   const [lessonPreviewOpen, setLessonPreviewOpen] = useState(false);
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
+  const [pendingNavigation, setPendingNavigation] =
+    useState<WorkbookPendingNavigation | null>(null);
   const suppressPaletteClickRef = useRef(false);
+  const allowNavigationRef = useRef(false);
+  const historyGuardIdRef = useRef(
+    `workbook-studio-editor-${detail.project.id}`,
+  );
   const [pending, startTransition] = useTransition();
   const [themePending, startThemeTransition] = useTransition();
   const chapter = content.chapters[selected.chapter] ?? content.chapters[0];
@@ -2704,6 +2975,13 @@ export function WorkbookStudioEditor({
     (run) => run.status === "completed" && Boolean(run.pageCount),
   );
   const coverPreviewUrl = `/api/workbook-studio/cover-preview/${encodeURIComponent(detail.project.id)}`;
+  const currentContentSnapshot = useMemo(
+    () => JSON.stringify(content),
+    [content],
+  );
+  const dirty = currentContentSnapshot !== savedContentSnapshot;
+  const currentContentSnapshotRef = useRef(currentContentSnapshot);
+  const dirtyRef = useRef(dirty);
 
   const themeStyle = useMemo(
     () =>
@@ -2725,13 +3003,98 @@ export function WorkbookStudioEditor({
 
   const editorGridTemplateColumns = `${leftSidebarCollapsed ? 48 : 220}px minmax(0, 1fr) ${rightSidebarCollapsed ? 48 : 300}px`;
 
+  useEffect(() => {
+    currentContentSnapshotRef.current = currentContentSnapshot;
+    dirtyRef.current = dirty;
+  }, [currentContentSnapshot, dirty]);
+
+  useEffect(() => {
+    function beforeUnload(event: BeforeUnloadEvent) {
+      if (!dirtyRef.current || allowNavigationRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    function interceptLink(event: MouseEvent) {
+      if (
+        !dirtyRef.current ||
+        allowNavigationRef.current ||
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      const target =
+        event.target instanceof Element
+          ? event.target.closest<HTMLAnchorElement>("a[href]")
+          : null;
+      if (!target || target.target === "_blank" || target.hasAttribute("download")) {
+        return;
+      }
+      const destination = new URL(target.href, window.location.href);
+      if (
+        destination.href === window.location.href ||
+        (destination.pathname === window.location.pathname &&
+          destination.search === window.location.search &&
+          destination.hash)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      setPendingNavigation({ kind: "href", href: destination.href });
+    }
+
+    const guardId = historyGuardIdRef.current;
+    if (window.history.state?.__workbookStudioEditorGuard !== guardId) {
+      window.history.pushState(
+        {
+          ...window.history.state,
+          __workbookStudioEditorGuard: guardId,
+        },
+        "",
+        window.location.href,
+      );
+    }
+
+    function interceptBackNavigation() {
+      if (allowNavigationRef.current) return;
+      if (!dirtyRef.current) {
+        allowNavigationRef.current = true;
+        window.history.back();
+        return;
+      }
+      window.history.pushState(
+        {
+          ...window.history.state,
+          __workbookStudioEditorGuard: guardId,
+        },
+        "",
+        window.location.href,
+      );
+      setPendingNavigation({ kind: "back" });
+    }
+
+    window.addEventListener("beforeunload", beforeUnload);
+    window.addEventListener("popstate", interceptBackNavigation);
+    window.document.addEventListener("click", interceptLink, true);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      window.removeEventListener("popstate", interceptBackNavigation);
+      window.document.removeEventListener("click", interceptLink, true);
+    };
+  }, []);
+
   function mutate(mutator: (draft: WorkbookContent) => void) {
     setContent((current) => {
       const next = structuredClone(current);
       mutator(next);
       return next;
     });
-    setDirty(true);
     setNotice("");
   }
 
@@ -2922,22 +3285,52 @@ export function WorkbookStudioEditor({
     }
   }
 
-  function save() {
+  async function saveRevision(refreshAfterSave: boolean) {
+    const snapshotBeingSaved = JSON.stringify(content);
     setError("");
+    const result = await saveWorkbookStudioRevisionAction({
+      projectId: detail.project.id,
+      content,
+      changeNotes: "Manual Studio edit",
+    });
+    if (!result.ok) {
+      setError(result.error);
+      return false;
+    }
+    setSavedContentSnapshot(snapshotBeingSaved);
+    dirtyRef.current =
+      currentContentSnapshotRef.current !== snapshotBeingSaved;
+    setNotice(
+      result.classification.classification === "edition"
+        ? "Saved. This changes the lesson set, so the next release will be a new edition."
+        : "Saved as an immutable revision. The lesson set is unchanged.",
+    );
+    if (refreshAfterSave) router.refresh();
+    return true;
+  }
+
+  function save() {
     startTransition(async () => {
-      const result = await saveWorkbookStudioRevisionAction({
-        projectId: detail.project.id,
-        content,
-        changeNotes: "Manual Studio edit",
-      });
-      if (!result.ok) return setError(result.error);
-      setDirty(false);
-      setNotice(
-        result.classification.classification === "edition"
-          ? "Saved. This changes the lesson set, so the next release will be a new edition."
-          : "Saved as an immutable revision. The lesson set is unchanged.",
-      );
-      router.refresh();
+      await saveRevision(true);
+    });
+  }
+
+  function continueNavigation(navigation: WorkbookPendingNavigation) {
+    allowNavigationRef.current = true;
+    setPendingNavigation(null);
+    if (navigation.kind === "href") {
+      window.location.assign(navigation.href);
+      return;
+    }
+    window.history.go(-2);
+  }
+
+  function saveAndContinueNavigation() {
+    if (!pendingNavigation || pending) return;
+    const navigation = pendingNavigation;
+    startTransition(async () => {
+      const saved = await saveRevision(false);
+      if (saved) continueNavigation(navigation);
     });
   }
 
@@ -4068,6 +4461,59 @@ export function WorkbookStudioEditor({
               fallbackBorderColor={detail.effectiveTheme.colorLeaf}
             />
           </div>
+        </div>
+      ) : null}
+      {pendingNavigation ? (
+        <div
+          className="fixed inset-0 z-[200] grid place-items-center bg-[#201a14]/55 p-4 backdrop-blur-sm"
+          role="presentation"
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unsaved-workbook-title"
+            className="w-full max-w-lg rounded-[24px] border border-[#d8c8ae] bg-[#fffaf2] p-6 shadow-2xl"
+          >
+            <p className="text-xs font-black uppercase tracking-[0.12em] text-earth">
+              Unsaved changes
+            </p>
+            <h2
+              id="unsaved-workbook-title"
+              className="mt-2 text-3xl font-semibold tracking-[-0.035em]"
+            >
+              Save this workbook before leaving?
+            </h2>
+            <p className="mt-3 text-base leading-7 text-ink/60">
+              You changed this workbook since the last save. Save a revision
+              now, leave without saving, or keep editing.
+            </p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={pending}
+                onClick={saveAndContinueNavigation}
+                className="inline-flex min-h-12 items-center justify-center rounded-[14px] border border-[#4f7538] bg-[#76a456] px-5 py-3 font-semibold text-white shadow-[0_4px_0_#486f34] disabled:opacity-60"
+              >
+                {pending ? "Saving…" : "Save and leave"}
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => continueNavigation(pendingNavigation)}
+                className="inline-flex min-h-12 items-center justify-center rounded-[14px] border border-[#c79b8d] bg-white px-5 py-3 font-semibold text-[#8c4536] disabled:opacity-60"
+              >
+                Leave without saving
+              </button>
+            </div>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setPendingNavigation(null)}
+              className="mt-4 w-full px-4 py-2 text-sm font-semibold text-ink/55 underline decoration-ink/25 underline-offset-4 disabled:opacity-60"
+            >
+              Keep editing
+            </button>
+          </section>
         </div>
       ) : null}
     </div>

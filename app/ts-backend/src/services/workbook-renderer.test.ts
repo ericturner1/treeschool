@@ -56,6 +56,17 @@ function rendererFixture() {
       type: "reading_passage",
       title: "A short passage",
       paragraphs: ["A calm first paragraph.", "A second paragraph."],
+      richParagraphs: [
+        {
+          runs: [
+            { text: "A calm ", bold: false },
+            { text: "first", bold: true },
+            { text: " paragraph.", bold: false },
+          ],
+        },
+        { runs: [{ text: "A second paragraph.", bold: false }] },
+      ],
+      fontSizePt: 16,
       boxStyle: { marginBottom: 2, paddingLeft: 3 },
     },
     {
@@ -69,6 +80,7 @@ function rendererFixture() {
       meaning: "tree",
       traceRows: 2,
       columns: 5,
+      fontSizePt: 36,
       boxBackground: "handwriting_lines",
       fadeOut: true,
       startingOpacityPercent: 40,
@@ -159,9 +171,13 @@ describe("Workbook Studio deterministic renderer", () => {
     expect(html).toContain("#123456");
     expect(html).toContain("Copyright &copy; 2024 Treeschool");
     expect(html).toContain("reader-vocabulary");
+    expect(html).toContain('class="reader-passage" style="font-size:16pt"');
+    expect(html).toContain("<strong>first</strong>");
     expect(html).toContain("character-practice");
     expect(html).toContain("character-trace-cell--handwriting_lines");
     expect(html).toContain("grid-template-columns:repeat(5,minmax(0,1fr))");
+    expect(html).toContain("--character-font-size:36pt");
+    expect(html).toContain("--character-model-font-size:54pt");
     expect(html).toContain('style="opacity:0.4"');
     expect(html).toContain('style="opacity:0"');
     expect(html).toContain("background-color:#fffaf2");
