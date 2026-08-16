@@ -134,7 +134,7 @@ describe("Workbook Studio content compatibility", () => {
     })).toEqual([]);
   });
 
-  test("normalizes legacy passages and preserves structured bold text", () => {
+  test("normalizes legacy passages and preserves structured rich text", () => {
     const content = validContent();
     const raw = structuredClone(content) as unknown as {
       chapters: Array<{
@@ -149,7 +149,12 @@ describe("Workbook Studio content compatibility", () => {
           {
             runs: [
               { text: "Read this ", bold: false },
-              { text: "carefully", bold: true },
+              {
+                text: "carefully",
+                bold: true,
+                italic: true,
+                underline: true,
+              },
               { text: ".", bold: false },
             ],
           },
@@ -165,9 +170,24 @@ describe("Workbook Studio content compatibility", () => {
       richParagraphs: [
         {
           runs: [
-            { text: "Read this ", bold: false },
-            { text: "carefully", bold: true },
-            { text: ".", bold: false },
+            {
+              text: "Read this ",
+              bold: false,
+              italic: false,
+              underline: false,
+            },
+            {
+              text: "carefully",
+              bold: true,
+              italic: true,
+              underline: true,
+            },
+            {
+              text: ".",
+              bold: false,
+              italic: false,
+              underline: false,
+            },
           ],
         },
       ],

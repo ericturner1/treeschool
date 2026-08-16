@@ -59,12 +59,36 @@ function rendererFixture() {
       richParagraphs: [
         {
           runs: [
-            { text: "A calm ", bold: false },
-            { text: "first", bold: true },
-            { text: " paragraph.", bold: false },
+            {
+              text: "A calm ",
+              bold: false,
+              italic: false,
+              underline: false,
+            },
+            {
+              text: "first",
+              bold: true,
+              italic: true,
+              underline: true,
+            },
+            {
+              text: " paragraph.",
+              bold: false,
+              italic: false,
+              underline: false,
+            },
           ],
         },
-        { runs: [{ text: "A second paragraph.", bold: false }] },
+        {
+          runs: [
+            {
+              text: "A second paragraph.",
+              bold: false,
+              italic: false,
+              underline: false,
+            },
+          ],
+        },
       ],
       fontSizePt: 16,
       boxStyle: { marginBottom: 2, paddingLeft: 3 },
@@ -191,7 +215,7 @@ describe("Workbook Studio deterministic renderer", () => {
     expect(html).toContain("Copyright &copy; 2024 Treeschool");
     expect(html).toContain("reader-vocabulary");
     expect(html).toContain('class="reader-passage" style="font-size:16pt"');
-    expect(html).toContain("<strong>first</strong>");
+    expect(html).toContain("<u><em><strong>first</strong></em></u>");
     expect(html).toContain("character-practice");
     expect(html).toContain("character-trace-cell--handwriting_lines");
     expect(html).toContain("grid-template-columns:repeat(5,minmax(0,1fr))");

@@ -31,7 +31,12 @@ import {
 
 type RichParagraph = {
   text: string;
-  runs: Array<{ text: string; bold: boolean }>;
+  runs: Array<{
+    text: string;
+    bold: boolean;
+    italic: boolean;
+    underline: boolean;
+  }>;
 };
 
 type RawPracticeRow = {
@@ -144,16 +149,34 @@ async function parseSourceHtml(sourceHtml: string): Promise<RawWorkbook> {
       const clean = (value: string | null | undefined) =>
         String(value ?? "").replace(/\s+/g, " ").trim();
       const paragraph = (element: Element) => {
-        const runs: Array<{ text: string; bold: boolean }> = [];
-        const visit = (node: Node, inheritedBold = false) => {
+        const runs: Array<{
+          text: string;
+          bold: boolean;
+          italic: boolean;
+          underline: boolean;
+        }> = [];
+        const visit = (
+          node: Node,
+          inherited = { bold: false, italic: false, underline: false },
+        ) => {
           if (node.nodeType === Node.TEXT_NODE) {
             const text = node.textContent ?? "";
-            if (text) runs.push({ text, bold: inheritedBold });
+            if (text) runs.push({ text, ...inherited });
             return;
           }
           if (!(node instanceof HTMLElement)) return;
-          const bold = inheritedBold || node.tagName === "STRONG" || node.tagName === "B";
-          node.childNodes.forEach((child) => visit(child, bold));
+          const style = {
+            bold:
+              inherited.bold ||
+              node.tagName === "STRONG" ||
+              node.tagName === "B",
+            italic:
+              inherited.italic ||
+              node.tagName === "EM" ||
+              node.tagName === "I",
+            underline: inherited.underline || node.tagName === "U",
+          };
+          node.childNodes.forEach((child) => visit(child, style));
         };
         element.childNodes.forEach((child) => visit(child));
         const normalizedRuns = runs

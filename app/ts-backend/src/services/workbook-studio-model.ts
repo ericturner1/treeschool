@@ -130,6 +130,8 @@ const learnBlockLeafSchema = z.discriminatedUnion("type", [
               z.object({
                 text: z.string().min(1),
                 bold: z.boolean().default(false),
+                italic: z.boolean().default(false),
+                underline: z.boolean().default(false),
               }),
             )
             .min(1),

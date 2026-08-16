@@ -441,7 +441,13 @@ function renderLearnBlockContent(
     const renderedParagraphs = block.richParagraphs
       ? block.richParagraphs.map(
           (paragraph) =>
-            `<p>${paragraph.runs.map((run) => run.bold ? `<strong>${escapeHtml(run.text)}</strong>` : escapeHtml(run.text)).join("")}</p>`,
+            `<p>${paragraph.runs.map((run) => {
+              let text = escapeHtml(run.text);
+              if (run.bold) text = `<strong>${text}</strong>`;
+              if (run.italic) text = `<em>${text}</em>`;
+              if (run.underline) text = `<u>${text}</u>`;
+              return text;
+            }).join("")}</p>`,
         )
       : block.paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`);
     return `<article class="reader-passage" style="font-size:${block.fontSizePt}pt">${block.title ? `<h4>${escapeHtml(block.title)}</h4>` : ""}${renderedParagraphs.join("")}${block.attribution ? `<p class="passage-attribution">${escapeHtml(block.attribution)}</p>` : ""}</article>`;

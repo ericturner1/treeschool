@@ -105,7 +105,12 @@ export type WorkbookLearnBlockLeaf = (
       title?: string;
       paragraphs: string[];
       richParagraphs?: Array<{
-        runs: Array<{ text: string; bold: boolean }>;
+        runs: Array<{
+          text: string;
+          bold: boolean;
+          italic: boolean;
+          underline: boolean;
+        }>;
       }>;
       fontSizePt: number;
       attribution?: string;

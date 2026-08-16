@@ -1400,7 +1400,14 @@ function passageParagraphs(block: WorkbookPassageBlock) {
   return (
     block.richParagraphs ??
     block.paragraphs.map((paragraph) => ({
-      runs: [{ text: paragraph, bold: false }],
+      runs: [
+        {
+          text: paragraph,
+          bold: false,
+          italic: false,
+          underline: false,
+        },
+      ],
     }))
   );
 }
@@ -1421,8 +1428,11 @@ function passageEditorHtml(block: WorkbookPassageBlock) {
       (paragraph) =>
         `<p>${paragraph.runs
           .map((run) => {
-            const text = escapePassageEditorHtml(run.text);
-            return run.bold ? `<strong>${text}</strong>` : text;
+            let text = escapePassageEditorHtml(run.text);
+            if (run.bold) text = `<strong>${text}</strong>`;
+            if (run.italic) text = `<em>${text}</em>`;
+            if (run.underline) text = `<u>${text}</u>`;
+            return text;
           })
           .join("")}</p>`,
     )
@@ -1432,40 +1442,56 @@ function passageEditorHtml(block: WorkbookPassageBlock) {
 function appendPassageRun(
   runs: WorkbookPassageParagraph["runs"],
   text: string,
-  bold: boolean,
+  style: Omit<WorkbookPassageParagraph["runs"][number], "text">,
 ) {
   const normalized = text.replaceAll("\u00a0", " ");
   if (!normalized) return;
   const previous = runs.at(-1);
-  if (previous?.bold === bold) {
+  if (
+    previous?.bold === style.bold &&
+    previous?.italic === style.italic &&
+    previous?.underline === style.underline
+  ) {
     previous.text += normalized;
     return;
   }
-  runs.push({ text: normalized, bold });
+  runs.push({ text: normalized, ...style });
 }
 
 function passageRunsFromNode(
   node: Node,
-  inheritedBold: boolean,
+  inheritedStyle: Omit<WorkbookPassageParagraph["runs"][number], "text">,
   runs: WorkbookPassageParagraph["runs"],
 ) {
   if (node.nodeType === Node.TEXT_NODE) {
-    appendPassageRun(runs, node.textContent ?? "", inheritedBold);
+    appendPassageRun(runs, node.textContent ?? "", inheritedStyle);
     return;
   }
   if (!(node instanceof HTMLElement)) return;
   if (node.tagName === "BR") {
-    appendPassageRun(runs, "\n", inheritedBold);
+    appendPassageRun(runs, "\n", inheritedStyle);
     return;
   }
   const fontWeight = Number(node.style.fontWeight);
   const bold =
-    inheritedBold ||
+    inheritedStyle.bold ||
     node.tagName === "B" ||
     node.tagName === "STRONG" ||
     node.style.fontWeight === "bold" ||
     (!Number.isNaN(fontWeight) && fontWeight >= 600);
-  node.childNodes.forEach((child) => passageRunsFromNode(child, bold, runs));
+  const italic =
+    inheritedStyle.italic ||
+    node.tagName === "I" ||
+    node.tagName === "EM" ||
+    node.style.fontStyle === "italic" ||
+    node.style.fontStyle === "oblique";
+  const underline =
+    inheritedStyle.underline ||
+    node.tagName === "U" ||
+    node.style.textDecoration.includes("underline") ||
+    node.style.textDecorationLine.includes("underline");
+  const style = { bold, italic, underline };
+  node.childNodes.forEach((child) => passageRunsFromNode(child, style, runs));
 }
 
 function trimPassageRuns(runs: WorkbookPassageParagraph["runs"]) {
@@ -1496,7 +1522,11 @@ function passageParagraphsFromEditor(editor: HTMLDivElement) {
       ["DIV", "P", "LI"].includes(node.tagName);
     if (isBlock) {
       finishParagraph();
-      passageRunsFromNode(node, false, pendingRuns);
+      passageRunsFromNode(
+        node,
+        { bold: false, italic: false, underline: false },
+        pendingRuns,
+      );
       finishParagraph();
       return;
     }
@@ -1504,7 +1534,11 @@ function passageParagraphsFromEditor(editor: HTMLDivElement) {
       finishParagraph();
       return;
     }
-    passageRunsFromNode(node, false, pendingRuns);
+    passageRunsFromNode(
+      node,
+      { bold: false, italic: false, underline: false },
+      pendingRuns,
+    );
   });
   finishParagraph();
   return paragraphs;
@@ -1548,8 +1582,36 @@ function PassageRichTextEditor({
         >
           B
         </button>
+        <button
+          type="button"
+          title="Italicize selected text"
+          aria-label="Italicize selected text"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            editorRef.current?.focus();
+            document.execCommand("italic", false);
+            emitChange();
+          }}
+          className="grid h-8 w-8 place-items-center rounded-[6px] border border-[#d8c8ae] bg-white font-serif text-base italic text-ink hover:bg-[#edf4e7]"
+        >
+          I
+        </button>
+        <button
+          type="button"
+          title="Underline selected text"
+          aria-label="Underline selected text"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            editorRef.current?.focus();
+            document.execCommand("underline", false);
+            emitChange();
+          }}
+          className="grid h-8 w-8 place-items-center rounded-[6px] border border-[#d8c8ae] bg-white text-ink underline hover:bg-[#edf4e7]"
+        >
+          U
+        </button>
         <span className="ml-1 text-[11px] text-ink/50">
-          Select text, then press Bold
+          Select text, then choose formatting
         </span>
       </div>
       <div
@@ -1695,6 +1757,34 @@ function WorkbookLearnLeafFields({
         <strong className="text-xs uppercase tracking-wide text-[var(--studio-leaf-dark)]">
           Traceable
         </strong>
+        <label className="grid gap-2 rounded-[10px] bg-[var(--studio-sand)] p-3 text-xs font-bold">
+          <span className="flex items-center justify-between gap-3">
+            Traceable font size
+            <span className="tabular-nums text-sm font-semibold text-[var(--studio-leaf-dark)]">
+              {block.fontSizePt} pt
+            </span>
+          </span>
+          <input
+            type="range"
+            min={8}
+            max={72}
+            step={1}
+            value={block.fontSizePt}
+            aria-label="Traceable font size"
+            onChange={(event) =>
+              update((draft) => {
+                if (draft.type === "character_practice") {
+                  draft.fontSizePt = Number(event.target.value);
+                }
+              })
+            }
+            className="w-full cursor-pointer accent-[var(--studio-leaf)]"
+          />
+          <span className="flex justify-between text-[10px] font-medium text-ink/45">
+            <span>8 pt</span>
+            <span>72 pt</span>
+          </span>
+        </label>
         <label className="grid gap-1 text-xs font-bold">
           Character or text
           <input
@@ -1792,29 +1882,6 @@ function WorkbookLearnLeafFields({
               Top, dashed middle, bottom lines
             </option>
           </select>
-        </label>
-        <label className="grid gap-1 text-xs font-bold">
-          Font size
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={8}
-              max={72}
-              value={block.fontSizePt}
-              onChange={(event) =>
-                update((draft) => {
-                  if (draft.type === "character_practice") {
-                    draft.fontSizePt = Math.min(
-                      Math.max(Number(event.target.value) || 8, 8),
-                      72,
-                    );
-                  }
-                })
-              }
-              className="min-w-0 flex-1 rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"
-            />
-            <span className="text-xs font-normal text-ink/55">pt</span>
-          </div>
         </label>
         <div className="grid grid-cols-2 gap-2">
           <label className="grid gap-1 text-xs font-bold">
@@ -2285,13 +2352,18 @@ function WorkbookLearnLeafPreview({
         ) : null}
         {passageParagraphs(block).map((paragraph, index) => (
           <p key={index} className="mb-3 leading-7 last:mb-0">
-            {paragraph.runs.map((run, runIndex) =>
-              run.bold ? (
-                <strong key={runIndex}>{run.text}</strong>
-              ) : (
-                <span key={runIndex}>{run.text}</span>
-              ),
-            )}
+            {paragraph.runs.map((run, runIndex) => (
+              <span
+                key={runIndex}
+                style={{
+                  fontWeight: run.bold ? 700 : undefined,
+                  fontStyle: run.italic ? "italic" : undefined,
+                  textDecoration: run.underline ? "underline" : undefined,
+                }}
+              >
+                {run.text}
+              </span>
+            ))}
           </p>
         ))}
       </article>
