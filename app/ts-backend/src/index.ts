@@ -244,6 +244,7 @@ import {
   capturePublicFunnelLead,
   completeAdminFunnelAssetUpload,
   completeAdminFunnelExperiment,
+  copyAdminFunnelStepToFunnel,
   createAdminFunnelTestSale,
   createAdminFunnelPageVariant,
   deleteAdminFunnel,
@@ -821,6 +822,16 @@ const server = Bun.serve({
         return Response.json(await duplicateAdminFunnelStep(await request.json() as Parameters<typeof duplicateAdminFunnelStep>[0]));
       } catch (error) {
         return Response.json({ error: publicErrorMessage(error, "Could not duplicate the funnel step.") }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/funnels/admin/steps/copy-to-funnel" && request.method === "POST") {
+      try {
+        return Response.json(await copyAdminFunnelStepToFunnel(
+          await request.json() as Parameters<typeof copyAdminFunnelStepToFunnel>[0]
+        ));
+      } catch (error) {
+        return Response.json({ error: publicErrorMessage(error, "Could not copy the funnel step.") }, { status: 400 });
       }
     }
 

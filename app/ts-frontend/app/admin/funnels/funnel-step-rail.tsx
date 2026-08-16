@@ -12,7 +12,7 @@ import {
   type ReactNode
 } from "react";
 import { useFormStatus } from "react-dom";
-import type { AdminFunnelStep } from "../../../lib/funnels/server";
+import type { AdminFunnel, AdminFunnelStep } from "../../../lib/funnels/server";
 import { findFunnelJourneyIssues } from "../../../lib/funnels/journey-reachability";
 import {
   buildFunnelStepHierarchy,
@@ -21,10 +21,13 @@ import {
   reorderFunnelStepGroupsAtIndex
 } from "../../../lib/funnels/step-hierarchy";
 import {
+  copyFunnelStepToFunnelAction,
   deleteFunnelStepAction,
   duplicateFunnelStepAction,
   reorderFunnelStepsAction
 } from "./actions";
+
+type FunnelCopyDestination = Pick<AdminFunnel, "id" | "slug" | "name" | "status">;
 
 const TYPE_LABELS: Record<AdminFunnelStep["stepType"], string> = {
   landing: "Landing page",
@@ -149,7 +152,8 @@ function FunnelStepMenu({
   step,
   canMoveUp,
   canMoveDown,
-  onMove
+  onMove,
+  onCopy
 }: {
   funnelId: string;
   funnelSlug: string;
@@ -157,6 +161,7 @@ function FunnelStepMenu({
   canMoveUp?: boolean;
   canMoveDown?: boolean;
   onMove?: (direction: -1 | 1) => void;
+  onCopy: () => void;
 }) {
   const menuRef = useRef<HTMLDetailsElement>(null);
 
@@ -234,6 +239,20 @@ function FunnelStepMenu({
             Duplicate step
           </StepMenuSubmitButton>
         </form>
+        <button
+          type="button"
+          onClick={() => {
+            if (menuRef.current) menuRef.current.open = false;
+            onCopy();
+          }}
+          className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-left text-sm font-semibold text-ink/75 transition hover:bg-[#f3ecdf] hover:text-ink"
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 shrink-0">
+            <rect x="3.5" y="4" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M8.5 15.5h7v-7M12 8.5h3.5V12" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" />
+          </svg>
+          Copy to funnel…
+        </button>
         <form action={deleteFunnelStepAction}>
           <input type="hidden" name="funnelId" value={funnelId} />
           <input type="hidden" name="funnelSlug" value={funnelSlug} />
@@ -247,6 +266,118 @@ function FunnelStepMenu({
         </form>
       </div>
     </details>
+  );
+}
+
+function CopyToFunnelSubmitButton({ disabled }: { disabled: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={disabled || pending}
+      className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-[14px] bg-[#76a456] px-5 py-3 font-semibold text-white shadow-[0_5px_0_#4f7736] transition hover:bg-[#6b984d] disabled:cursor-not-allowed disabled:bg-[#b8c5ae] disabled:shadow-[0_5px_0_#94a28b]"
+    >
+      {pending ? <span className="ts-spinner h-4 w-4" aria-hidden="true" /> : null}
+      {pending ? "Copying…" : "Copy page"}
+    </button>
+  );
+}
+
+function CopyStepToFunnelDialog({
+  currentFunnelId,
+  currentFunnelSlug,
+  destinations,
+  step,
+  onClose
+}: {
+  currentFunnelId: string;
+  currentFunnelSlug: string;
+  destinations: FunnelCopyDestination[];
+  step: AdminFunnelStep;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] grid place-items-center bg-[#2f241c]/55 p-4 backdrop-blur-[2px]"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="copy-funnel-step-title"
+        className="w-full max-w-lg rounded-[24px] border border-[#d8c5a8] bg-[#fffaf2] p-5 shadow-[0_24px_70px_rgba(47,36,28,.32)] sm:p-7"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.1em] text-[#66864d]">Copy page</p>
+            <h2 id="copy-funnel-step-title" className="mt-1 text-2xl font-semibold tracking-[-0.035em] text-ink">
+              Copy “{step.name}”
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close copy dialog"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#dfd0bc] bg-white text-xl text-earth transition hover:border-[#a88968]"
+          >
+            ×
+          </button>
+        </div>
+
+        <form action={copyFunnelStepToFunnelAction} className="mt-6">
+          <input type="hidden" name="sourceFunnelId" value={currentFunnelId} />
+          <input type="hidden" name="currentFunnelSlug" value={currentFunnelSlug} />
+          <input type="hidden" name="stepId" value={step.id} />
+          <label className="grid gap-2 text-sm font-semibold text-ink/82">
+            Destination funnel
+            <select
+              name="destinationFunnelId"
+              required
+              autoFocus
+              defaultValue={destinations[0]?.id ?? ""}
+              disabled={destinations.length === 0}
+              className="min-h-12 w-full rounded-[14px] border border-[#d8c5a8] bg-white px-4 py-3 text-base font-normal text-ink outline-none transition focus:border-[#739655] focus:ring-4 focus:ring-[#739655]/15 disabled:bg-[#f1ebe2] disabled:text-ink/45"
+            >
+              {destinations.length === 0 ? <option value="">No other funnels available</option> : null}
+              {destinations.map((funnel) => (
+                <option key={funnel.id} value={funnel.id}>
+                  {funnel.name} · {funnel.status}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="mt-3 text-sm leading-6 text-ink/55">
+            The latest editable page and its uploaded images will be copied as a new draft. Its URL, publishing state, experiments, leads, sales, and analytics stay behind.
+          </p>
+          {destinations.length === 0 ? (
+            <p role="status" className="mt-3 rounded-[12px] bg-[#f7ead8] px-3 py-2 text-sm font-semibold text-[#76552f]">
+              Create another funnel before copying this page.
+            </p>
+          ) : null}
+          <div className="mt-6 flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="min-h-12 rounded-[14px] border border-[#d8c5a8] bg-white px-5 py-3 font-semibold text-earth transition hover:border-[#a88968]"
+            >
+              Cancel
+            </button>
+            <CopyToFunnelSubmitButton disabled={destinations.length === 0} />
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 
@@ -278,12 +409,14 @@ export function FunnelStepRail({
   funnelId,
   funnelSlug,
   initialSteps,
-  selectedStepId
+  selectedStepId,
+  copyDestinations
 }: {
   funnelId: string;
   funnelSlug: string;
   initialSteps: AdminFunnelStep[];
   selectedStepId: string | null;
+  copyDestinations: FunnelCopyDestination[];
 }) {
   const [steps, setSteps] = useState(initialSteps);
   const [expandedParentSlugs, setExpandedParentSlugs] = useState<Set<string>>(new Set());
@@ -291,6 +424,7 @@ export function FunnelStepRail({
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [copyStep, setCopyStep] = useState<AdminFunnelStep | null>(null);
   const hierarchy = useMemo(() => buildFunnelStepHierarchy(steps), [steps]);
   const journeyIssues = useMemo(() => findFunnelJourneyIssues(steps), [steps]);
   const draggedGroupIndex = draggedId
@@ -473,6 +607,7 @@ export function FunnelStepRail({
                     canMoveUp={!pending && groupIndex > 0}
                     canMoveDown={!pending && groupIndex < hierarchy.length - 1}
                     onMove={(direction) => move(step.id, direction)}
+                    onCopy={() => setCopyStep(step)}
                   />
                 </div>
               </div>
@@ -519,6 +654,7 @@ export function FunnelStepRail({
                             funnelId={funnelId}
                             funnelSlug={funnelSlug}
                             step={child}
+                            onCopy={() => setCopyStep(child)}
                           />
                         </div>
                       </li>
@@ -552,6 +688,15 @@ export function FunnelStepRail({
       <p className="mt-4 text-xs leading-5 text-ink/42">
         Drag journey steps on desktop, or use the arrows on touch devices. Experiment variants remain attached to their parent step.
       </p>
+      {copyStep ? (
+        <CopyStepToFunnelDialog
+          currentFunnelId={funnelId}
+          currentFunnelSlug={funnelSlug}
+          destinations={copyDestinations}
+          step={copyStep}
+          onClose={() => setCopyStep(null)}
+        />
+      ) : null}
     </div>
   );
 }

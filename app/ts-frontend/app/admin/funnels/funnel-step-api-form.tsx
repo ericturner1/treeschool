@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   createContext,
   useContext,
@@ -28,6 +29,7 @@ export function FunnelStepApiForm({
   children: ReactNode;
   className?: string;
 }) {
+  const router = useRouter();
   const successTimer = useRef<number | null>(null);
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -55,6 +57,11 @@ export function FunnelStepApiForm({
       const payload = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(payload.error || "Could not save the funnel step.");
       setSaved(true);
+      // The form saves through the API, while the selected-step heading and
+      // journey rail are rendered by the surrounding server component. Pull
+      // their fresh props in place so a renamed step is reflected everywhere
+      // without navigating away or performing a full browser reload.
+      router.refresh();
       successTimer.current = window.setTimeout(() => setSaved(false), 2400);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save the funnel step.");

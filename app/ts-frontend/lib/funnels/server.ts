@@ -490,6 +490,23 @@ export function duplicateAdminFunnelStep(input: {
   );
 }
 
+export function copyAdminFunnelStepToFunnel(input: {
+  userId: string;
+  sourceFunnelId: string;
+  destinationFunnelId: string;
+  stepId: string;
+}) {
+  return postJson<{
+    step: AdminFunnelStep;
+    destinationFunnel: Pick<AdminFunnel, "id" | "slug" | "name">;
+    copiedAssetCount: number;
+  }>(
+    "/internal/funnels/admin/steps/copy-to-funnel",
+    input,
+    "Could not copy the funnel step."
+  );
+}
+
 export function deleteAdminFunnelStep(input: {
   userId: string;
   funnelId: string;

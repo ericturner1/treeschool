@@ -5,6 +5,7 @@ import {
   getAdminFunnel,
   getAdminFunnelOperations,
   getAdminFunnelPage,
+  listAdminFunnels,
   type AdminFunnelOptions,
   type AdminFunnelStep,
   type AdminFunnelStepType
@@ -336,7 +337,10 @@ export async function AdminFunnelDetailPage({
   const access = await getNativeWorkbookNavigation(user.id).catch(() => null);
   if (!access?.isAdmin) notFound();
 
-  const data = await getAdminFunnel(user.id, funnelId);
+  const [data, funnelListData] = await Promise.all([
+    getAdminFunnel(user.id, funnelId),
+    listAdminFunnels(user.id)
+  ]);
   const { funnel } = data;
   const tab = normalizeTab(selectedTab);
   const selectedStep = funnel.steps.find((step) => step.id === selectedStepId) ?? funnel.steps[0] ?? null;
@@ -445,6 +449,9 @@ export async function AdminFunnelDetailPage({
               funnelSlug={funnel.slug}
               initialSteps={funnel.steps}
               selectedStepId={selectedStep?.id ?? null}
+              copyDestinations={funnelListData.funnels
+                .filter((candidate) => candidate.id !== funnel.id)
+                .map(({ id, slug, name, status }) => ({ id, slug, name, status }))}
             />
 
             <details className="mt-5 rounded-[18px] border border-dashed border-[#9f7c5e] bg-white">

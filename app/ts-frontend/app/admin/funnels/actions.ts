@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "../../../lib/auth/server";
 import {
   completeAdminFunnelExperiment,
+  copyAdminFunnelStepToFunnel,
   createAdminFunnelPageVariant,
   createAdminFunnelTestSale,
   deleteAdminFunnel,
@@ -131,6 +132,34 @@ export async function duplicateFunnelStepAction(formData: FormData) {
     });
   } catch (error) {
     destination = funnelPath(funnelSlug, { error: errorMessage(error) });
+  }
+  redirect(destination);
+}
+
+export async function copyFunnelStepToFunnelAction(formData: FormData) {
+  const currentFunnelSlug = value(formData, "currentFunnelSlug");
+  const stepId = value(formData, "stepId");
+  const user = await requireUser(funnelPath(currentFunnelSlug, { step: stepId }));
+  let destination: string;
+  try {
+    const result = await copyAdminFunnelStepToFunnel({
+      userId: user.id,
+      sourceFunnelId: value(formData, "sourceFunnelId"),
+      destinationFunnelId: value(formData, "destinationFunnelId"),
+      stepId
+    });
+    revalidatePath("/admin/funnels");
+    revalidatePath(funnelPath(currentFunnelSlug));
+    revalidatePath(funnelPath(result.destinationFunnel.slug));
+    destination = funnelPath(result.destinationFunnel.slug, {
+      step: result.step.id,
+      message: "Page copied here as a draft."
+    });
+  } catch (error) {
+    destination = funnelPath(currentFunnelSlug, {
+      step: stepId,
+      error: errorMessage(error)
+    });
   }
   redirect(destination);
 }

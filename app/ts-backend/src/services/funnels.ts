@@ -35,7 +35,8 @@ import {
   deletePrivateFilesByPrefix,
   downloadPrivateFile,
   getPrivateFileMetadata,
-  getSignedPrivateUploadUrl
+  getSignedPrivateUploadUrl,
+  uploadPrivateFile
 } from "./media";
 import { normalizeGeminiUsage } from "./model-providers/gemini-usage";
 import { recordModelUsage } from "./model-usage";
@@ -2464,6 +2465,260 @@ export async function duplicateAdminFunnelStep(input: {
     }
     return { step: presentStep(duplicatedStep) };
   });
+}
+
+function crossFunnelStepSettings(settingsJson: Record<string, unknown> | null) {
+  const settings = { ...(settingsJson ?? {}) };
+  // Experiment membership belongs to the source funnel. The copied page is a
+  // normal standalone draft until an admin deliberately adds it to a new test.
+  delete settings.relationship;
+  delete settings.parentStepSlug;
+  delete settings.codeExperiment;
+  return settings;
+}
+
+function collectFunnelAssetPaths(
+  value: unknown,
+  sourcePrefix: string,
+  paths = new Set<string>()
+) {
+  if (Array.isArray(value)) {
+    for (const item of value) collectFunnelAssetPaths(item, sourcePrefix, paths);
+    return paths;
+  }
+  if (!value || typeof value !== "object") return paths;
+  const record = value as Record<string, unknown>;
+  if (typeof record.storagePath === "string" && record.storagePath.startsWith(sourcePrefix)) {
+    paths.add(record.storagePath);
+  }
+  for (const nested of Object.values(record)) {
+    collectFunnelAssetPaths(nested, sourcePrefix, paths);
+  }
+  return paths;
+}
+
+type CopiedFunnelAsset = {
+  assetId: string;
+  storagePath: string;
+  publicUrl: string;
+};
+
+function rewriteCopiedFunnelAssets(
+  value: unknown,
+  copiedAssets: Map<string, CopiedFunnelAsset>
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => rewriteCopiedFunnelAssets(item, copiedAssets));
+  }
+  if (!value || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  const rewritten = Object.fromEntries(
+    Object.entries(record).map(([key, nested]) => [
+      key,
+      rewriteCopiedFunnelAssets(nested, copiedAssets)
+    ])
+  );
+  const copied = typeof record.storagePath === "string"
+    ? copiedAssets.get(record.storagePath)
+    : null;
+  return copied
+    ? {
+        ...rewritten,
+        assetId: copied.assetId,
+        storagePath: copied.storagePath,
+        publicUrl: copied.publicUrl
+      }
+    : rewritten;
+}
+
+async function copyCrossFunnelPageAssets(input: {
+  contentJson: Record<string, unknown>;
+  sourceFunnelId: string;
+  sourceStepId: string;
+  destinationFunnelId: string;
+  destinationStepId: string;
+}) {
+  const sourcePrefix = `funnel-assets/${input.sourceFunnelId}/${input.sourceStepId}/`;
+  const destinationPrefix =
+    `funnel-assets/${input.destinationFunnelId}/${input.destinationStepId}/`;
+  const sourcePaths = collectFunnelAssetPaths(input.contentJson, sourcePrefix);
+  const copiedAssets = new Map<string, CopiedFunnelAsset>();
+
+  try {
+    for (const sourcePath of sourcePaths) {
+      const parts = funnelAssetParts(sourcePath);
+      const extension = parts.filename.split(".").at(-1);
+      if (!extension) throw new Error("A funnel image has an invalid filename.");
+      const metadata = await getPrivateFileMetadata(sourcePath);
+      const destinationPath = `${destinationPrefix}${randomUUID()}.${extension}`;
+      await uploadPrivateFile({
+        objectPath: destinationPath,
+        contentType: normalizedFunnelAssetType(metadata.contentType),
+        data: await downloadPrivateFile(sourcePath)
+      });
+      copiedAssets.set(sourcePath, {
+        assetId: randomUUID(),
+        storagePath: destinationPath,
+        publicUrl: funnelAssetUrl(destinationPath)
+      });
+    }
+  } catch (error) {
+    await deletePrivateFilesByPrefix(destinationPrefix).catch(() => undefined);
+    throw error;
+  }
+
+  return {
+    contentJson: rewriteCopiedFunnelAssets(input.contentJson, copiedAssets) as Record<string, unknown>,
+    destinationPrefix,
+    copiedAssetCount: copiedAssets.size
+  };
+}
+
+export async function copyAdminFunnelStepToFunnel(input: {
+  userId: string;
+  sourceFunnelId: string;
+  destinationFunnelId: string;
+  stepId: string;
+}) {
+  const parsed = z.object({
+    userId: z.string().uuid(),
+    sourceFunnelId: z.string().uuid(),
+    destinationFunnelId: z.string().uuid(),
+    stepId: z.string().uuid()
+  }).parse(input);
+  await requireAdmin(parsed.userId);
+  if (parsed.sourceFunnelId === parsed.destinationFunnelId) {
+    throw new Error("Use Duplicate step to copy a page inside the same funnel.");
+  }
+
+  const [sourceFunnel, destinationFunnel] = await Promise.all([
+    getFunnelRecord(parsed.sourceFunnelId),
+    getFunnelRecord(parsed.destinationFunnelId)
+  ]);
+  const [source] = await db
+    .select()
+    .from(funnelSteps)
+    .where(and(
+      eq(funnelSteps.id, parsed.stepId),
+      eq(funnelSteps.funnelId, sourceFunnel.id)
+    ))
+    .limit(1);
+  if (!source) throw new Error("Funnel step not found.");
+
+  const sourcePage = await getPrimaryPage(source.id);
+  const sourceRevision = sourcePage
+    ? await getLatestPageRevision(sourcePage.id)
+    : null;
+  const destinationStepId = randomUUID();
+  let slug = source.slug;
+  for (let suffix = 2; suffix < 1000; suffix += 1) {
+    const [existing] = await db
+      .select({ id: funnelSteps.id })
+      .from(funnelSteps)
+      .where(and(
+        eq(funnelSteps.funnelId, destinationFunnel.id),
+        eq(funnelSteps.slug, slug)
+      ))
+      .limit(1);
+    if (!existing) break;
+    slug = `${source.slug}-copy-${suffix}`;
+  }
+
+  const copiedPage = sourceRevision
+    ? await copyCrossFunnelPageAssets({
+        contentJson: sourceRevision.contentJson,
+        sourceFunnelId: sourceFunnel.id,
+        sourceStepId: source.id,
+        destinationFunnelId: destinationFunnel.id,
+        destinationStepId
+      })
+    : null;
+
+  try {
+    const step = await db.transaction(async (tx) => {
+      const destinationSteps = await tx
+        .select({ id: funnelSteps.id, displayOrder: funnelSteps.displayOrder })
+        .from(funnelSteps)
+        .where(eq(funnelSteps.funnelId, destinationFunnel.id))
+        .orderBy(asc(funnelSteps.displayOrder), asc(funnelSteps.createdAt));
+      const highestOrder = destinationSteps.reduce(
+        (highest, item) => Math.max(highest, item.displayOrder),
+        0
+      );
+      const [created] = await tx
+        .insert(funnelSteps)
+        .values({
+          id: destinationStepId,
+          funnelId: destinationFunnel.id,
+          slug,
+          name: source.name,
+          description: source.description,
+          stepType: source.stepType,
+          status: "draft",
+          sourceType: sourcePage && sourceRevision ? "generated" : source.sourceType,
+          sourceRef: sourcePage && sourceRevision
+            ? null
+            : source.sourceType === "generated" ? null : source.sourceRef,
+          routePath: null,
+          publicPath: null,
+          previewPath: sourcePage && sourceRevision
+            ? `/admin/funnels/${encodeURIComponent(destinationFunnel.slug)}/preview/${encodeURIComponent(destinationStepId)}`
+            : source.sourceType === "generated" ? null : source.previewPath,
+          linkLabel: source.linkLabel,
+          displayOrder: highestOrder + 10,
+          isTopOfFunnel: destinationSteps.length === 0,
+          settingsJson: crossFunnelStepSettings(source.settingsJson),
+          createdByUserId: parsed.userId,
+          updatedByUserId: parsed.userId
+        })
+        .returning();
+      if (!created) throw new Error("Could not copy the funnel step.");
+
+      if (sourcePage && sourceRevision && copiedPage) {
+        const [page] = await tx
+          .insert(funnelPages)
+          .values({
+            funnelStepId: created.id,
+            slug: "control",
+            name: `${created.name} page`,
+            status: "draft",
+            isPrimary: true,
+            createdByUserId: parsed.userId,
+            updatedByUserId: parsed.userId
+          })
+          .returning();
+        if (!page) throw new Error("Could not copy the managed page.");
+        await tx.insert(funnelPageRevisions).values({
+          funnelPageId: page.id,
+          revisionNumber: 1,
+          source: "imported",
+          contentJson: copiedPage.contentJson,
+          seoJson: sourceRevision.seoJson,
+          createdByUserId: parsed.userId
+        });
+      }
+
+      await tx
+        .update(funnels)
+        .set({ updatedByUserId: parsed.userId, updatedAt: new Date() })
+        .where(eq(funnels.id, destinationFunnel.id));
+      return created;
+    });
+    return {
+      step: presentStep(step),
+      destinationFunnel: {
+        id: destinationFunnel.id,
+        slug: destinationFunnel.slug,
+        name: destinationFunnel.name
+      },
+      copiedAssetCount: copiedPage?.copiedAssetCount ?? 0
+    };
+  } catch (error) {
+    if (copiedPage?.copiedAssetCount) {
+      await deletePrivateFilesByPrefix(copiedPage.destinationPrefix).catch(() => undefined);
+    }
+    throw error;
+  }
 }
 
 export async function deleteAdminFunnelStep(input: {
