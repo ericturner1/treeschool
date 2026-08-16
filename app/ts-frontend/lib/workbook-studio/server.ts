@@ -118,6 +118,8 @@ export type WorkbookLearnBlockLeaf = (
       traceRows: number;
       columns: number;
       fontSizePt: number;
+      layoutStyle: "standalone" | "compact_row";
+      modelWidthPercent: number;
       boxBackground: "quadrant" | "blank" | "handwriting_lines";
       fadeOut: boolean;
       startingOpacityPercent: number;
@@ -200,6 +202,7 @@ export type WorkbookContent = {
       standardsCodes: string[];
       needsIllustration: boolean;
       learnBlocks: WorkbookLearnBlock[];
+      practiceBlocks: WorkbookLearnBlock[];
       exercises: WorkbookExercise[];
       notesForParent?: string;
     }>;

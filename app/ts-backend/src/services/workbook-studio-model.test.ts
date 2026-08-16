@@ -94,11 +94,44 @@ describe("Workbook Studio content compatibility", () => {
       type: "character_practice",
       columns: 4,
       fontSizePt: 28,
+      layoutStyle: "standalone",
+      modelWidthPercent: 22,
       boxBackground: "quadrant",
       fadeOut: true,
       startingOpacityPercent: 35,
       fadeStepPercent: 10,
     });
+  });
+
+  test("keeps editable traceable content in the practice section", () => {
+    const content = validContent();
+    const lesson = content.chapters[0].lessons[0];
+    lesson.practiceBlocks = [
+      { type: "paragraph", text: "Trace, cover, and copy." },
+      {
+        type: "character_practice",
+        character: "こんにちは",
+        meaning: "hello",
+        traceRows: 1,
+        columns: 2,
+        fontSizePt: 19,
+        layoutStyle: "compact_row",
+        modelWidthPercent: 27,
+        boxBackground: "blank",
+        fadeOut: true,
+        startingOpacityPercent: 15,
+        fadeStepPercent: 15,
+      },
+    ];
+    lesson.exercises = [];
+
+    const parsed = parseWorkbookContent(content);
+    expect(parsed.chapters[0].lessons[0].practiceBlocks).toHaveLength(2);
+    expect(parsed.chapters[0].lessons[0].exercises).toEqual([]);
+    expect(validateWorkbookForPublish(parsed, {
+      standardExerciseCount: null,
+      requireFlaggedIllustrations: false,
+    })).toEqual([]);
   });
 
   test("normalizes legacy passages and preserves structured bold text", () => {

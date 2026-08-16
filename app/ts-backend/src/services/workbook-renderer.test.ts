@@ -81,6 +81,8 @@ function rendererFixture() {
       traceRows: 2,
       columns: 5,
       fontSizePt: 36,
+      layoutStyle: "standalone",
+      modelWidthPercent: 22,
       boxBackground: "handwriting_lines",
       fadeOut: true,
       startingOpacityPercent: 40,
@@ -134,6 +136,23 @@ function rendererFixture() {
     },
     ...exercises.slice(2),
   ];
+  lesson.practiceBlocks = [
+    {
+      type: "character_practice",
+      character: "こんにちは",
+      meaning: "hello",
+      traceRows: 1,
+      columns: 2,
+      fontSizePt: 19,
+      layoutStyle: "compact_row",
+      modelWidthPercent: 27,
+      boxBackground: "blank",
+      fadeOut: true,
+      startingOpacityPercent: 15,
+      fadeStepPercent: 15,
+    },
+  ];
+  lesson.notesForParent = "Confirm that the word was copied from memory.";
   return parseWorkbookContent(content);
 }
 
@@ -178,6 +197,10 @@ describe("Workbook Studio deterministic renderer", () => {
     expect(html).toContain("grid-template-columns:repeat(5,minmax(0,1fr))");
     expect(html).toContain("--character-font-size:36pt");
     expect(html).toContain("--character-model-font-size:54pt");
+    expect(html).toContain("character-practice--compact");
+    expect(html).toContain("--character-model-font-size:19pt");
+    expect(html).toContain("--character-model-width:27%");
+    expect(html).toContain("Confirm that the word was copied from memory.");
     expect(html).toContain('style="opacity:0.4"');
     expect(html).toContain('style="opacity:0"');
     expect(html).toContain("background-color:#fffaf2");

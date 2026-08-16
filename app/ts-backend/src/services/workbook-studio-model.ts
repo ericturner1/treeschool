@@ -143,12 +143,14 @@ const learnBlockLeafSchema = z.discriminatedUnion("type", [
   z.object({
     ...workbookBoxStyleField,
     type: z.literal("character_practice"),
-    character: z.string().trim().min(1).max(8),
+    character: z.string().trim().min(1).max(120),
     pronunciation: z.string().trim().optional(),
     meaning: z.string().trim().optional(),
     traceRows: z.number().int().min(1).max(8).default(3),
     columns: z.number().int().min(1).max(12).default(4),
     fontSizePt: z.number().int().min(8).max(72).default(28),
+    layoutStyle: z.enum(["standalone", "compact_row"]).default("standalone"),
+    modelWidthPercent: z.number().int().min(15).max(60).default(22),
     boxBackground: z
       .enum(["quadrant", "blank", "handwriting_lines"])
       .default("quadrant"),
@@ -272,7 +274,8 @@ const lessonSchema = z.object({
   standardsCodes: z.array(z.string().trim().min(1)).default([]),
   needsIllustration: z.boolean().default(false),
   learnBlocks: z.array(learnBlockSchema).min(1),
-  exercises: z.array(practiceItemSchema).min(1),
+  practiceBlocks: z.array(learnBlockSchema).default([]),
+  exercises: z.array(practiceItemSchema).default([]),
   notesForParent: z.string().trim().optional(),
 });
 
@@ -373,6 +376,16 @@ export const workbookContentSchema = z
             "lessons",
             lessonIndex,
             "learnBlocks",
+            blockIndex,
+          ]),
+        );
+        lesson.practiceBlocks.forEach((block, blockIndex) =>
+          validateLearnBlock(block, [
+            "chapters",
+            chapterIndex,
+            "lessons",
+            lessonIndex,
+            "practiceBlocks",
             blockIndex,
           ]),
         );
@@ -567,7 +580,10 @@ export function validateWorkbookForPublish(
 
   for (const chapter of content.chapters) {
     for (const lesson of chapter.lessons) {
-      const learnBlocks = flattenWorkbookLearnBlocks(lesson.learnBlocks);
+      const learnBlocks = [
+        ...flattenWorkbookLearnBlocks(lesson.learnBlocks),
+        ...flattenWorkbookLearnBlocks(lesson.practiceBlocks),
+      ];
       const illustrations = learnBlocks.filter(
         (block) =>
           block.type === "illustration" ||
@@ -641,6 +657,7 @@ export function emptyWorkbookContent(input: {
             learnBlocks: [
               { type: "paragraph", text: "Add the lesson introduction here." },
             ],
+            practiceBlocks: [],
             exercises: [
               {
                 id: "lesson-1-1-exercise-1",

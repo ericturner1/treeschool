@@ -41,7 +41,7 @@ type AddableLearnBlockType = Extract<
   | "character_practice"
 >;
 type WorkbookLayoutColumnCount = 1 | 2 | 3 | 4;
-type WorkbookEditorCollection = "learn" | "exercise";
+type WorkbookEditorCollection = "learn" | "practice" | "exercise";
 type WorkbookItemLocation =
   | { collection: WorkbookEditorCollection; container: "root"; index: number }
   | {
@@ -58,10 +58,14 @@ type WorkbookEditorDrag =
       source: WorkbookItemLocation;
       isLayoutRow: boolean;
     }
-  | { collection: "learn"; mode: "new"; blockType: AddableLearnBlockType }
+  | {
+      collection: "learn" | "practice";
+      mode: "new";
+      blockType: AddableLearnBlockType;
+    }
   | { collection: "exercise"; mode: "new"; exerciseType: ExerciseType }
   | {
-      collection: WorkbookEditorCollection;
+      collection: Exclude<WorkbookEditorCollection, "practice">;
       mode: "new_row";
       columnCount: WorkbookLayoutColumnCount;
     };
@@ -348,6 +352,8 @@ function makeLearnBlock(type: AddableLearnBlockType): WorkbookLearnBlockLeaf {
       traceRows: 3,
       columns: 4,
       fontSizePt: 28,
+      layoutStyle: "standalone",
+      modelWidthPercent: 22,
       boxBackground: "quadrant",
       fadeOut: true,
       startingOpacityPercent: 35,
@@ -358,7 +364,7 @@ function makeLearnBlock(type: AddableLearnBlockType): WorkbookLearnBlockLeaf {
 }
 
 function makeWorkbookLayoutRow(
-  collection: WorkbookEditorCollection,
+  collection: Exclude<WorkbookEditorCollection, "practice">,
   columnCount: WorkbookLayoutColumnCount,
 ): WorkbookLearnBlock | WorkbookExercise {
   const id = newStableId(`${collection}-row`);
@@ -391,6 +397,15 @@ function workbookItemArray(
       return lesson.learnBlocks as WorkbookEditorItem[];
     }
     const row = lesson.learnBlocks[location.rowIndex];
+    if (row?.type !== "layout_row") return null;
+    const blocks = row.columns[location.columnIndex]?.blocks;
+    return blocks ? (blocks as WorkbookEditorItem[]) : null;
+  }
+  if (location.collection === "practice") {
+    if (location.container === "root") {
+      return lesson.practiceBlocks as WorkbookEditorItem[];
+    }
+    const row = lesson.practiceBlocks[location.rowIndex];
     if (row?.type !== "layout_row") return null;
     const blocks = row.columns[location.columnIndex]?.blocks;
     return blocks ? (blocks as WorkbookEditorItem[]) : null;
@@ -1715,6 +1730,49 @@ function WorkbookLearnLeafFields({
             </label>
           ))}
         </div>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="grid gap-1 text-xs font-bold">
+            Layout
+            <select
+              value={block.layoutStyle}
+              onChange={(event) =>
+                update((draft) => {
+                  if (draft.type === "character_practice") {
+                    draft.layoutStyle = event.target.value as typeof draft.layoutStyle;
+                  }
+                })
+              }
+              className="rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"
+            >
+              <option value="standalone">Large practice</option>
+              <option value="compact_row">Compact table row</option>
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs font-bold">
+            Model width
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min={15}
+                max={60}
+                value={block.modelWidthPercent}
+                disabled={block.layoutStyle !== "compact_row"}
+                onChange={(event) =>
+                  update((draft) => {
+                    if (draft.type === "character_practice") {
+                      draft.modelWidthPercent = Math.min(
+                        Math.max(Number(event.target.value) || 15, 15),
+                        60,
+                      );
+                    }
+                  })
+                }
+                className="min-w-0 rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal disabled:bg-[#eee8de] disabled:text-ink/40"
+              />
+              <span>%</span>
+            </div>
+          </label>
+        </div>
         <label className="grid gap-1 text-xs font-bold">
           Box background
           <select
@@ -2240,6 +2298,84 @@ function WorkbookLearnLeafPreview({
     );
   }
   if (block.type === "character_practice") {
+    const traceRows = (
+      <div className={block.layoutStyle === "compact_row" ? "grid min-w-0" : "mt-3 grid gap-2"}>
+        {Array.from({ length: block.traceRows }, (_, rowIndex) => (
+          <div
+            key={rowIndex}
+            className={`grid ${block.layoutStyle === "compact_row" ? "gap-0" : "gap-1.5"}`}
+            style={{
+              gridTemplateColumns: `repeat(${block.columns}, minmax(0, 1fr))`,
+            }}
+          >
+            {Array.from({ length: block.columns }, (_, columnIndex) => {
+              const opacityPercent = Math.max(
+                0,
+                block.startingOpacityPercent -
+                  (block.fadeOut
+                    ? columnIndex * block.fadeStepPercent
+                    : 0),
+              );
+              const hasBoxBorder =
+                block.boxBackground === "quadrant" ||
+                block.boxBackground === "blank";
+              return (
+                <span
+                  key={columnIndex}
+                  className={`relative grid min-h-10 place-items-center overflow-hidden ${hasBoxBorder ? "border border-[var(--studio-leaf)]/45" : "border-y border-[var(--studio-leaf)]/45"}`}
+                  style={block.layoutStyle === "compact_row" ? { minHeight: "64px" } : undefined}
+                >
+                  {block.boxBackground === "quadrant" ? (
+                    <>
+                      <span className="pointer-events-none absolute inset-y-0 left-1/2 border-l border-[var(--studio-leaf)]/25" />
+                      <span className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-[var(--studio-leaf)]/25" />
+                    </>
+                  ) : null}
+                  {block.boxBackground === "handwriting_lines" ? (
+                    <span className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-[var(--studio-leaf)]/35" />
+                  ) : null}
+                  <span
+                    className="relative z-10 whitespace-nowrap px-1 font-bold text-earth"
+                    style={{
+                      fontSize: `${block.fontSizePt}pt`,
+                      lineHeight: 1,
+                      opacity: opacityPercent / 100,
+                    }}
+                  >
+                    {block.character}
+                  </span>
+                </span>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    );
+    if (block.layoutStyle === "compact_row") {
+      return (
+        <section
+          className="grid overflow-hidden border border-[var(--studio-leaf)]/45"
+          style={{
+            gridTemplateColumns: `${block.modelWidthPercent}% minmax(0, 1fr)`,
+          }}
+        >
+          <div className="grid min-w-0 place-items-center border-r border-[var(--studio-leaf)]/45 p-2 text-center">
+            <div>
+              <div
+                className="font-bold"
+                style={{ fontSize: `${block.fontSizePt}pt`, lineHeight: 1 }}
+              >
+                {block.character}
+              </div>
+              <p className="mt-1 text-xs text-ink/55">
+                {[block.pronunciation, block.meaning].filter(Boolean).join(" · ")}
+              </p>
+            </div>
+          </div>
+          {traceRows}
+        </section>
+      );
+    }
     return (
       <section className="text-center">
         <div
@@ -2254,56 +2390,7 @@ function WorkbookLearnLeafPreview({
         <p className="mt-1 text-sm text-ink/55">
           {[block.pronunciation, block.meaning].filter(Boolean).join(" · ")}
         </p>
-        <div className="mt-3 grid gap-2">
-          {Array.from({ length: block.traceRows }, (_, rowIndex) => (
-            <div
-              key={rowIndex}
-              className="grid gap-1.5"
-              style={{
-                gridTemplateColumns: `repeat(${block.columns}, minmax(0, 1fr))`,
-              }}
-            >
-              {Array.from({ length: block.columns }, (_, columnIndex) => {
-                const opacityPercent = Math.max(
-                  0,
-                  block.startingOpacityPercent -
-                    (block.fadeOut
-                      ? columnIndex * block.fadeStepPercent
-                      : 0),
-                );
-                const hasBoxBorder =
-                  block.boxBackground === "quadrant" ||
-                  block.boxBackground === "blank";
-                return (
-                  <span
-                    key={columnIndex}
-                    className={`relative grid aspect-square min-h-10 place-items-center overflow-hidden ${hasBoxBorder ? "border border-[var(--studio-leaf)]/45" : "border-y border-[var(--studio-leaf)]/45"}`}
-                  >
-                    {block.boxBackground === "quadrant" ? (
-                      <>
-                        <span className="pointer-events-none absolute inset-y-0 left-1/2 border-l border-[var(--studio-leaf)]/25" />
-                        <span className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-[var(--studio-leaf)]/25" />
-                      </>
-                    ) : null}
-                    {block.boxBackground === "handwriting_lines" ? (
-                      <span className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-[var(--studio-leaf)]/35" />
-                    ) : null}
-                    <span
-                      className="relative z-10 whitespace-nowrap px-1 font-bold text-earth"
-                      style={{
-                        fontSize: `${block.fontSizePt}pt`,
-                        lineHeight: 1,
-                        opacity: opacityPercent / 100,
-                      }}
-                    >
-                      {block.character}
-                    </span>
-                  </span>
-                );
-              })}
-            </div>
-          ))}
-        </div>
+        {traceRows}
       </section>
     );
   }
@@ -2531,6 +2618,14 @@ function WorkbookLessonBrowserPreview({
           fallbackBorderColor,
         )}
       >
+        {lesson.practiceBlocks.map((block, index) => (
+          <WorkbookLearnBlockBrowserPreview
+            key={block.type === "layout_row" ? block.id : `practice-${index}`}
+            block={block}
+            projectId={projectId}
+            fallbackBorderColor={fallbackBorderColor}
+          />
+        ))}
         {lesson.exercises.map((exercise) => {
           const startNumber = nextExerciseNumber;
           nextExerciseNumber += workbookExerciseCount(exercise);
@@ -2567,7 +2662,7 @@ function WorkbookItemInspector({
     ? "Layout"
     : item.type === "character_practice"
       ? "Traceable"
-      : location.collection === "learn"
+      : location.collection !== "exercise"
         ? "Learning element"
         : "Exercise";
   return (
@@ -2612,7 +2707,7 @@ function WorkbookItemInspector({
             />
           </label>
         </div>
-      ) : location.collection === "learn" ? (
+      ) : location.collection !== "exercise" ? (
         <WorkbookLearnLeafFields
           block={item as WorkbookLearnBlockLeaf}
           projectId={projectId}
@@ -3156,17 +3251,25 @@ export function WorkbookStudioEditor({
 
   function canvasDropTarget(): WorkbookDropTarget | null {
     if (!editorDrag) return null;
-    return editorDrag.collection === "learn"
-      ? {
-          collection: "learn",
-          container: "root",
-          index: lesson.learnBlocks.length,
-        }
-      : {
-          collection: "exercise",
-          container: "root",
-          index: lesson.exercises.length,
-        };
+    if (editorDrag.collection === "learn") {
+      return {
+        collection: "learn",
+        container: "root",
+        index: lesson.learnBlocks.length,
+      };
+    }
+    if (editorDrag.collection === "practice") {
+      return {
+        collection: "practice",
+        container: "root",
+        index: lesson.practiceBlocks.length,
+      };
+    }
+    return {
+      collection: "exercise",
+      container: "root",
+      index: lesson.exercises.length,
+    };
   }
 
   function dragOverLessonCanvas(event: DragEvent<HTMLElement>) {
@@ -3216,6 +3319,13 @@ export function WorkbookStudioEditor({
           draft.learnBlocks,
           insertionIndex,
         );
+      } else if (collection === "practice") {
+        moveItemAtInsertionPoint(
+          draft.practiceBlocks,
+          sourceIndex,
+          draft.practiceBlocks,
+          insertionIndex,
+        );
       } else {
         moveItemAtInsertionPoint(
           draft.exercises,
@@ -3262,7 +3372,7 @@ export function WorkbookStudioEditor({
         targetItems.splice(
           destinationIndex,
           0,
-          drag.collection === "learn"
+          drag.collection !== "exercise"
             ? makeLearnBlock(drag.blockType)
             : makeExercise(drag.exerciseType),
         );
@@ -3471,6 +3581,7 @@ export function WorkbookStudioEditor({
                       learnBlocks: [
                         { type: "paragraph", text: "Add lesson text." },
                       ],
+                      practiceBlocks: [],
                       exercises: [makeExercise("short_answer")],
                     });
                     setSelected({
@@ -3501,6 +3612,7 @@ export function WorkbookStudioEditor({
                           learnBlocks: [
                             { type: "paragraph", text: "Add lesson text." },
                           ],
+                          practiceBlocks: [],
                           exercises: [makeExercise("short_answer")],
                         },
                       ],
@@ -3572,6 +3684,56 @@ export function WorkbookStudioEditor({
 
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.12em] text-earth">
+                  Practice content
+                </p>
+                <div className="mt-2 grid grid-cols-1 gap-2">
+                  {([
+                    ["paragraph", "Instructions"],
+                    ["image_asset", "Image"],
+                    ["qr_code", "QR code"],
+                    ["sound_asset", "Sound"],
+                    ["vocabulary_list", "Vocabulary"],
+                    ["reading_passage", "Passage"],
+                    ["character_practice", "Traceable"],
+                  ] as Array<[AddableLearnBlockType, string]>).map(
+                    ([type, label]) => (
+                      <button
+                        type="button"
+                        draggable
+                        key={type}
+                        onClick={() => {
+                          if (paletteClickWasDrag()) return;
+                          const index = lesson.practiceBlocks.length;
+                          mutateLesson((draft) => {
+                            draft.practiceBlocks.push(makeLearnBlock(type));
+                          });
+                          selectEditorItem({
+                            collection: "practice",
+                            container: "root",
+                            index,
+                          });
+                        }}
+                        onDragStart={(event) =>
+                          startEditorDrag(event, {
+                            collection: "practice",
+                            mode: "new",
+                            blockType: type,
+                          })
+                        }
+                        onDragEnd={endEditorDrag}
+                        title={`Drag ${label} into the practice section`}
+                        className="flex cursor-grab items-center gap-2 rounded-[10px] border border-dashed border-[#86a9c7] bg-white px-2.5 py-2.5 text-left text-xs font-bold text-[#356584] active:cursor-grabbing"
+                      >
+                        <WorkbookPaletteIcon type={type} />
+                        <span>{label}</span>
+                      </button>
+                    ),
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-earth">
                   Exercises
                 </p>
                 <div className="mt-2 grid grid-cols-1 gap-2">
@@ -3618,7 +3780,9 @@ export function WorkbookStudioEditor({
                 </div>
               </div>
 
-              {(["learn", "exercise"] as WorkbookEditorCollection[]).map(
+              {(["learn", "exercise"] as Array<
+                Exclude<WorkbookEditorCollection, "practice">
+              >).map(
                 (collection) => (
                   <div key={collection}>
                     <p className="text-[10px] font-black uppercase tracking-[0.12em] text-earth">
@@ -3994,6 +4158,46 @@ export function WorkbookStudioEditor({
               detail.effectiveTheme.colorLeaf,
             )}
           >
+            {lesson.practiceBlocks.map((block, index) => (
+              <div key={block.type === "layout_row" ? block.id : `practice-${index}`}>
+                {editorDrag ? <WorkbookDropZone target={{ collection: "practice", container: "root", index }} drag={editorDrag} active={sameWorkbookDropTarget(dropTarget, { collection: "practice", container: "root", index })} onTarget={updateDropTarget} onDrop={dropEditorItem} /> : null}
+                <div
+                  onClick={() =>
+                    selectEditorItem({
+                      collection: "practice",
+                      container: "root",
+                      index,
+                    })
+                  }
+                  className={`group relative cursor-pointer rounded-[12px] border p-3 transition ${selectedItem?.collection === "practice" && selectedItem.container === "root" && selectedItem.index === index ? "border-[var(--studio-leaf)] ring-2 ring-[var(--studio-leaf)]/20" : "border-[var(--studio-sand)]"} ${editorDrag?.collection === "practice" && editorDrag.mode === "existing" && editorDrag.source.container === "root" && editorDrag.source.index === index ? "opacity-35" : ""}`}
+                >
+                  <WorkbookLearnBlockBrowserPreview
+                    block={block}
+                    projectId={detail.project.id}
+                    fallbackBorderColor={detail.effectiveTheme.colorLeaf}
+                  />
+                  <div className="absolute right-2 top-2 flex gap-1 rounded-[9px] bg-white p-1 opacity-0 shadow-md transition group-hover:opacity-100 group-focus-within:opacity-100">
+                    <button type="button" draggable onDragStart={(event) => startEditorDrag(event, { collection: "practice", mode: "existing", source: { collection: "practice", container: "root", index }, isLayoutRow: block.type === "layout_row" })} onDragEnd={endEditorDrag} className="cursor-grab rounded px-1.5 py-0.5 text-sm text-ink/55 active:cursor-grabbing" aria-label={`Drag practice block ${index + 1}`} title="Drag to reorder">⠿</button>
+                    <button type="button" disabled={index === 0} onClick={(event) => { event.stopPropagation(); reorderLessonItems("practice", index, index - 1); }} className="rounded px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-30" aria-label={`Move practice block ${index + 1} earlier`}>↑</button>
+                    <button type="button" disabled={index === lesson.practiceBlocks.length - 1} onClick={(event) => { event.stopPropagation(); reorderLessonItems("practice", index, index + 2); }} className="rounded px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-30" aria-label={`Move practice block ${index + 1} later`}>↓</button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedItem(null);
+                        mutateLesson((draft) => {
+                          draft.practiceBlocks.splice(index, 1);
+                        });
+                      }}
+                      className="rounded px-1.5 py-0.5 text-[10px] font-bold text-[#8c3f2f]"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {editorDrag ? <WorkbookDropZone target={{ collection: "practice", container: "root", index: lesson.practiceBlocks.length }} drag={editorDrag} active={sameWorkbookDropTarget(dropTarget, { collection: "practice", container: "root", index: lesson.practiceBlocks.length })} onTarget={updateDropTarget} onDrop={dropEditorItem} /> : null}
             {lesson.exercises.map((exercise, index) => (
               <div key={exercise.id}>
                 {editorDrag ? <WorkbookDropZone target={{ collection: "exercise", container: "root", index }} drag={editorDrag} active={sameWorkbookDropTarget(dropTarget, { collection: "exercise", container: "root", index })} onTarget={updateDropTarget} onDrop={dropEditorItem} /> : null}
@@ -4274,6 +4478,20 @@ export function WorkbookStudioEditor({
               })
             }
           />
+          <label className="grid gap-1 text-xs font-bold">
+            Parent answer-key notes
+            <textarea
+              value={lesson.notesForParent ?? ""}
+              onChange={(event) =>
+                mutateLesson((draft) => {
+                  draft.notesForParent = event.target.value || undefined;
+                })
+              }
+              rows={6}
+              className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal leading-6"
+              placeholder="Optional guidance printed on this lesson's answer-key page. Separate paragraphs with a blank line."
+            />
+          </label>
           <label className="flex items-start gap-2 rounded-[12px] border border-[#d8c8ae] bg-white p-3 text-sm">
             <input
               type="checkbox"

@@ -36,6 +36,7 @@
     "db:seed:electives": "bun run scripts/seed-electives.ts",
     "workbook-studio:import-prompts": "bun --env-file=app/ts-backend/.env run scripts/import-workbook-studio-prompts.ts",
     "workbook-studio:import-guitar-a": "bun --env-file=app/ts-backend/.env run scripts/import-guitar-a-workbook-studio.ts",
+    "workbook-studio:import-japanese-a": "bun --env-file=app/ts-backend/.env run scripts/import-japanese-a-workbook-studio.ts",
     "stripe:sync:membership": "bun run scripts/stripe/sync-membership-plans.ts",
     "generate:migration": "bun run db:generate",
     "data-migrations:apply": "bun run db:push"

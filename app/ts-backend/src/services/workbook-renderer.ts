@@ -458,7 +458,18 @@ function renderLearnBlockContent(
     }).join("");
     return `<div class="character-trace-row" style="grid-template-columns:repeat(${block.columns},minmax(0,1fr))">${cells}</div>`;
   }).join("");
-  return `<section class="character-practice" style="--character-font-size:${block.fontSizePt}pt;--character-model-font-size:${block.fontSizePt * 1.5}pt"><div class="character-model">${escapeHtml(block.character)}</div><p>${[block.pronunciation, block.meaning].filter(Boolean).map(escapeHtml).join(" · ")}</p>${traceRows}</section>`;
+  const label = [block.pronunciation, block.meaning]
+    .filter(Boolean)
+    .map(escapeHtml)
+    .join(" · ");
+  const modelFontSize = block.layoutStyle === "compact_row"
+    ? block.fontSizePt
+    : block.fontSizePt * 1.5;
+  const style = `--character-font-size:${block.fontSizePt}pt;--character-model-font-size:${modelFontSize}pt;--character-model-width:${block.modelWidthPercent}%`;
+  if (block.layoutStyle === "compact_row") {
+    return `<section class="character-practice character-practice--compact" style="${style}"><div class="character-model-cell"><div class="character-model">${escapeHtml(block.character)}</div>${label ? `<p>${label}</p>` : ""}</div><div class="character-trace-grid">${traceRows}</div></section>`;
+  }
+  return `<section class="character-practice" style="${style}"><div class="character-model">${escapeHtml(block.character)}</div>${label ? `<p>${label}</p>` : ""}${traceRows}</section>`;
 }
 
 function renderLearnBlock(
@@ -600,13 +611,15 @@ function renderWorkbookBody(
           <span class="part-label">Part 1: Learn</span>
           <div class="intro"${workbookBoxStyleAttributes(lesson.learnSectionBoxStyle)}>${lesson.learnBlocks.map((block) => renderLearnBlock(block, definitions, theme, imageAssetDataUrls, qrCodeDataUrls, soundAssetPublicUrls)).join("")}</div>
           <span class="part-label">Part 2: Practice</span>
-          <div class="exercises"${workbookBoxStyleAttributes(lesson.practiceSectionBoxStyle)}>${renderPracticeItems(lesson.exercises)}</div>
+          <div class="exercises"${workbookBoxStyleAttributes(lesson.practiceSectionBoxStyle)}>${lesson.practiceBlocks.map((block) => renderLearnBlock(block, definitions, theme, imageAssetDataUrls, qrCodeDataUrls, soundAssetPublicUrls)).join("")}${lesson.exercises.length ? renderPracticeItems(lesson.exercises) : ""}</div>
         </div>
+        ${lesson.notesForParent || lesson.exercises.length ? `
         <div class="answer-key-page">
           <div class="ak-banner">FOR PARENTS ONLY — ANSWER KEY</div>
           <h3>Lesson ${lessonNumber} — ${escapeHtml(lesson.title)}</h3>
-          <div class="answer-key">${flattenWorkbookExercises(lesson.exercises).map((exercise, index) => `<p><strong>${index + 1}.</strong> ${escapeHtml(exerciseAnswer(exercise))}</p>`).join("")}</div>
+          <div class="answer-key">${lesson.notesForParent ? lesson.notesForParent.split(/\n\s*\n/).filter(Boolean).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("") : ""}${flattenWorkbookExercises(lesson.exercises).map((exercise, index) => `<p><strong>${index + 1}.</strong> ${escapeHtml(exerciseAnswer(exercise))}</p>`).join("")}</div>
         </div>
+        ` : ""}
       `;
       })
       .join("")}
@@ -691,7 +704,10 @@ export async function buildWorkbookHtml(input: {
     ...flattenWorkbookLearnBlocks(renderedContent.introduction),
     ...renderedContent.chapters.flatMap((chapter) =>
       chapter.lessons.flatMap((lesson) =>
-        flattenWorkbookLearnBlocks(lesson.learnBlocks),
+        [
+          ...flattenWorkbookLearnBlocks(lesson.learnBlocks),
+          ...flattenWorkbookLearnBlocks(lesson.practiceBlocks),
+        ],
       ),
     ),
   ];
@@ -770,6 +786,13 @@ export async function buildWorkbookHtml(input: {
 .reader-vocabulary dd { margin: 0; }
 .passage-attribution { color: var(--earth); font-size: 10pt; text-align: right; }
 .character-model { font-family: "Noto Sans JP", sans-serif; font-size: var(--character-model-font-size, 42pt); color: var(--leaf-dark); text-align: center; }
+.character-practice--compact { display: grid; grid-template-columns: minmax(0,var(--character-model-width,22%)) minmax(0,1fr); margin: 0; border: 1px solid color-mix(in srgb, var(--earth) 55%, transparent); }
+.character-practice--compact .character-model-cell { display: flex; min-width: 0; flex-direction: column; align-items: center; justify-content: center; padding: 2mm; border-right: 1px solid color-mix(in srgb, var(--earth) 55%, transparent); }
+.character-practice--compact .character-model-cell p { margin: 1mm 0 0; color: var(--earth); font-size: 9pt; font-weight: 600; text-align: center; }
+.character-practice--compact .character-trace-grid { display: grid; min-width: 0; }
+.character-practice--compact .character-trace-row { gap: 0; margin-top: 0; }
+.character-practice--compact .character-trace-cell { min-height: 17mm; border-top: 0; border-bottom: 0; }
+.character-practice--compact .character-trace-cell + .character-trace-cell { border-left: 0; }
 .character-trace-row { display: grid; gap: 1.5mm; margin-top: 6px; }
 .character-trace-cell { position: relative; display: grid; min-width: 0; min-height: 22mm; overflow: hidden; place-items: center; }
 .character-trace-cell--quadrant, .character-trace-cell--blank { border: 1px solid color-mix(in srgb, var(--earth) 55%, transparent); }
@@ -900,7 +923,10 @@ async function loadWorkbookImageAssetDataUrls(
     ...flattenWorkbookLearnBlocks(content.introduction),
     ...content.chapters.flatMap((chapter) =>
       chapter.lessons.flatMap((lesson) =>
-        flattenWorkbookLearnBlocks(lesson.learnBlocks),
+        [
+          ...flattenWorkbookLearnBlocks(lesson.learnBlocks),
+          ...flattenWorkbookLearnBlocks(lesson.practiceBlocks),
+        ],
       ),
     ),
   ];
