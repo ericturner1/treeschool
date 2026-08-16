@@ -14,6 +14,7 @@ import {
   workbookProjects,
   workbookRenderRuns,
   workbookStudioJobs,
+  workbookThemes,
 } from "ts-db";
 import { db } from "../db";
 import { downloadPrivateFile, uploadPrivateFile } from "./media";
@@ -57,6 +58,17 @@ async function requireAdmin(userId: string) {
   if (!admin?.isAdmin) throw new Error("Administrator access is required.");
 }
 
+async function classicThemeVersionId() {
+  const [theme] = await db
+    .select({ versionId: workbookThemes.publishedVersionId })
+    .from(workbookThemes)
+    .where(eq(workbookThemes.slug, "classic"))
+    .limit(1);
+  if (!theme?.versionId)
+    throw new Error("The Classic workbook theme has not been seeded.");
+  return theme.versionId;
+}
+
 function ordinalEdition(value: number) {
   const mod100 = value % 100;
   const suffix =
@@ -83,13 +95,13 @@ async function resolveReleasePlan(input: {
       curriculumId: workbookCourses.curriculumId,
       curriculumThemeVersionId: workbookCurricula.defaultThemeVersionId,
       courseThemeVersionId: workbookCourses.themeOverrideVersionId,
-      academicStandardKey: sql<string>`coalesce(${workbookCourses.academicStandardOverrideKey}, ${workbookCurricula.academicStandardKey})`,
+      academicStandardKey: sql<string>`coalesce(${workbookCourses.academicStandardOverrideKey}, ${workbookCurricula.academicStandardKey}, ${curriculumSubjects.academicStandardKey})`,
       subjectKey: curriculumSubjects.key,
       subjectLabel: curriculumSubjects.label,
     })
     .from(workbookProjects)
     .innerJoin(workbookCourses, eq(workbookCourses.id, workbookProjects.courseId))
-    .innerJoin(
+    .leftJoin(
       workbookCurricula,
       eq(workbookCurricula.id, workbookCourses.curriculumId),
     )
@@ -153,12 +165,12 @@ async function resolveReleasePlan(input: {
         .where(eq(nativeWorkbooks.id, project.nativeWorkbookId))
         .limit(1)
     : [];
-  const themeVersionId =
+  const assignedThemeVersionId =
     project.themeOverrideVersionId ??
     project.courseThemeVersionId ??
     project.curriculumThemeVersionId;
-  if (!themeVersionId)
-    throw new Error("Choose a published theme before releasing this workbook.");
+  const themeVersionId =
+    assignedThemeVersionId ?? (await classicThemeVersionId());
   const themeChanged = Boolean(
     activeRelease && activeRelease.themeVersionId !== themeVersionId,
   );
@@ -326,14 +338,14 @@ export async function publishCompletedWorkbookStudioRender(input: {
     .select({
       project: workbookProjects,
       curriculumId: workbookCourses.curriculumId,
-      academicStandardKey: sql<string>`coalesce(${workbookCourses.academicStandardOverrideKey}, ${workbookCurricula.academicStandardKey})`,
+      academicStandardKey: sql<string>`coalesce(${workbookCourses.academicStandardOverrideKey}, ${workbookCurricula.academicStandardKey}, ${curriculumSubjects.academicStandardKey})`,
       subjectLabel: curriculumSubjects.label,
       render: workbookRenderRuns,
       revision: workbookContentRevisions,
     })
     .from(workbookProjects)
     .innerJoin(workbookCourses, eq(workbookCourses.id, workbookProjects.courseId))
-    .innerJoin(
+    .leftJoin(
       workbookCurricula,
       eq(workbookCurricula.id, workbookCourses.curriculumId),
     )

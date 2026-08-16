@@ -84,6 +84,8 @@ function makeExercise(
     }));
     return {
       ...base,
+      leftLabel: "Item",
+      rightLabel: "Match",
       pairs,
       rightOrder: pairs.map((pair) => pair.id).reverse(),
     };
@@ -558,15 +560,70 @@ function WorkbookLearnLeafFields({
       </div>
     );
   }
+  if (block.type === "illustration") {
+    return (
+      <div className="grid gap-3 rounded-[10px] bg-[var(--studio-sand)] p-4 text-sm">
+        <strong>Illustration: {block.illustrationType}</strong>
+        <label className="grid gap-1 text-xs font-bold">
+          Alternative text
+          <input
+            value={block.altText}
+            onChange={(event) =>
+              update((draft) => {
+                if (draft.type === "illustration") {
+                  draft.altText = event.target.value;
+                }
+              })
+            }
+            className="rounded-[8px] border border-[#d8c8ae] bg-white p-2 font-normal"
+          />
+        </label>
+        <label className="grid gap-1 text-xs font-bold">
+          Caption
+          <input
+            value={block.caption ?? ""}
+            onChange={(event) =>
+              update((draft) => {
+                if (draft.type === "illustration") {
+                  draft.caption = event.target.value || undefined;
+                }
+              })
+            }
+            className="rounded-[8px] border border-[#d8c8ae] bg-white p-2 font-normal"
+          />
+        </label>
+        <label className="grid gap-1 text-xs font-bold">
+          Parameters (JSON)
+          <textarea
+            defaultValue={JSON.stringify(block.parameters, null, 2)}
+            onChange={(event) => {
+              try {
+                const parameters = JSON.parse(event.target.value) as Record<
+                  string,
+                  unknown
+                >;
+                update((draft) => {
+                  if (draft.type === "illustration") {
+                    draft.parameters = parameters;
+                  }
+                });
+              } catch {
+                // Keep the last valid parameter object while JSON is incomplete.
+              }
+            }}
+            className="min-h-28 rounded-[8px] border border-[#d8c8ae] bg-white p-2 font-mono text-xs font-normal"
+          />
+        </label>
+      </div>
+    );
+  }
   return (
     <div className="rounded-[10px] bg-[var(--studio-sand)] p-4 text-sm">
       <strong>
-        {block.type === "illustration"
-          ? `Illustration: ${block.illustrationType}`
-          : "Image asset"}
+        Image asset
       </strong>
       <p className="mt-1 text-ink/60">
-        {block.type === "illustration" ? block.altText : block.description}
+        {block.description}
       </p>
     </div>
   );
@@ -650,30 +707,56 @@ function WorkbookExerciseLeafFields({
           />
         </div>
       ) : exercise.type === "matching" ? (
-        <textarea
-          value={(exercise.pairs ?? [])
-            .map((pair) => `${pair.left} | ${pair.right}`)
-            .join("\n")}
-          onChange={(event) =>
-            update((draft) => {
-              if (draft.type !== "matching") return;
-              const pairs = event.target.value
-                .split("\n")
-                .filter(Boolean)
-                .map((line, pairIndex) => {
-                  const [left, right] = line.split("|");
-                  return {
-                    id: `${exercise.id}-pair-${pairIndex + 1}`,
-                    left: left?.trim() || "Item",
-                    right: right?.trim() || "Match",
-                  };
-                });
-              draft.pairs = pairs;
-              draft.rightOrder = pairs.map((pair) => pair.id).reverse();
-            })
-          }
-          className="min-h-24 w-full rounded-[8px] border border-[#d8c8ae] bg-white p-2 text-sm"
-        />
+        <div className="grid gap-2">
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              value={exercise.leftLabel ?? "Item"}
+              onChange={(event) =>
+                update((draft) => {
+                  if (draft.type === "matching")
+                    draft.leftLabel = event.target.value;
+                })
+              }
+              className="rounded-[8px] border border-[#d8c8ae] bg-white p-2 text-sm"
+              placeholder="Left column label"
+            />
+            <input
+              value={exercise.rightLabel ?? "Match"}
+              onChange={(event) =>
+                update((draft) => {
+                  if (draft.type === "matching")
+                    draft.rightLabel = event.target.value;
+                })
+              }
+              className="rounded-[8px] border border-[#d8c8ae] bg-white p-2 text-sm"
+              placeholder="Right column label"
+            />
+          </div>
+          <textarea
+            value={(exercise.pairs ?? [])
+              .map((pair) => `${pair.left} | ${pair.right}`)
+              .join("\n")}
+            onChange={(event) =>
+              update((draft) => {
+                if (draft.type !== "matching") return;
+                const pairs = event.target.value
+                  .split("\n")
+                  .filter(Boolean)
+                  .map((line, pairIndex) => {
+                    const [left, right] = line.split("|");
+                    return {
+                      id: `${exercise.id}-pair-${pairIndex + 1}`,
+                      left: left?.trim() || "Item",
+                      right: right?.trim() || "Match",
+                    };
+                  });
+                draft.pairs = pairs;
+                draft.rightOrder = pairs.map((pair) => pair.id).reverse();
+              })
+            }
+            className="min-h-24 w-full rounded-[8px] border border-[#d8c8ae] bg-white p-2 text-sm"
+          />
+        </div>
       ) : (
         <input
           value={String(

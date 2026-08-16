@@ -254,13 +254,15 @@ export async function resolveEffectiveWorkbookThemeVersionId(input: {
       curriculumVersionId: workbookCurricula.defaultThemeVersionId,
     })
     .from(workbookCourses)
-    .innerJoin(
+    .leftJoin(
       workbookCurricula,
       eq(workbookCurricula.id, workbookCourses.curriculumId),
     )
     .where(eq(workbookCourses.id, input.courseId))
     .limit(1);
-  if (theme) return theme.courseVersionId ?? theme.curriculumVersionId;
+  if (theme?.courseVersionId ?? theme?.curriculumVersionId) {
+    return theme.courseVersionId ?? theme.curriculumVersionId!;
+  }
   return classicThemeVersionId();
 }
 
@@ -572,7 +574,7 @@ export async function createWorkbookStudioProject(
       subjectLabel: curriculumSubjects.label,
     })
     .from(workbookCourses)
-    .innerJoin(
+    .leftJoin(
       workbookCurricula,
       eq(workbookCurricula.id, workbookCourses.curriculumId),
     )
@@ -582,7 +584,7 @@ export async function createWorkbookStudioProject(
     )
     .where(eq(workbookCourses.id, input.courseId))
     .limit(1);
-  if (!courseContext) throw new Error("Choose a valid curriculum course.");
+  if (!courseContext) throw new Error("Choose a valid course.");
   if (courseContext.course.status === "retired") {
     throw new Error("A retired course cannot receive new workbooks.");
   }
@@ -625,8 +627,8 @@ export async function createWorkbookStudioProject(
         catalogPlanKey: input.catalogPlanKey,
         slug,
         title: input.title,
-        gradeMin: input.gradeMin ?? courseContext.curriculum.gradeLevel,
-        gradeMax: input.gradeMax ?? courseContext.curriculum.gradeLevel,
+        gradeMin: input.gradeMin ?? courseContext.course.gradeMin,
+        gradeMax: input.gradeMax ?? courseContext.course.gradeMax,
         languageCode: input.languageCode.toLowerCase(),
         localeCode: input.localeCode,
         layoutProfile: input.layoutProfile,
@@ -690,13 +692,16 @@ export async function createWorkbookStudioProject(
           courseStatus: courseContext.course.status,
           academicStandardKey:
             courseContext.course.academicStandardOverrideKey ??
-            courseContext.curriculum.academicStandardKey,
+            courseContext.curriculum?.academicStandardKey ??
+            null,
           standardCode:
             courseContext.course.standardCode ??
-            courseContext.curriculum.standardCode,
+            courseContext.curriculum?.standardCode ??
+            null,
           standardLabel:
             courseContext.course.standardLabel ??
-            courseContext.curriculum.standardLabel,
+            courseContext.curriculum?.standardLabel ??
+            null,
           boundaryNotes: courseContext.course.boundaryNotes,
           coverageNotes: courseContext.course.coverageNotes,
           pipelineKey: courseContext.course.pipelineKey,
@@ -961,6 +966,9 @@ export async function materializeWorkbookCatalogCourses(input: {
         stableKey: slugify(course.stableKey),
         curriculumSubjectId: subject.id,
         status: course.status,
+        gradeMin: selectedCurriculum.gradeLevel,
+        gradeMax: selectedCurriculum.gradeLevel,
+        type: "core" as const,
         academicStandardOverrideKey:
           course.academicStandardOverrideKey ?? null,
         standardCode: course.standardCode?.trim() || null,
@@ -2040,16 +2048,23 @@ export async function setWorkbookCourseTheme(input: {
   if (course.themeOverrideVersionId === themeVersionId) {
     return { batchId: null, affectedProjects: 0 };
   }
-  const [curriculum] = await db
-    .select({ defaultThemeVersionId: workbookCurricula.defaultThemeVersionId })
-    .from(workbookCurricula)
-    .where(eq(workbookCurricula.id, course.curriculumId))
-    .limit(1);
-  if (!curriculum) throw new Error("Workbook curriculum not found.");
+  const curriculum = course.curriculumId
+    ? (
+        await db
+          .select({
+            defaultThemeVersionId: workbookCurricula.defaultThemeVersionId,
+          })
+          .from(workbookCurricula)
+          .where(eq(workbookCurricula.id, course.curriculumId))
+          .limit(1)
+      )[0]
+    : null;
+  const inheritedThemeVersionId =
+    curriculum?.defaultThemeVersionId ?? (await classicThemeVersionId());
   const currentEffectiveThemeVersionId =
-    course.themeOverrideVersionId ?? curriculum.defaultThemeVersionId;
+    course.themeOverrideVersionId ?? inheritedThemeVersionId;
   const targetThemeVersionId =
-    themeVersionId ?? curriculum.defaultThemeVersionId;
+    themeVersionId ?? inheritedThemeVersionId;
   if (currentEffectiveThemeVersionId === targetThemeVersionId) {
     await db
       .update(workbookCourses)

@@ -103,6 +103,7 @@ const learnLayoutRowSchema = z.object({
   ...workbookBoxStyleField,
   id: stableIdSchema,
   type: z.literal("layout_row"),
+  columnGap: z.number().min(0).max(100).optional(),
   columns: z
     .array(
       z.object({
@@ -120,6 +121,7 @@ const exerciseBase = {
   ...workbookBoxStyleField,
   id: stableIdSchema,
   prompt: z.string().trim().min(1),
+  answerKeyText: z.string().trim().min(1).optional(),
   standardsCodes: z.array(z.string().trim().min(1)).default([]),
 };
 
@@ -139,6 +141,8 @@ const exerciseLeafSchema = z.discriminatedUnion("type", [
   z.object({
     ...exerciseBase,
     type: z.literal("matching"),
+    leftLabel: z.string().trim().min(1).default("Item"),
+    rightLabel: z.string().trim().min(1).default("Match"),
     pairs: z
       .array(
         z.object({
@@ -182,6 +186,7 @@ const practiceLayoutRowSchema = z.object({
   ...workbookBoxStyleField,
   id: stableIdSchema,
   type: z.literal("layout_row"),
+  columnGap: z.number().min(0).max(100).optional(),
   columns: z
     .array(
       z.object({
@@ -215,6 +220,7 @@ const lessonSchema = z.object({
 const chapterSchema = z.object({
   id: stableIdSchema,
   title: z.string().trim().min(1),
+  tocTitle: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
   lessons: z.array(lessonSchema).min(1),
 });

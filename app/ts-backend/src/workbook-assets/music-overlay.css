@@ -1,3 +1,10 @@
+  /* The shipped music pipeline used the full Classic rule colors on its
+     page containers. Keep that subject behavior in the overlay while still
+     resolving the actual colors through the selected theme tokens. */
+  .lesson{ border-color:var(--leaf); }
+  .answer-key-page .ak-banner{ border-color:var(--earth); }
+  .answer-key-page .answer-key{ border-color:var(--earth); }
+
   /* ---------- Staff/tab notation (pasted VexFlow SVG output) ---------- */
   .staff-figure{
     display:flex;
@@ -108,6 +115,7 @@
      before note-reading is introduced. */
   .rhythm-row{
     display:flex;
+    justify-content:center;
     align-items:flex-end;
     gap:4px;
     margin:16px 0 4px 0;
@@ -136,4 +144,53 @@
     font-size:10pt;
     font-weight:600;
     color:#8F6544;
+  }
+
+  /* ---------- Reusable instrument/concept diagrams ---------- */
+  .concept-figure-row{
+    display:flex;
+    justify-content:center;
+    align-items:flex-start;
+    gap:20px;
+    margin:16px 0 10px 0;
+    flex-wrap:wrap;
+    break-inside:avoid;
+    page-break-inside:avoid;
+  }
+  .concept-figure{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
+  .concept-figure svg{ display:block; }
+  .hand-figure-row{
+    display:flex;
+    justify-content:center;
+    gap:28px;
+    margin:16px 0 10px 0;
+    flex-wrap:wrap;
+    break-inside:avoid;
+    page-break-inside:avoid;
+  }
+  .anatomy-figure{
+    display:flex;
+    justify-content:center;
+    margin:14px 0 10px 0;
+    break-inside:avoid;
+    page-break-inside:avoid;
+  }
+  .anatomy-figure svg{ display:block; }
+  .workbook-illustration.chord-chart-box{
+    border:2px solid #739E56;
+    border-radius:12px;
+    padding:14px 18px;
+    margin:14px 0;
+    font-family:"Avenir Next","Nunito","Trebuchet MS","Segoe UI",sans-serif;
+    line-height:2.1;
+    text-align:left;
+  }
+  .chord-chart-box .chord-name{
+    color:#2F6690;
+    font-weight:700;
+    margin-right:2px;
   }

@@ -1176,6 +1176,7 @@ export const workbookIllustrationTypes = pgTable(
       .notNull()
       .default(sql`'{}'::jsonb`),
     svgTemplate: text("svg_template"),
+    wrapperClass: text("wrapper_class"),
     tokenBindingsJson: jsonb("token_bindings_json")
       .$type<Record<string, string>>()
       .notNull()
@@ -1279,9 +1280,9 @@ export const workbookCourses = pgTable(
   "workbook_courses",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    curriculumId: uuid("curriculum_id")
-      .notNull()
-      .references(() => workbookCurricula.id, { onDelete: "cascade" }),
+    curriculumId: uuid("curriculum_id").references(() => workbookCurricula.id, {
+      onDelete: "cascade",
+    }),
     stableKey: text("stable_key").notNull(),
     curriculumSubjectId: uuid("curriculum_subject_id")
       .notNull()
@@ -1290,6 +1291,9 @@ export const workbookCourses = pgTable(
       .$type<WorkbookCourseStatus>()
       .notNull()
       .default("new"),
+    gradeMin: integer("grade_min").notNull(),
+    gradeMax: integer("grade_max").notNull(),
+    type: billingSubjectTypeEnum("type").notNull().default("core"),
     academicStandardOverrideKey: text("academic_standard_override_key")
       .references(() => academicStandards.key, { onDelete: "restrict" }),
     standardCode: text("standard_code"),
@@ -1351,6 +1355,9 @@ export const workbookProjects = pgTable(
     localeCode: text("locale_code"),
     layoutProfile: text("layout_profile").notNull().default("standard"),
     scriptProfile: text("script_profile").notNull().default("latin"),
+    coverImageObjectPath: text("cover_image_object_path"),
+    coverImageAlt: text("cover_image_alt"),
+    coverImageSha256: text("cover_image_sha256"),
     status: text("status")
       .$type<WorkbookStudioProjectStatus>()
       .notNull()

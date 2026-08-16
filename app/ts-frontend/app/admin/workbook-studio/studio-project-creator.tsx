@@ -154,7 +154,7 @@ export function StudioProjectCreator({
                       required
                       className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
                     >
-                      <option value="">Choose a curriculum course</option>
+                      <option value="">Choose a course</option>
                       {courses
                         .filter((course) => course.status !== "retired")
                         .map((course) => {
@@ -163,7 +163,7 @@ export function StudioProjectCreator({
                           );
                           return (
                             <option key={course.id} value={course.id}>
-                              {curriculum?.name ?? "Curriculum"} · {course.subjectLabel}
+                              {curriculum?.name ?? "Standalone elective"} · {course.subjectLabel}
                             </option>
                           );
                         })}

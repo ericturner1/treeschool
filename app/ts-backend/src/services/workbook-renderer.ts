@@ -14,7 +14,7 @@ import {
   workbookThemeVersions,
 } from "ts-db";
 import { db } from "../db";
-import { uploadPrivateFile } from "./media";
+import { downloadPrivateFile, uploadPrivateFile } from "./media";
 import {
   flattenWorkbookExercises,
   parseWorkbookContent,
@@ -41,6 +41,7 @@ const FONT_MANIFEST = {
     Nunito: [400, 700],
     "Comic Neue": [400, 700],
     "Noto Sans JP": [400, 700],
+    Bravura: [400],
   },
 } as const;
 
@@ -48,6 +49,7 @@ type IllustrationDefinition = {
   key: string;
   rendererKind: string;
   svgTemplate: string | null;
+  wrapperClass?: string | null;
   tokenBindingsJson: Record<string, string>;
 };
 
@@ -137,6 +139,16 @@ async function loadWorkbookAsset(filename: string) {
   return new TextDecoder().decode(bytes);
 }
 
+async function embeddedFontCssAsset(filename: string) {
+  const css = await loadWorkbookAsset(filename);
+  // The repository keeps very large data URIs line-wrapped so they remain
+  // reviewable. Raw newlines are not valid inside a CSS url(), so compact only
+  // the base64 payload before handing the stylesheet to Chromium.
+  const payload = css.match(/base64,([\s\S]*?)"\)\s*format/)?.[1];
+  if (!payload) throw new Error(`Invalid embedded font asset: ${filename}`);
+  return `@font-face{font-family:"Bravura";src:url("data:font/woff2;charset=utf-8;base64,${payload.replace(/\s+/g, "")}") format("woff2");font-style:normal;font-weight:400;}`;
+}
+
 async function resolvePackageFile(relativePath: string) {
   const candidates = [
     join(process.cwd(), "node_modules", relativePath),
@@ -184,6 +196,7 @@ async function pinnedFontCss() {
       inlineFontsourceCss("comic-neue", "700.css"),
       inlineFontsourceCss("noto-sans-jp", "400.css"),
       inlineFontsourceCss("noto-sans-jp", "700.css"),
+      embeddedFontCssAsset("bravura-font-face.css"),
     ])
   ).join("\n");
 }
@@ -225,7 +238,8 @@ async function subjectOverlayCss(
   const normalized = subjectKey.toLocaleLowerCase("en-US");
   const assets = new Set<string>();
   if (normalized.includes("math")) assets.add("math-overlay.css");
-  if (normalized.includes("music")) assets.add("music-overlay.css");
+  if (normalized.includes("music") || normalized.includes("guitar"))
+    assets.add("music-overlay.css");
   if (
     normalized.includes("japanese") ||
     normalized.includes("kokugo") ||
@@ -271,6 +285,76 @@ function renderIllustration(
   const definition = definitions.get(block.illustrationType);
   if (!definition)
     throw new Error(`Unknown illustration type: ${block.illustrationType}`);
+  if (definition.rendererKind === "music_rhythm_boxes") {
+    const items = Array.isArray(block.parameters.items)
+      ? block.parameters.items
+      : [];
+    const boxes = items
+      .map((raw) => {
+        const item = raw as Record<string, unknown>;
+        const beats = Number(item.beats) === 2 ? 2 : 1;
+        const subdivisions = Number(item.subdivisions) === 2 ? 2 : 1;
+        const box =
+          subdivisions === 2
+            ? '<div class="rbox-pair"><div class="rbox"></div><div class="rbox"></div></div>'
+            : '<div class="rbox"></div>';
+        return `<div class="rhythm-box beat-${beats}">${box}<span class="rbox-syllable">${escapeHtml(item.label)}</span></div>`;
+      })
+      .join("");
+    return `<figure class="workbook-illustration rhythm-row" role="img" aria-label="${escapeHtml(block.altText)}">${boxes}${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ""}</figure>`;
+  }
+  if (definition.rendererKind === "music_guitar_chord") {
+    const markers = Array.isArray(block.parameters.markers)
+      ? block.parameters.markers.map(String).slice(0, 6)
+      : [];
+    const fingers = Array.isArray(block.parameters.fingers)
+      ? block.parameters.fingers
+      : [];
+    const strings = [10, 30, 50, 70, 90, 110];
+    const markerSvg = strings
+      .map((x, index) => {
+        const marker = markers[index] ?? "";
+        return marker
+          ? `<text x="${x}" y="13" text-anchor="middle" font-size="12"${marker === "X" ? ' font-weight="700"' : ""} fill="${theme.colorInk}">${escapeHtml(marker)}</text>`
+          : "";
+      })
+      .join("");
+    const fingerSvg = fingers
+      .map((raw) => {
+        const finger = raw as Record<string, unknown>;
+        const stringNumber = Math.max(1, Math.min(6, Number(finger.string)));
+        const fret = Math.max(1, Math.min(4, Number(finger.fret)));
+        const x = strings[stringNumber - 1];
+        const y = 20 + 24 * fret - 12;
+        const label = String(finger.finger ?? "");
+        return `<circle cx="${x}" cy="${y}" r="7" fill="${theme.colorInk}"/>${label ? `<text x="${x}" y="${y + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="${theme.colorCream}">${escapeHtml(label)}</text>` : ""}`;
+      })
+      .join("");
+    const fretLines = [44, 68, 92, 116]
+      .map(
+        (y) =>
+          `<line x1="10" y1="${y}" x2="110" y2="${y}" stroke="${theme.colorInk}" stroke-width="1.5"/>`,
+      )
+      .join("");
+    const stringLines = strings
+      .map(
+        (x) =>
+          `<line x1="${x}" y1="20" x2="${x}" y2="116" stroke="${theme.colorInk}" stroke-width="1.5"/>`,
+      )
+      .join("");
+    return `<figure class="workbook-illustration guitar-chord-figure" role="img" aria-label="${escapeHtml(block.altText)}"><svg width="130" height="150" viewBox="0 0 130 150" xmlns="http://www.w3.org/2000/svg"><line x1="10" y1="20" x2="110" y2="20" stroke="${theme.colorInk}" stroke-width="4"/>${fretLines}${stringLines}${markerSvg}${fingerSvg}</svg>${block.caption ? `<figcaption class="chord-label">${escapeHtml(block.caption)}</figcaption>` : ""}</figure>`;
+  }
+  if (definition.rendererKind === "music_chord_chart") {
+    const lines = Array.isArray(block.parameters.lines)
+      ? block.parameters.lines
+      : [];
+    return `<figure class="workbook-illustration chord-chart-box" role="img" aria-label="${escapeHtml(block.altText)}">${lines
+      .map((raw) => {
+        const line = raw as Record<string, unknown>;
+        return `<div><span class="chord-name">${escapeHtml(line.chord)}</span> ${escapeHtml(line.text)}</div>`;
+      })
+      .join("")}${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ""}</figure>`;
+  }
   if (!definition.svgTemplate)
     throw new Error(
       `Illustration ${block.illustrationType} has no SVG template.`,
@@ -287,7 +371,18 @@ function renderIllustration(
     theme,
   );
   const svg = replaceSvgParameters(themed, block.parameters);
-  return `<figure class="workbook-illustration" role="img" aria-label="${escapeHtml(block.altText)}">${svg}${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ""}</figure>`;
+  const wrapperClass = definition.wrapperClass
+    ? ` ${escapeHtml(definition.wrapperClass)}`
+    : "";
+  const staffCaption =
+    definition.wrapperClass === "staff-figure" && block.caption
+      ? `<p class="notation-caption">${escapeHtml(block.caption)}</p>`
+      : "";
+  const nestedCaption =
+    definition.wrapperClass !== "staff-figure" && block.caption
+      ? `<figcaption>${escapeHtml(block.caption)}</figcaption>`
+      : "";
+  return `<figure class="workbook-illustration${wrapperClass}" role="img" aria-label="${escapeHtml(block.altText)}">${svg}${nestedCaption}</figure>${staffCaption}`;
 }
 
 function renderLearnBlockContent(
@@ -319,7 +414,7 @@ function renderLearnBlock(
   theme: WorkbookThemeTokens,
 ): string {
   if (block.type === "layout_row") {
-    const row: string = `<div class="workbook-layout-row" style="display:grid;grid-template-columns:repeat(${block.columns.length},minmax(0,1fr));gap:16px">${block.columns.map((column) => `<div class="workbook-layout-column">${column.blocks.map((child) => renderLearnBlock(child, definitions, theme)).join("")}</div>`).join("")}</div>`;
+    const row: string = `<div class="workbook-layout-row" style="display:grid;grid-template-columns:repeat(${block.columns.length},minmax(0,1fr));gap:${block.columnGap ?? 16}px">${block.columns.map((column) => `<div class="workbook-layout-column">${column.blocks.map((child) => renderLearnBlock(child, definitions, theme)).join("")}</div>`).join("")}</div>`;
     return block.boxStyle
       ? `<div class="workbook-content-box"${workbookBoxStyleAttributes(block.boxStyle)}>${row}</div>`
       : row;
@@ -333,6 +428,7 @@ function renderLearnBlock(
 function exerciseAnswer(
   exercise: WorkbookExercise,
 ) {
+  if (exercise.answerKeyText) return exercise.answerKeyText;
   if (exercise.type === "matching") {
     return exercise.pairs
       .map((pair) => `${pair.left} — ${pair.right}`)
@@ -358,9 +454,14 @@ function renderExercise(
     const rightById = new Map(
       exercise.pairs.map((pair) => [pair.id, pair.right]),
     );
-    return `${escapeHtml(exercise.prompt)}<table class="matching"><thead><tr><th>Item</th><th>Match</th></tr></thead><tbody>${exercise.pairs.map((pair, index) => `<tr><td>${index + 1}. ${escapeHtml(pair.left)}</td><td>${String.fromCharCode(65 + index)}. ${escapeHtml(rightById.get(exercise.rightOrder[index]) ?? "")}</td></tr>`).join("")}</tbody></table>`;
+    return `${escapeHtml(exercise.prompt)}<table class="matching"><thead><tr><th>${escapeHtml(exercise.leftLabel)}</th><th>${escapeHtml(exercise.rightLabel)}</th></tr></thead><tbody>${exercise.pairs.map((pair, index) => `<tr><td>${index + 1}. ${escapeHtml(pair.left)}</td><td>${String.fromCharCode(65 + index)}. ${escapeHtml(rightById.get(exercise.rightOrder[index]) ?? "")}</td></tr>`).join("")}</tbody></table>`;
   }
   if (exercise.type === "fill_in_blank") {
+    const marker = "{{blank}}";
+    if (exercise.prompt.includes(marker)) {
+      const [before, ...after] = exercise.prompt.split(marker);
+      return `${escapeHtml(before)}<span class="blank">&nbsp;</span>${escapeHtml(after.join(marker))}`;
+    }
     return `${escapeHtml(exercise.prompt)} <span class="blank">&nbsp;</span>`;
   }
   if (exercise.type === "draw_box") {
@@ -379,7 +480,7 @@ function renderPracticeItems(items: WorkbookPracticeItem[]) {
   return `<ol>${items
     .map((item) => {
       if (item.type !== "layout_row") return renderNumberedExercise(item);
-      return `<li class="workbook-layout-row-shell" style="list-style:none"><div class="workbook-layout-row"${workbookBoxStyleAttributes(item.boxStyle, ["display:grid", `grid-template-columns:repeat(${item.columns.length},minmax(0,1fr))`, "gap:16px"])}>${item.columns
+      return `<li class="workbook-layout-row-shell" style="list-style:none"><div class="workbook-layout-row"${workbookBoxStyleAttributes(item.boxStyle, ["display:grid", `grid-template-columns:repeat(${item.columns.length},minmax(0,1fr))`, `gap:${item.columnGap ?? 16}px`])}>${item.columns
         .map(
           (column) =>
             `<div class="workbook-layout-column"><ol>${column.exercises.map(renderNumberedExercise).join("")}</ol></div>`,
@@ -408,12 +509,14 @@ function renderWorkbookBody(
   logoDataUrl: string,
   copyrightYear: number,
   layoutProfile: string,
+  coverImageDataUrl?: string | null,
+  coverImageAlt?: string | null,
 ) {
   const badge = gradeBadge(content);
   const toc = content.chapters
     .map(
       (chapter, chapterIndex) => `
-    <h3>Chapter ${chapterIndex + 1}: ${escapeHtml(chapter.title)}</h3>
+    <h3>Chapter ${chapterIndex + 1}: ${escapeHtml(chapter.tocTitle ?? chapter.title)}</h3>
     <ol>${chapter.lessons.map((lesson, lessonIndex) => `<li><a href="#${escapeHtml(lesson.id)}">Lesson ${chapterIndex + 1}.${lessonIndex + 1} — ${escapeHtml(lesson.title)}</a></li>`).join("")}</ol>
   `,
     )
@@ -448,12 +551,13 @@ function renderWorkbookBody(
     <div class="cover">
       <div class="cover-header-bar"><div class="cover-logo-art"><img src="${logoDataUrl}" alt="Treeschool tree logo"></div><div class="logo">treeschool</div></div>
       <div class="${badge.className}">${escapeHtml(badge.value)}<div class="grade-badge-label">${badge.noun}</div></div>
+      ${coverImageDataUrl ? `<div class="cover-symbol-wrap"><img class="cover-symbol" src="${coverImageDataUrl}" alt="${escapeHtml(coverImageAlt ?? `${content.subjectLabel} cover illustration`)}"></div>` : ""}
       <h1>${escapeHtml(content.subjectLabel)}</h1>
       ${content.isCore ? '<p class="core-label">Core Curriculum</p>' : ""}
       <p class="cover-note">${escapeHtml(content.subtitle ?? "A complete, print-ready homeschool workbook.")}</p>
       <div class="cover-edition-bar"><p class="edition-label">${escapeHtml(content.editionLabel)}</p></div>
     </div>
-    <div class="publisher-page"><span class="header-label">Front Matter</span><p>Copyright &copy; ${copyrightYear} Treeschool. All rights reserved.</p><p>No part of this workbook may be reproduced, distributed, or transmitted in any form without prior written permission from Treeschool, except for personal or single-classroom use by the purchaser.</p><p class="publisher-site">www.treeschool.com</p></div>
+    <div class="publisher-page"><span class="header-label">Front Matter</span><p>Copyright &copy; ${copyrightYear} Treeschool. All rights reserved.</p><p>No part of this workbook may be reproduced, distributed, or transmitted in any form without prior written permission from Treeschool, except for personal or single-classroom use by the purchaser.</p><p class="publisher-site">www.treehomeschool.com</p></div>
     ${content.introduction.length ? `<div class="intro-page"><h1>Introduction</h1>${content.introduction.map((block) => renderLearnBlock(block, definitions, theme)).join("")}</div>` : ""}
     <div class="toc"><h1>Table of Contents</h1>${toc}</div>
     ${chapters}
@@ -477,6 +581,8 @@ export async function buildWorkbookHtml(input: {
   layoutProfile: string;
   scriptProfile: string;
   illustrationDefinitions?: IllustrationDefinition[];
+  coverImageDataUrl?: string | null;
+  coverImageAlt?: string | null;
   editionLabelOverride?: string | null;
   copyrightYear?: number;
 }) {
@@ -523,13 +629,15 @@ export async function buildWorkbookHtml(input: {
     logo,
     input.copyrightYear ?? 2026,
     input.layoutProfile,
+    input.coverImageDataUrl,
+    input.coverImageAlt,
   );
   return `<!doctype html>
 <html lang="${escapeHtml(input.languageCode ?? "en")}">
 <head>
 <meta charset="utf-8">
 <title>${escapeHtml(input.content.title)}</title>
-<style data-pagedjs-ignore>${fontCss}</style>
+<style>${fontCss}</style>
 <style>${themedCanonicalCss}\n${overlayCss}\n${tokenCss}\n
 .workbook-illustration { margin: 12px auto; break-inside: avoid; page-break-inside: avoid; text-align: center; }
 .workbook-illustration svg { max-width: 100%; height: auto; }
@@ -550,7 +658,7 @@ export async function buildWorkbookHtml(input: {
 <script>${safeInlineScript(pagedJs)}</script>
 </head>
 <body>${body}<script>
-(async()=>{try{await document.fonts.ready;await window.PagedPolyfill.preview();window.__WORKBOOK_PAGED_DONE__=true;}catch(error){window.__WORKBOOK_PAGED_ERROR__=String(error&&error.stack||error);}})();
+(async()=>{try{await document.fonts.load('40px "Bravura"','\uE050\uE084\uE0A4');await document.fonts.ready;await window.PagedPolyfill.preview();window.__WORKBOOK_PAGED_DONE__=true;}catch(error){window.__WORKBOOK_PAGED_ERROR__=String(error&&error.stack||error);}})();
 </script></body>
 </html>`;
 }
@@ -623,7 +731,7 @@ export async function renderWorkbookPdf(html: string) {
   }
 }
 
-function themeTokensFromRow(
+export function themeTokensFromRow(
   row: typeof workbookThemeVersions.$inferSelect,
 ): WorkbookThemeTokens {
   return workbookThemeTokensSchema.parse({
@@ -702,6 +810,7 @@ export async function executeWorkbookRenderRun(renderRunId: string) {
       key: workbookIllustrationTypes.key,
       rendererKind: workbookIllustrationTypes.rendererKind,
       svgTemplate: workbookIllustrationTypes.svgTemplate,
+      wrapperClass: workbookIllustrationTypes.wrapperClass,
       tokenBindingsJson: workbookIllustrationTypes.tokenBindingsJson,
     })
     .from(workbookIllustrationTypes)
@@ -711,6 +820,11 @@ export async function executeWorkbookRenderRun(renderRunId: string) {
     .set({ status: "running", lastError: null })
     .where(eq(workbookRenderRuns.id, renderRunId));
   try {
+    const coverImageDataUrl = row.project.coverImageObjectPath
+      ? `data:image/png;base64,${Buffer.from(
+          await downloadPrivateFile(row.project.coverImageObjectPath),
+        ).toString("base64")}`
+      : null;
     const html = await buildWorkbookHtml({
       content,
       theme: themeTokensFromRow(row.theme),
@@ -719,6 +833,8 @@ export async function executeWorkbookRenderRun(renderRunId: string) {
       layoutProfile: row.project.layoutProfile,
       scriptProfile: row.project.scriptProfile,
       illustrationDefinitions: illustrations,
+      coverImageDataUrl,
+      coverImageAlt: row.project.coverImageAlt,
       editionLabelOverride: row.run.optionsJson.editionLabelOverride ?? null,
       copyrightYear: row.run.optionsJson.copyrightYear ?? 2026,
     });

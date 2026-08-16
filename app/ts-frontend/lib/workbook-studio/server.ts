@@ -94,6 +94,7 @@ export type WorkbookLearnBlock =
   | {
       id: string;
       type: "layout_row";
+      columnGap?: number;
       columns: Array<{
         id: string;
         blocks: WorkbookLearnBlockLeaf[];
@@ -112,11 +113,14 @@ export type WorkbookExerciseLeaf = {
     | "write"
     | "draw_box";
   prompt: string;
+  answerKeyText?: string;
   standardsCodes: string[];
   options?: string[];
   correctAnswer?: string | string[];
   pairs?: Array<{ id: string; left: string; right: string }>;
   rightOrder?: string[];
+  leftLabel?: string;
+  rightLabel?: string;
   sampleAnswer?: string;
   writingLines?: number;
   boxHeightMm?: number;
@@ -128,6 +132,7 @@ export type WorkbookExercise =
   | {
       id: string;
       type: "layout_row";
+      columnGap?: number;
       columns: Array<{
         id: string;
         exercises: WorkbookExerciseLeaf[];
@@ -147,6 +152,7 @@ export type WorkbookContent = {
   chapters: Array<{
     id: string;
     title: string;
+    tocTitle?: string;
     description?: string;
     lessons: Array<{
       id: string;
@@ -197,7 +203,7 @@ export type WorkbookCatalogPlan = {
 export type WorkbookStudioProject = {
   id: string;
   courseId: string;
-  curriculumId: string;
+  curriculumId: string | null;
   courseStableKey: string;
   nativeWorkbookId: string | null;
   catalogPlanKey: string | null;
@@ -211,6 +217,9 @@ export type WorkbookStudioProject = {
   localeCode: string | null;
   layoutProfile: string;
   scriptProfile: string;
+  coverImageObjectPath: string | null;
+  coverImageAlt: string | null;
+  coverImageSha256: string | null;
   status: "draft" | "generating" | "review" | "ready" | "released" | "archived";
   themeOverrideVersionId: string | null;
   generationPromptVersionId: string | null;
@@ -235,10 +244,13 @@ export type WorkbookStudioSummary = {
   }>;
   courses: Array<{
     id: string;
-    curriculumId: string;
+    curriculumId: string | null;
     stableKey: string;
     curriculumSubjectId: string;
     status: "inherited" | "modified" | "new" | "retired";
+    gradeMin: number;
+    gradeMax: number;
+    type: "core" | "elective";
     academicStandardOverrideKey: string | null;
     standardCode: string | null;
     standardLabel: string | null;
