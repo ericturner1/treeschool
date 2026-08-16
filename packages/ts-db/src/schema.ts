@@ -3425,6 +3425,41 @@ export const funnelSales = pgTable(
   })
 );
 
+export const saleEmailNotifications = pgTable(
+  "sale_email_notifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    notificationKey: text("notification_key").notNull(),
+    stripeEventId: text("stripe_event_id").notNull(),
+    stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
+    recipientEmail: text("recipient_email").notNull(),
+    purchaserEmail: text("purchaser_email"),
+    saleSource: text("sale_source").notNull(),
+    amountTotalCents: integer("amount_total_cents").notNull().default(0),
+    currency: text("currency").notNull().default("USD"),
+    itemsJson: jsonb("items_json")
+      .$type<Array<{ description: string; quantity: number | null }>>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(1),
+    lastError: text("last_error"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    notificationKeyUnique: unique("sale_email_notifications_key_unique").on(
+      table.notificationKey
+    ),
+    statusUpdatedIndex: index("sale_email_notifications_status_updated_idx").on(
+      table.status,
+      table.updatedAt
+    )
+  })
+);
+
 export const funnelAutomationRules = pgTable(
   "funnel_automation_rules",
   {

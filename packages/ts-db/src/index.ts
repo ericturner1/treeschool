@@ -67,6 +67,7 @@ export {
   funnelPageGenerationRuns,
   funnelLeads,
   funnelSales,
+  saleEmailNotifications,
   funnelAutomationRules,
   lessonGenerationJobs,
   lessonGenerationJobStatusEnum,

@@ -52,7 +52,8 @@ const envSchema = z.object({
     .transform((value) => value !== "false"),
   SMTP_USER: z.string().min(1).optional(),
   SMTP_PASSWORD: z.string().min(1).optional(),
-  SMTP_FROM: z.string().min(1).optional()
+  SMTP_FROM: z.string().min(1).optional(),
+  SALES_NOTIFICATION_EMAIL: z.string().email().optional()
 });
 
 export const env = envSchema.parse({
@@ -98,7 +99,8 @@ export const env = envSchema.parse({
   SMTP_SECURE: process.env.SMTP_SECURE,
   SMTP_USER: process.env.SMTP_USER,
   SMTP_PASSWORD: process.env.SMTP_PASSWORD,
-  SMTP_FROM: process.env.SMTP_FROM
+  SMTP_FROM: process.env.SMTP_FROM,
+  SALES_NOTIFICATION_EMAIL: process.env.SALES_NOTIFICATION_EMAIL
 });
 
 export const client = postgres(env.DATABASE_URL, {

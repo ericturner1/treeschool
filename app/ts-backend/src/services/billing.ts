@@ -51,6 +51,10 @@ import {
 import { withTreeschoolCheckoutBranding } from "./stripe-checkout";
 import { reportMetaCheckoutPurchase } from "./meta-conversions";
 import {
+  notifyCheckoutSale,
+  notifyDirectPaymentIntentSale
+} from "./sale-email-notifications";
+import {
   funnelCheckoutMetadata,
   recordStripeFunnelSale,
   resolvePublicFunnelOneClickOffer,
@@ -2032,7 +2036,7 @@ export async function decideFunnelOneClickOffer(input: {
         confirm: true,
         off_session: true,
         description: `Treeschool ${selection.title}`,
-        metadata
+        metadata: { ...metadata, directTreeschoolSale: "true" }
       }, { idempotencyKey: `funnel-one-click:${input.sourceCheckoutSessionId}:${offer.stepId}:${selection.id}` });
       if (paymentIntent.status === "succeeded" || paymentIntent.status === "processing") {
         if (paymentIntent.status === "succeeded") {
@@ -2329,7 +2333,7 @@ export async function decideFirstGradePostCheckoutOffer(input: {
       confirm: true,
       off_session: true,
       description: `Treeschool ${selectedOffer.title}`,
-      metadata
+      metadata: { ...metadata, directTreeschoolSale: "true" }
     }, {
       idempotencyKey: `post-checkout-offer:${input.sourceCheckoutSessionId}:${variant}`
     });
@@ -2469,10 +2473,21 @@ export async function handleStripeWebhook(input: {
         error instanceof Error ? error.message : "Unknown funnel attribution error."
       );
     });
+    await notifyCheckoutSale({
+      stripe,
+      stripeEventId: event.id,
+      eventCreated: event.created,
+      session: event.data.object
+    });
   }
 
   if (event.type === "payment_intent.succeeded") {
     await fulfillNativeWorkbookPaymentIntent(event.data.object);
+    await notifyDirectPaymentIntentSale({
+      stripeEventId: event.id,
+      eventCreated: event.created,
+      paymentIntent: event.data.object
+    });
   }
 
   if (event.type === "checkout.session.async_payment_succeeded") {
@@ -2504,6 +2519,12 @@ export async function handleStripeWebhook(input: {
         "Funnel sale attribution failed after asynchronous payment:",
         error instanceof Error ? error.message : "Unknown funnel attribution error."
       );
+    });
+    await notifyCheckoutSale({
+      stripe,
+      stripeEventId: event.id,
+      eventCreated: event.created,
+      session: event.data.object
     });
   }
 

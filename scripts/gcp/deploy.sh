@@ -61,7 +61,7 @@ gcloud run deploy "${API_SERVICE}" \
   --max-instances 3 \
   --concurrency "${API_CONCURRENCY}" \
   --timeout 300 \
-  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_PROCESSOR_JOB_NAME=${PROCESSOR_JOB},GCS_BUCKET_NAME=${BUCKET},PUBLIC_APP_URL=https://www.treehomeschool.com,META_PIXEL_ID=930584153407646,META_GRAPH_API_VERSION=v25.0,SMTP_HOST=mail.privateemail.com,SMTP_PORT=465,SMTP_SECURE=true,SMTP_USER=support@treehomeschool.com,SMTP_FROM=Treeschool Support <support@treehomeschool.com>" \
+  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_PROCESSOR_JOB_NAME=${PROCESSOR_JOB},GCS_BUCKET_NAME=${BUCKET},PUBLIC_APP_URL=https://www.treehomeschool.com,META_PIXEL_ID=930584153407646,META_GRAPH_API_VERSION=v25.0,SMTP_HOST=mail.privateemail.com,SMTP_PORT=465,SMTP_SECURE=true,SMTP_USER=support@treehomeschool.com,SMTP_FROM=Treeschool Support <support@treehomeschool.com>,SALES_NOTIFICATION_EMAIL=ericsturner1@gmail.com" \
   --set-secrets "${API_SECRETS}" \
   --quiet
 
