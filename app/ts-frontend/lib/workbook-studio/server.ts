@@ -481,8 +481,9 @@ export async function getAdminWorkbookStudioProject(
 export function getAdminWorkbookStudioCoverPreviewResponse(
   userId: string,
   projectId: string,
+  format: "pdf" | "png" = "pdf",
 ) {
-  const query = new URLSearchParams({ userId, projectId });
+  const query = new URLSearchParams({ userId, projectId, format });
   return backendFetch(
     `${getBackendUrl()}/internal/workbook-studio/admin/project/cover-preview?${query}`,
     { cache: "no-store" },

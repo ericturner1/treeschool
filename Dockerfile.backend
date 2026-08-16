@@ -36,7 +36,6 @@ RUN bun install --frozen-lockfile --production
 
 COPY --from=build /workspace/app/ts-backend/dist app/ts-backend/dist
 COPY --from=build /workspace/packages/ts-db packages/ts-db
-COPY app/ts-frontend/public/tree-icon.png app/ts-frontend/public/tree-icon.png
 
 EXPOSE 8080
 CMD ["bun", "run", "--filter", "ts-backend", "start"]

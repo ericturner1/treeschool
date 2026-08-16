@@ -1,32 +1,24 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
-
-type CoverColors = {
-  ink: string;
-  leaf: string;
-  cream: string;
-  canvas: string;
-  accent: string;
-};
 
 export function WorkbookCoverPreview({
   projectId,
   title,
-  gradeLabel,
   editionLabel,
-  colors,
   available,
+  renderKey,
 }: {
   projectId: string;
   title: string;
-  gradeLabel: string;
   editionLabel: string;
-  colors: CoverColors;
   available: boolean;
+  renderKey?: string;
 }) {
   const [open, setOpen] = useState(false);
   const previewUrl = `/api/workbook-studio/cover-preview/${encodeURIComponent(projectId)}`;
+  const thumbnailUrl = `${previewUrl}?format=png&render=${encodeURIComponent(renderKey ?? "latest")}`;
 
   useEffect(() => {
     if (!open) return;
@@ -43,32 +35,25 @@ export function WorkbookCoverPreview({
         type="button"
         onClick={() => available && setOpen(true)}
         disabled={!available}
-        className="group flex min-h-36 items-center gap-4 rounded-[18px] border border-[#b9cfa5] bg-[#edf5e7] p-4 text-left transition enabled:hover:-translate-y-0.5 enabled:hover:border-[#739e56] enabled:hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+        className="group flex min-h-28 w-full items-center gap-4 rounded-[18px] border border-[#b9cfa5] bg-[#edf5e7] p-4 text-left transition enabled:hover:border-[#739e56] enabled:hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <span
-          className="grid aspect-[210/297] h-24 shrink-0 place-items-center rounded-[4px] border-2 p-2 text-center shadow-md"
-          style={{
-            backgroundColor: colors.cream,
-            borderColor: colors.leaf,
-            color: colors.ink,
-          }}
-        >
-          <span>
-            <span
-              className="block rounded px-1.5 py-1 text-[7px] font-black uppercase tracking-wide"
-              style={{ backgroundColor: colors.accent, color: colors.canvas }}
-            >
-              {gradeLabel}
+        <span className="relative aspect-[210/297] h-24 shrink-0 overflow-hidden rounded-[5px] border border-[#9fbd89] bg-white shadow-md">
+          {available ? (
+            <Image
+              src={thumbnailUrl}
+              alt={`${title} rendered cover`}
+              fill
+              sizes="68px"
+              unoptimized
+              className="object-cover"
+            />
+          ) : (
+            <span className="grid h-full place-items-center px-2 text-center text-[9px] font-bold text-ink/45">
+              Not rendered
             </span>
-            <span
-              className="mt-3 block text-[10px] font-black leading-3"
-              style={{ color: colors.accent }}
-            >
-              {title}
-            </span>
-          </span>
+          )}
         </span>
-        <span className="min-w-0">
+        <span className="min-w-0 flex-1">
           <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[#567b40]">
             Front matter
           </span>
@@ -78,12 +63,12 @@ export function WorkbookCoverPreview({
               ? `Preview the print-ready ${editionLabel.toLowerCase()} cover.`
               : "Render a PDF to enable the exact cover preview."}
           </span>
-          {available ? (
-            <span className="mt-3 block text-xs font-bold text-[#486a38]">
-              Preview →
-            </span>
-          ) : null}
         </span>
+        {available ? (
+          <span className="ml-auto shrink-0 text-sm font-bold text-[#486a38]">
+            Open →
+          </span>
+        ) : null}
       </button>
 
       {open ? (

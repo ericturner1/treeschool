@@ -384,12 +384,13 @@ const server = Bun.serve({
         const userId = url.searchParams.get("userId");
         const projectId = url.searchParams.get("projectId");
         if (!userId || !projectId) return Response.json({ error: "userId and projectId are required." }, { status: 400 });
-        const pdf = await getAdminWorkbookStudioCoverPreview({ userId, projectId });
-        return new Response(pdf, {
+        const format = url.searchParams.get("format") === "png" ? "png" : "pdf";
+        const preview = await getAdminWorkbookStudioCoverPreview({ userId, projectId, format });
+        return new Response(preview, {
           headers: {
-            "Content-Type": "application/pdf",
-            "Content-Disposition": "inline; filename=workbook-cover-preview.pdf",
-            "Cache-Control": "private, no-store",
+            "Content-Type": format === "png" ? "image/png" : "application/pdf",
+            "Content-Disposition": `inline; filename=workbook-cover-preview.${format}`,
+            "Cache-Control": format === "png" ? "private, max-age=3600" : "private, no-store",
             "X-Content-Type-Options": "nosniff",
           },
         });

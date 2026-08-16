@@ -2,7 +2,7 @@ import { getCurrentUser } from "../../../../../lib/auth/server";
 import { getAdminWorkbookStudioCoverPreviewResponse } from "../../../../../lib/workbook-studio/server";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ projectId: string }> },
 ) {
   const user = await getCurrentUser();
@@ -11,9 +11,13 @@ export async function GET(
   }
 
   const { projectId } = await context.params;
+  const format = new URL(request.url).searchParams.get("format") === "png"
+    ? "png"
+    : "pdf";
   const response = await getAdminWorkbookStudioCoverPreviewResponse(
     user.id,
     projectId,
+    format,
   );
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as {
@@ -27,9 +31,9 @@ export async function GET(
 
   return new Response(await response.arrayBuffer(), {
     headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": "inline; filename=workbook-cover-preview.pdf",
-      "Cache-Control": "private, no-store",
+      "Content-Type": format === "png" ? "image/png" : "application/pdf",
+      "Content-Disposition": `inline; filename=workbook-cover-preview.${format}`,
+      "Cache-Control": format === "png" ? "private, max-age=3600" : "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },
   });

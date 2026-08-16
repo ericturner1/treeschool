@@ -128,15 +128,18 @@ function serviceDirectory() {
   return dirname(fileURLToPath(import.meta.url));
 }
 
-async function loadWorkbookAsset(filename: string) {
+async function loadWorkbookAssetBytes(filename: string) {
   const serviceDir = serviceDirectory();
-  const bytes = await firstReadable([
+  return firstReadable([
     join(serviceDir, "../workbook-assets", filename),
     join(serviceDir, "workbook-assets", filename),
     join(process.cwd(), "app/ts-backend/src/workbook-assets", filename),
     join(process.cwd(), "app/ts-backend/dist/workbook-assets", filename),
   ]);
-  return new TextDecoder().decode(bytes);
+}
+
+async function loadWorkbookAsset(filename: string) {
+  return new TextDecoder().decode(await loadWorkbookAssetBytes(filename));
 }
 
 async function embeddedFontCssAsset(filename: string) {
@@ -565,11 +568,7 @@ function renderWorkbookBody(
 }
 
 async function logoDataUrl() {
-  const bytes = await firstReadable([
-    join(process.cwd(), "app/ts-frontend/public/tree-icon.png"),
-    join(process.cwd(), "../ts-frontend/public/tree-icon.png"),
-    join(serviceDirectory(), "../../../ts-frontend/public/tree-icon.png"),
-  ]);
+  const bytes = await loadWorkbookAssetBytes("tree-icon.png");
   return `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`;
 }
 

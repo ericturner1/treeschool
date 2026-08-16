@@ -26,6 +26,9 @@ import {
 } from "ts-db";
 import { z } from "zod";
 import { PDFDocument } from "pdf-lib";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { db } from "../db";
 import { downloadPrivateFile } from "./media";
 import {
@@ -561,9 +564,52 @@ export async function getAdminWorkbookStudioProject(input: {
   };
 }
 
+export async function renderWorkbookCoverPng(sourceBytes: Uint8Array) {
+  const workingDirectory = await mkdtemp(
+    join(tmpdir(), "treeschool-workbook-cover-"),
+  );
+  const sourcePath = join(workingDirectory, "workbook.pdf");
+  const outputPrefix = join(workingDirectory, "cover");
+  const outputPath = `${outputPrefix}.png`;
+  try {
+    await writeFile(sourcePath, sourceBytes);
+    const renderer = Bun.spawn(
+      [
+        "pdftoppm",
+        "-png",
+        "-singlefile",
+        "-f",
+        "1",
+        "-l",
+        "1",
+        "-scale-to-x",
+        "720",
+        "-scale-to-y",
+        "-1",
+        sourcePath,
+        outputPrefix,
+      ],
+      { stdout: "ignore", stderr: "pipe" },
+    );
+    const [exitCode, stderr] = await Promise.all([
+      renderer.exited,
+      new Response(renderer.stderr as ReadableStream<Uint8Array>).text(),
+    ]);
+    if (exitCode !== 0) {
+      throw new Error(
+        `Workbook cover rendering failed (exit ${exitCode}).${stderr.trim() ? ` ${stderr.trim()}` : ""}`,
+      );
+    }
+    return new Uint8Array(await readFile(outputPath));
+  } finally {
+    await rm(workingDirectory, { recursive: true, force: true });
+  }
+}
+
 export async function getAdminWorkbookStudioCoverPreview(input: {
   userId: string;
   projectId: string;
+  format?: "pdf" | "png";
 }) {
   await requireAdmin(input.userId);
   const projectId = uuidSchema.parse(input.projectId);
@@ -582,9 +628,12 @@ export async function getAdminWorkbookStudioCoverPreview(input: {
     throw new Error("Render a workbook PDF before previewing its cover.");
   }
 
-  const source = await PDFDocument.load(
-    await downloadPrivateFile(render.pdfObjectPath),
-  );
+  const sourceBytes = await downloadPrivateFile(render.pdfObjectPath);
+  if (input.format === "png") {
+    return renderWorkbookCoverPng(sourceBytes);
+  }
+
+  const source = await PDFDocument.load(sourceBytes);
   if (!source.getPageCount()) {
     throw new Error("The latest workbook PDF does not contain a cover page.");
   }

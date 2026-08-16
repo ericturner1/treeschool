@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "../../../../lib/auth/server";
 import { getAdminWorkbookStudioProject } from "../../../../lib/workbook-studio/server";
@@ -85,9 +86,11 @@ export default async function WorkbookStudioProjectPage(props: {
       0,
     ) ?? 0;
   const latestRender = detail.renderRuns[0] ?? null;
-  const hasCoverPreview = detail.renderRuns.some(
+  const latestCompletedRender = detail.renderRuns.find(
     (run) => run.status === "completed" && Boolean(run.pageCount),
   );
+  const hasCoverPreview = Boolean(latestCompletedRender);
+  const coverThumbnailUrl = `/api/workbook-studio/cover-preview/${encodeURIComponent(detail.project.id)}?format=png&render=${encodeURIComponent(latestCompletedRender?.id ?? "latest")}`;
   const latestGeneration = detail.generationRuns[0] ?? null;
   const issueCount =
     detail.currentRevision?.validationJson.issues?.length ?? 0;
@@ -168,37 +171,23 @@ export default async function WorkbookStudioProjectPage(props: {
               className="grid min-h-[280px] place-items-center border-t border-[#d8c8ae] p-7 lg:border-l lg:border-t-0"
               style={{ backgroundColor: detail.effectiveTheme.colorSand }}
             >
-              <div
-                className="aspect-[210/297] w-full max-w-[205px] rounded-[7px] border-[3px] p-5 text-center shadow-[0_14px_30px_rgba(61,46,29,0.2)]"
-                style={{
-                  backgroundColor: detail.effectiveTheme.colorCream,
-                  borderColor: detail.effectiveTheme.colorLeaf,
-                  color: detail.effectiveTheme.colorInk,
-                }}
-              >
-                <div
-                  className="rounded-[5px] px-3 py-2 text-xs font-black uppercase tracking-[0.12em]"
-                  style={{
-                    backgroundColor: detail.effectiveTheme.colorCoverAccent,
-                    color: detail.effectiveTheme.colorCanvas,
-                  }}
-                >
-                  {content?.gradeLabel ?? "Workbook"}
+              {hasCoverPreview ? (
+                <div className="relative aspect-[210/297] w-full max-w-[205px] overflow-hidden rounded-[7px] border border-[#8bac70] bg-white shadow-[0_14px_30px_rgba(61,46,29,0.2)]">
+                  <Image
+                    src={coverThumbnailUrl}
+                    alt={`${content?.subjectLabel ?? detail.project.title} rendered cover`}
+                    fill
+                    sizes="205px"
+                    priority
+                    unoptimized
+                    className="object-cover"
+                  />
                 </div>
-                <div className="grid h-[72%] place-items-center">
-                  <div>
-                    <p
-                      className="text-2xl font-black"
-                      style={{ color: detail.effectiveTheme.colorCoverAccent }}
-                    >
-                      {content?.subjectLabel ?? detail.project.title}
-                    </p>
-                    <p className="mt-3 text-xs leading-5 opacity-65">
-                      {content?.editionLabel ?? "Draft edition"}
-                    </p>
-                  </div>
+              ) : (
+                <div className="grid aspect-[210/297] w-full max-w-[205px] place-items-center rounded-[7px] border-2 border-dashed border-[#b7a88e] bg-white/60 p-6 text-center text-sm text-ink/45">
+                  Render the workbook to see its real cover here.
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </section>
@@ -215,42 +204,38 @@ export default async function WorkbookStudioProjectPage(props: {
                 element palette, canvas, and context inspector.
               </p>
             </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="mt-5 flex flex-col gap-3">
               <WorkbookCoverPreview
                 projectId={detail.project.id}
                 title={content.subjectLabel}
-                gradeLabel={content.gradeLabel}
                 editionLabel={content.editionLabel}
                 available={hasCoverPreview}
-                colors={{
-                  ink: detail.effectiveTheme.colorInk,
-                  leaf: detail.effectiveTheme.colorLeaf,
-                  cream: detail.effectiveTheme.colorCream,
-                  canvas: detail.effectiveTheme.colorCanvas,
-                  accent: detail.effectiveTheme.colorCoverAccent,
-                }}
+                renderKey={latestCompletedRender?.id}
               />
               {content.chapters.map((chapter, chapterIndex) => (
                 <Link
                   key={chapter.id}
                   href={`/admin/workbook-studio/${detail.project.id}/edit?chapter=${chapterIndex}`}
-                  className="group flex min-h-36 flex-col justify-between rounded-[18px] border border-[#dfd1bc] bg-[#fffaf2] p-4 transition hover:-translate-y-0.5 hover:border-[#9fbd89] hover:shadow-md"
+                  className="group flex min-h-28 items-center gap-4 rounded-[18px] border border-[#dfd1bc] bg-[#fffaf2] p-4 transition hover:border-[#9fbd89] hover:shadow-md"
                 >
-                  <div>
+                  <div className="grid h-14 w-14 shrink-0 place-items-center rounded-[14px] bg-[#e6efdc] text-xl font-black text-[#567b40]">
+                    {chapterIndex + 1}
+                  </div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#567b40]">
                       Chapter {chapterIndex + 1}
                     </p>
-                    <h3 className="mt-2 text-lg font-semibold leading-6 group-hover:text-[#486a38]">
+                    <h3 className="mt-1 text-lg font-semibold leading-6 group-hover:text-[#486a38]">
                       {chapter.title}
                     </h3>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between text-xs text-ink/45">
-                    <span>
+                    <p className="mt-1 text-xs text-ink/45">
                       {chapter.lessons.length} lesson
                       {chapter.lessons.length === 1 ? "" : "s"}
-                    </span>
-                    <span className="font-bold text-[#567b40]">Edit →</span>
+                    </p>
                   </div>
+                  <span className="ml-auto shrink-0 text-xs font-bold text-[#567b40]">
+                    Edit chapter →
+                  </span>
                 </Link>
               ))}
             </div>
