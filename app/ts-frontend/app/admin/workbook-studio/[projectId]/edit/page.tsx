@@ -10,7 +10,7 @@ import { WorkbookStudioEditor } from "../workbook-studio-editor";
 
 export default async function WorkbookStudioEditorPage(props: {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ chapter?: string }>;
+  searchParams: Promise<{ chapter?: string; view?: string }>;
 }) {
   const params = await props.params;
   const searchParams = await props.searchParams;
@@ -52,6 +52,7 @@ export default async function WorkbookStudioEditorPage(props: {
   const initialChapter = Number.isFinite(requestedChapter)
     ? Math.max(requestedChapter, 0)
     : 0;
+  const initialView = searchParams.view === "cover" ? "cover" : "chapter";
   const selectedChapter =
     detail.currentRevision?.contentJson.chapters[
       Math.min(
@@ -61,9 +62,9 @@ export default async function WorkbookStudioEditorPage(props: {
     ];
 
   return (
-    <main className="min-h-screen bg-[#eee4d4] text-ink">
+    <main className="flex h-screen min-h-0 flex-col overflow-hidden bg-[#eee4d4] text-ink">
       <PackAutoRefresh enabled={working} />
-      <header className="sticky top-0 z-30 border-b border-[#d8c8ae] bg-[#fffaf2]/95 px-4 py-3 backdrop-blur sm:px-6">
+      <header className="z-30 shrink-0 border-b border-[#d8c8ae] bg-[#fffaf2]/95 px-4 py-3 backdrop-blur sm:px-6">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <Link
@@ -75,7 +76,9 @@ export default async function WorkbookStudioEditorPage(props: {
             <div className="min-w-0">
               <p className="truncate font-semibold">{detail.project.title}</p>
               <p className="text-xs text-ink/48">
-                {selectedChapter
+                {initialView === "cover"
+                  ? "Cover"
+                  : selectedChapter
                   ? `Chapter ${Math.min(initialChapter, detail.currentRevision!.contentJson.chapters.length - 1) + 1}: ${selectedChapter.title}`
                   : "Editor"}{" "}
                 · {detail.project.status} · Theme v
@@ -97,6 +100,7 @@ export default async function WorkbookStudioEditorPage(props: {
           detail={detail}
           themes={studio.themes}
           initialChapter={initialChapter}
+          initialView={initialView}
         />
       ) : (
         <div className="mx-auto max-w-3xl px-5 py-20 text-center">

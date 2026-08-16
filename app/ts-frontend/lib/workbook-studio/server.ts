@@ -481,7 +481,7 @@ export async function getAdminWorkbookStudioProject(
 export function getAdminWorkbookStudioCoverPreviewResponse(
   userId: string,
   projectId: string,
-  format: "pdf" | "png" = "pdf",
+  format: "pdf" | "png" | "artwork" = "pdf",
 ) {
   const query = new URLSearchParams({ userId, projectId, format });
   return backendFetch(

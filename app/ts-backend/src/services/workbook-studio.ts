@@ -609,10 +609,21 @@ export async function renderWorkbookCoverPng(sourceBytes: Uint8Array) {
 export async function getAdminWorkbookStudioCoverPreview(input: {
   userId: string;
   projectId: string;
-  format?: "pdf" | "png";
+  format?: "pdf" | "png" | "artwork";
 }) {
   await requireAdmin(input.userId);
   const projectId = uuidSchema.parse(input.projectId);
+  if (input.format === "artwork") {
+    const [project] = await db
+      .select({ coverImageObjectPath: workbookProjects.coverImageObjectPath })
+      .from(workbookProjects)
+      .where(eq(workbookProjects.id, projectId))
+      .limit(1);
+    if (!project?.coverImageObjectPath) {
+      throw new Error("This workbook does not have cover artwork yet.");
+    }
+    return downloadPrivateFile(project.coverImageObjectPath);
+  }
   const [render] = await db
     .select({ pdfObjectPath: workbookRenderRuns.pdfObjectPath })
     .from(workbookRenderRuns)

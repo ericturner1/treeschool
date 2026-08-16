@@ -4,7 +4,6 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "../../../../lib/auth/server";
 import { getAdminWorkbookStudioProject } from "../../../../lib/workbook-studio/server";
 import { PackAutoRefresh } from "../../../pack/upload/auto-refresh";
-import { WorkbookCoverPreview } from "./workbook-cover-preview";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", {
@@ -205,13 +204,40 @@ export default async function WorkbookStudioProjectPage(props: {
               </p>
             </div>
             <div className="mt-5 flex flex-col gap-3">
-              <WorkbookCoverPreview
-                projectId={detail.project.id}
-                title={content.subjectLabel}
-                editionLabel={content.editionLabel}
-                available={hasCoverPreview}
-                renderKey={latestCompletedRender?.id}
-              />
+              <Link
+                href={`/admin/workbook-studio/${detail.project.id}/edit?view=cover`}
+                className="group flex min-h-28 w-full items-center gap-4 rounded-[18px] border border-[#b9cfa5] bg-[#edf5e7] p-4 text-left transition hover:border-[#739e56] hover:shadow-md"
+              >
+                <span className="relative aspect-[210/297] h-24 shrink-0 overflow-hidden rounded-[5px] border border-[#9fbd89] bg-white shadow-md">
+                  {hasCoverPreview ? (
+                    <Image
+                      src={coverThumbnailUrl}
+                      alt={`${content.subjectLabel} rendered cover`}
+                      fill
+                      sizes="68px"
+                      unoptimized
+                      className="object-cover"
+                    />
+                  ) : (
+                    <span className="grid h-full place-items-center px-2 text-center text-[9px] font-bold text-ink/45">
+                      Not rendered
+                    </span>
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[#567b40]">
+                    Front matter
+                  </span>
+                  <strong className="mt-1 block text-lg">Cover</strong>
+                  <span className="mt-2 block text-xs leading-5 text-ink/48">
+                    Edit the title, subtitle, grade label, edition, and visual
+                    theme.
+                  </span>
+                </span>
+                <span className="ml-auto shrink-0 text-sm font-bold text-[#486a38]">
+                  Edit cover →
+                </span>
+              </Link>
               {content.chapters.map((chapter, chapterIndex) => (
                 <Link
                   key={chapter.id}

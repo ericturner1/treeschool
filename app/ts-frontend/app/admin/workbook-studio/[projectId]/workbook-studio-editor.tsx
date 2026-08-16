@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition, type DragEvent } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import type {
   WorkbookBoxStyle,
@@ -782,14 +783,283 @@ function WorkbookExerciseLeafFields({
   );
 }
 
+function coverGradeBadgeParts(label: string) {
+  const match = label.trim().match(/^(grades?|ages?)\s+(.+)$/i);
+  return match
+    ? { value: match[2], noun: match[1].toUpperCase() }
+    : { value: label, noun: "GRADE" };
+}
+
+function WorkbookCoverCanvas({
+  content,
+  detail,
+  onChange,
+}: {
+  content: WorkbookContent;
+  detail: WorkbookStudioProjectDetail;
+  onChange: (mutator: (draft: WorkbookContent) => void) => void;
+}) {
+  const badge = coverGradeBadgeParts(content.gradeLabel);
+  const artworkUrl = `/api/workbook-studio/cover-preview/${encodeURIComponent(detail.project.id)}?format=artwork&asset=${encodeURIComponent(detail.project.coverImageSha256 ?? "latest")}`;
+  return (
+    <div
+      className="relative mx-auto aspect-[210/297] w-full max-w-[720px] overflow-hidden rounded-[22px] border-[4px] text-center shadow-[0_16px_48px_rgba(70,50,30,0.2)]"
+      style={{
+        backgroundColor: detail.effectiveTheme.colorSand,
+        borderColor: detail.effectiveTheme.colorLeaf,
+        color: detail.effectiveTheme.colorInk,
+      }}
+    >
+      <div
+        className="absolute inset-x-0 top-0 flex h-[12%] items-center gap-2 px-[2%] text-left"
+        style={{ backgroundColor: detail.effectiveTheme.colorCoverAccent }}
+      >
+        <Image
+          src="/workbook-tree-icon.png"
+          alt="Treeschool tree logo"
+          width={82}
+          height={96}
+          unoptimized
+          className="h-[86%] w-auto object-contain"
+        />
+        <span className="text-[clamp(1.2rem,4vw,2.5rem)] font-black lowercase tracking-[-0.05em] text-white">
+          treeschool
+        </span>
+      </div>
+      <div
+        className="absolute right-0 top-0 z-10 flex h-[25%] w-[31%] flex-col items-center justify-center rounded-bl-[38%] px-2 text-white"
+        style={{ backgroundColor: detail.effectiveTheme.colorCoverAccent }}
+      >
+        <strong className="text-[clamp(1.7rem,8vw,5rem)] leading-none">
+          {badge.value}
+        </strong>
+        <span className="mt-2 text-[clamp(0.65rem,2.2vw,1.35rem)] font-black uppercase tracking-wide">
+          {badge.noun}
+        </span>
+      </div>
+      <div className="absolute inset-x-[7%] bottom-[9%] top-[17%] flex flex-col items-center justify-center">
+        <div className="relative h-[40%] w-[86%]">
+          {detail.project.coverImageObjectPath ? (
+            <Image
+              src={artworkUrl}
+              alt={detail.project.coverImageAlt ?? `${content.subjectLabel} cover artwork`}
+              fill
+              sizes="620px"
+              unoptimized
+              className="object-contain"
+            />
+          ) : (
+            <div className="grid h-full place-items-center rounded-[16px] border-2 border-dashed border-current/20 text-sm opacity-50">
+              Add cover artwork before release.
+            </div>
+          )}
+        </div>
+        <input
+          value={content.subjectLabel}
+          onChange={(event) =>
+            onChange((draft) => {
+              draft.subjectLabel = event.target.value;
+              draft.title = event.target.value;
+            })
+          }
+          aria-label="Cover title"
+          className="mt-[2%] w-full border-0 bg-transparent text-center text-[clamp(2rem,8vw,5.5rem)] font-black leading-none outline-none"
+          style={{ color: detail.effectiveTheme.colorCoverAccent }}
+        />
+        {content.isCore ? (
+          <span
+            className="mt-[2%] rounded-full px-5 py-2 text-xs font-black uppercase tracking-wide sm:text-base"
+            style={{
+              backgroundColor: detail.effectiveTheme.colorCoverAccentSoft,
+              color: detail.effectiveTheme.colorCoverAccent,
+            }}
+          >
+            Core curriculum
+          </span>
+        ) : null}
+        <textarea
+          value={content.subtitle ?? ""}
+          onChange={(event) =>
+            onChange((draft) => {
+              draft.subtitle = event.target.value;
+            })
+          }
+          aria-label="Cover subtitle"
+          rows={2}
+          className="mt-[3%] w-full resize-none border-0 bg-transparent text-center text-[clamp(0.85rem,3vw,1.8rem)] leading-snug outline-none"
+          style={{ color: detail.effectiveTheme.colorEarth }}
+        />
+      </div>
+      <div
+        className="absolute inset-x-0 bottom-0 flex h-[7%] items-center justify-end px-[3%]"
+        style={{ backgroundColor: detail.effectiveTheme.colorCoverAccent }}
+      >
+        <input
+          value={content.editionLabel}
+          onChange={(event) =>
+            onChange((draft) => {
+              draft.editionLabel = event.target.value;
+            })
+          }
+          aria-label="Edition label"
+          className="w-1/2 border-0 bg-transparent text-right text-xs font-bold text-white outline-none sm:text-base"
+        />
+      </div>
+    </div>
+  );
+}
+
+function WorkbookCoverInspector({
+  content,
+  detail,
+  themes,
+  themePending,
+  onChange,
+  onThemeChange,
+}: {
+  content: WorkbookContent;
+  detail: WorkbookStudioProjectDetail;
+  themes: WorkbookStudioSummary["themes"];
+  themePending: boolean;
+  onChange: (mutator: (draft: WorkbookContent) => void) => void;
+  onThemeChange: (themeVersionId: string | null) => void;
+}) {
+  return (
+    <div className="mt-4 grid gap-4">
+      <label className="grid gap-1 text-xs font-bold">
+        Cover title
+        <input
+          value={content.subjectLabel}
+          onChange={(event) =>
+            onChange((draft) => {
+              draft.subjectLabel = event.target.value;
+              draft.title = event.target.value;
+            })
+          }
+          className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"
+        />
+      </label>
+      <label className="grid gap-1 text-xs font-bold">
+        Subtitle
+        <textarea
+          value={content.subtitle ?? ""}
+          onChange={(event) =>
+            onChange((draft) => {
+              draft.subtitle = event.target.value;
+            })
+          }
+          rows={3}
+          className="resize-none rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"
+        />
+      </label>
+      <label className="grid gap-1 text-xs font-bold">
+        Grade label
+        <input
+          value={content.gradeLabel}
+          onChange={(event) =>
+            onChange((draft) => {
+              draft.gradeLabel = event.target.value;
+            })
+          }
+          className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"
+          placeholder="Grades 1-6"
+        />
+      </label>
+      <label className="grid gap-1 text-xs font-bold">
+        Edition label
+        <input
+          value={content.editionLabel}
+          onChange={(event) =>
+            onChange((draft) => {
+              draft.editionLabel = event.target.value;
+            })
+          }
+          className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-sm font-normal"
+        />
+      </label>
+      <label className="flex items-start gap-2 rounded-[12px] border border-[#d8c8ae] bg-white p-3 text-sm">
+        <input
+          type="checkbox"
+          checked={content.isCore}
+          onChange={(event) =>
+            onChange((draft) => {
+              draft.isCore = event.target.checked;
+            })
+          }
+          className="mt-1"
+        />
+        <span>
+          <strong className="block">Core curriculum badge</strong>
+          <span className="text-xs text-ink/50">
+            Elective workbooks normally leave this off.
+          </span>
+        </span>
+      </label>
+      <div className="rounded-[12px] bg-white p-3 text-sm">
+        <strong>Cover artwork</strong>
+        <p className="mt-1 text-xs leading-5 text-ink/50">
+          {detail.project.coverImageObjectPath
+            ? detail.project.coverImageAlt ?? "Imported cover artwork"
+            : "No cover artwork has been attached."}
+        </p>
+      </div>
+      <div className="rounded-[12px] bg-white p-3 text-sm">
+        <strong>Effective theme</strong>
+        <div className="mt-2 flex gap-1.5">
+          {[
+            detail.effectiveTheme.colorInk,
+            detail.effectiveTheme.colorEarth,
+            detail.effectiveTheme.colorLeaf,
+            detail.effectiveTheme.colorLeafDark,
+            detail.effectiveTheme.colorCream,
+            detail.effectiveTheme.colorSand,
+            detail.effectiveTheme.colorCoverAccent,
+          ].map((color) => (
+            <span
+              key={color}
+              title={color}
+              className="h-7 w-7 rounded-full border border-black/10"
+              style={{ background: color }}
+            />
+          ))}
+        </div>
+        <label className="mt-3 grid gap-1 text-xs font-bold">
+          Theme source
+          <select
+            value={detail.project.themeOverrideVersionId ?? ""}
+            disabled={themePending}
+            onChange={(event) => onThemeChange(event.target.value || null)}
+            className="rounded-[9px] border border-[#d8c8ae] bg-white px-2 py-2 font-normal"
+          >
+            <option value="">Curriculum default</option>
+            {themes
+              .filter((theme) => theme.publishedVersionId)
+              .map((theme) => (
+                <option key={theme.id} value={theme.publishedVersionId!}>
+                  {theme.name} · v{theme.versionNumber}
+                </option>
+              ))}
+          </select>
+        </label>
+        <p className="mt-2 text-xs text-ink/48">
+          Pinned effective version {detail.effectiveTheme.versionNumber}.
+          Changing a released workbook’s theme creates a new edition.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function WorkbookStudioEditor({
   detail,
   themes,
   initialChapter = 0,
+  initialView = "chapter",
 }: {
   detail: WorkbookStudioProjectDetail;
   themes: WorkbookStudioSummary["themes"];
   initialChapter?: number;
+  initialView?: "cover" | "chapter";
 }) {
   const router = useRouter();
   const [content, setContent] = useState<WorkbookContent>(() =>
@@ -802,6 +1072,9 @@ export function WorkbookStudioEditor({
     ),
     lesson: 0,
   });
+  const [editorView, setEditorView] = useState<"cover" | "chapter">(
+    initialView,
+  );
   const [leftPanel, setLeftPanel] = useState<"lessons" | "elements">(
     "lessons",
   );
@@ -811,6 +1084,7 @@ export function WorkbookStudioEditor({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [releaseOpen, setReleaseOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -818,6 +1092,10 @@ export function WorkbookStudioEditor({
   const chapter = content.chapters[selected.chapter] ?? content.chapters[0];
   const lesson = chapter?.lessons[selected.lesson] ?? chapter?.lessons[0];
   const issueCount = detail.currentRevision?.validationJson.issues?.length ?? 0;
+  const hasCompletedRender = detail.renderRuns.some(
+    (run) => run.status === "completed" && Boolean(run.pageCount),
+  );
+  const coverPreviewUrl = `/api/workbook-studio/cover-preview/${encodeURIComponent(detail.project.id)}`;
 
   const themeStyle = useMemo(
     () =>
@@ -833,13 +1111,7 @@ export function WorkbookStudioEditor({
     [detail.effectiveTheme],
   );
 
-  const editorGridColumns = leftSidebarCollapsed
-    ? rightSidebarCollapsed
-      ? "xl:grid-cols-[52px_minmax(0,1fr)_52px]"
-      : "xl:grid-cols-[52px_minmax(0,1fr)_310px]"
-    : rightSidebarCollapsed
-      ? "xl:grid-cols-[270px_minmax(0,1fr)_52px]"
-      : "xl:grid-cols-[270px_minmax(0,1fr)_310px]";
+  const editorGridTemplateColumns = `${leftSidebarCollapsed ? 48 : 220}px minmax(0, 1fr) ${rightSidebarCollapsed ? 48 : 300}px`;
 
   function mutate(mutator: (draft: WorkbookContent) => void) {
     setContent((current) => {
@@ -1011,17 +1283,49 @@ export function WorkbookStudioEditor({
 
   return (
     <div
-      style={themeStyle}
-      className={`mx-auto grid max-w-[1600px] ${editorGridColumns}`}
+      style={{
+        ...themeStyle,
+        gridTemplateColumns: editorGridTemplateColumns,
+      }}
+      className="grid min-h-0 flex-1"
     >
-      <aside className={`border-b border-[#d2c2aa] bg-[#f8f1e5] xl:min-h-[calc(100vh-65px)] xl:border-b-0 xl:border-r ${leftSidebarCollapsed ? "p-2" : "p-4"}`}>
+      <aside className={`overflow-auto border-r border-[#d2c2aa] bg-[#f8f1e5] ${leftSidebarCollapsed ? "p-2" : "p-4"}`}>
         <div className={`flex items-center gap-2 ${leftSidebarCollapsed ? "justify-center" : "justify-between"}`}>
           {!leftSidebarCollapsed ? <h2 className="text-xs font-black uppercase tracking-[0.13em] text-earth">
             Editor tools
           </h2> : null}
           <button type="button" onClick={() => setLeftSidebarCollapsed((collapsed) => !collapsed)} aria-label={leftSidebarCollapsed ? "Expand editor tools sidebar" : "Collapse editor tools sidebar"} title={leftSidebarCollapsed ? "Expand editor tools sidebar" : "Collapse editor tools sidebar"} className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#bca98a] bg-white text-lg font-black text-earth shadow-sm hover:border-[#739655] hover:text-[#486a38]">{leftSidebarCollapsed ? "›" : "‹"}</button>
         </div>
-        {!leftSidebarCollapsed ? <>
+        {!leftSidebarCollapsed ? editorView === "cover" ? (
+          <div className="mt-4">
+            <Link
+              href={`/admin/workbook-studio/${detail.project.id}#chapters`}
+              className="text-xs font-bold text-earth"
+            >
+              ← Workbook structure
+            </Link>
+            <div className="mt-4 rounded-[14px] border border-[#b9cfa5] bg-[#edf5e7] p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#567b40]">
+                Front matter
+              </p>
+              <p className="mt-1 font-bold">Cover</p>
+              <p className="mt-2 text-xs leading-5 text-ink/50">
+                Edit cover text directly on the canvas or use the inspector.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditorView("chapter")}
+              className="mt-3 w-full rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-xs font-bold text-earth"
+            >
+              Open Chapter {selected.chapter + 1}
+            </button>
+            <div className="mt-5 rounded-[14px] bg-[#efe4d2] p-3 text-xs leading-5 text-ink/58">
+              The cover structure comes from the selected theme. Preview shows
+              the most recently rendered PDF cover.
+            </div>
+          </div>
+        ) : <>
           <div className="mt-3 grid grid-cols-2 rounded-[12px] border border-[#d8c8ae] bg-white p-1">
             {(["lessons", "elements"] as const).map((panel) => (
               <button
@@ -1264,11 +1568,11 @@ export function WorkbookStudioEditor({
         </> : null}
       </aside>
 
-      <section className="min-w-0 p-4 sm:p-6 lg:p-8">
+      <section className="min-w-0 overflow-auto p-4 sm:p-6 lg:p-8">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.12em] text-earth">
-              Canvas
+              {editorView === "cover" ? "Cover canvas" : "Lesson canvas"}
             </p>
             <p className="mt-1 text-sm text-ink/48">
               Revision {detail.currentRevision!.revisionNumber} ·{" "}
@@ -1276,6 +1580,27 @@ export function WorkbookStudioEditor({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {editorView === "cover" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (dirty) {
+                    setError("Save and render your cover changes before previewing them.");
+                    return;
+                  }
+                  if (!hasCompletedRender) {
+                    setError("Render the workbook PDF before previewing its cover.");
+                    return;
+                  }
+                  setError("");
+                  setPreviewOpen(true);
+                }}
+                disabled={pending}
+                className="cta-button cta-button--outline cta-button--small"
+              >
+                Preview
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={save}
@@ -1316,6 +1641,13 @@ export function WorkbookStudioEditor({
           </p>
         ) : null}
 
+        {editorView === "cover" ? (
+          <WorkbookCoverCanvas
+            content={content}
+            detail={detail}
+            onChange={mutate}
+          />
+        ) : (
         <div
           className="mx-auto min-h-[900px] max-w-[800px] rounded-[4px] bg-[var(--studio-canvas)] p-8 text-[var(--studio-ink)] shadow-[0_12px_40px_rgba(70,50,30,0.18)] sm:p-12"
           style={workbookBoxPreviewStyle(
@@ -1757,16 +2089,26 @@ export function WorkbookStudioEditor({
             {editorDrag ? <WorkbookDropZone target={{ collection: "exercise", container: "root", index: lesson.exercises.length }} drag={editorDrag} active={sameWorkbookDropTarget(dropTarget, { collection: "exercise", container: "root", index: lesson.exercises.length })} onTarget={updateDropTarget} onDrop={dropEditorItem} /> : null}
           </div>
         </div>
+        )}
       </section>
 
-      <aside className={`border-t border-[#d2c2aa] bg-[#f8f1e5] xl:min-h-[calc(100vh-65px)] xl:border-l xl:border-t-0 ${rightSidebarCollapsed ? "p-2" : "p-4"}`}>
+      <aside className={`overflow-auto border-l border-[#d2c2aa] bg-[#f8f1e5] ${rightSidebarCollapsed ? "p-2" : "p-4"}`}>
         <div className={`flex items-center gap-2 ${rightSidebarCollapsed ? "justify-center" : "justify-between"}`}>
           {!rightSidebarCollapsed ? <h2 className="text-xs font-black uppercase tracking-[0.13em] text-earth">
           Inspector
           </h2> : null}
           <button type="button" onClick={() => setRightSidebarCollapsed((collapsed) => !collapsed)} aria-label={rightSidebarCollapsed ? "Expand inspector sidebar" : "Collapse inspector sidebar"} title={rightSidebarCollapsed ? "Expand inspector sidebar" : "Collapse inspector sidebar"} className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#bca98a] bg-white text-lg font-black text-earth shadow-sm hover:border-[#739655] hover:text-[#486a38]">{rightSidebarCollapsed ? "‹" : "›"}</button>
         </div>
-        {!rightSidebarCollapsed ? <div className="mt-4 grid gap-4">
+        {!rightSidebarCollapsed ? editorView === "cover" ? (
+          <WorkbookCoverInspector
+            content={content}
+            detail={detail}
+            themes={themes}
+            themePending={themePending}
+            onChange={mutate}
+            onThemeChange={changeTheme}
+          />
+        ) : <div className="mt-4 grid gap-4">
           <label className="grid gap-1 text-xs font-bold">
             Chapter title
             <input
@@ -1936,6 +2278,53 @@ export function WorkbookStudioEditor({
             router.refresh();
           }}
         />
+      ) : null}
+      {previewOpen ? (
+        <div
+          className="fixed inset-0 z-[100] grid place-items-center bg-[#201a14]/70 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${content.subjectLabel} cover preview`}
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setPreviewOpen(false);
+          }}
+        >
+          <div className="flex h-[min(92vh,960px)] w-full max-w-4xl flex-col overflow-hidden rounded-[22px] border border-[#d8c8ae] bg-[#fffaf2] shadow-2xl">
+            <div className="flex items-center justify-between gap-4 border-b border-[#d8c8ae] px-4 py-3 sm:px-5">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-earth">
+                  Latest rendered PDF
+                </p>
+                <h2 className="mt-1 font-semibold">
+                  {content.subjectLabel} cover
+                </h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={coverPreviewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-xs font-bold"
+                >
+                  Open separately ↗
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewOpen(false)}
+                  className="grid h-9 w-9 place-items-center rounded-full border border-[#d8c8ae] bg-white text-xl text-ink/65"
+                  aria-label="Close cover preview"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <iframe
+              src={`${coverPreviewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+              title={`${content.subjectLabel} print-ready cover`}
+              className="min-h-0 flex-1 bg-[#d8d2c9]"
+            />
+          </div>
+        </div>
       ) : null}
     </div>
   );

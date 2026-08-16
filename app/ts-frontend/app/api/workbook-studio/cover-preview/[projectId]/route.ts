@@ -11,8 +11,9 @@ export async function GET(
   }
 
   const { projectId } = await context.params;
-  const format = new URL(request.url).searchParams.get("format") === "png"
-    ? "png"
+  const requestedFormat = new URL(request.url).searchParams.get("format");
+  const format = requestedFormat === "png" || requestedFormat === "artwork"
+    ? requestedFormat
     : "pdf";
   const response = await getAdminWorkbookStudioCoverPreviewResponse(
     user.id,
@@ -31,9 +32,9 @@ export async function GET(
 
   return new Response(await response.arrayBuffer(), {
     headers: {
-      "Content-Type": format === "png" ? "image/png" : "application/pdf",
-      "Content-Disposition": `inline; filename=workbook-cover-preview.${format}`,
-      "Cache-Control": format === "png" ? "private, max-age=3600" : "private, no-store",
+      "Content-Type": format === "pdf" ? "application/pdf" : "image/png",
+      "Content-Disposition": `inline; filename=workbook-cover-${format === "artwork" ? "artwork.png" : `preview.${format}`}`,
+      "Cache-Control": format === "pdf" ? "private, no-store" : "private, max-age=3600",
       "X-Content-Type-Options": "nosniff",
     },
   });
