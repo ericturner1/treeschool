@@ -70,6 +70,165 @@ type WorkbookLessonContent =
   WorkbookContent["chapters"][number]["lessons"][number];
 type WorkbookEditorItem = WorkbookLearnBlock | WorkbookExercise;
 
+function WorkbookPaletteIcon({
+  type,
+  columns,
+}: {
+  type?: AddableLearnBlockType | ExerciseType;
+  columns?: WorkbookLayoutColumnCount;
+}) {
+  if (columns) {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5 shrink-0"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        aria-hidden="true"
+      >
+        {Array.from({ length: columns }, (_, index) => {
+          const gap = 1.5;
+          const width = (18 - gap * (columns - 1)) / columns;
+          return (
+            <rect
+              key={index}
+              x={3 + index * (width + gap)}
+              y="5"
+              width={width}
+              height="14"
+              rx="1"
+            />
+          );
+        })}
+      </svg>
+    );
+  }
+
+  const commonProps = {
+    viewBox: "0 0 24 24",
+    className: "h-5 w-5 shrink-0",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+  if (type === "image_asset") {
+    return (
+      <svg {...commonProps}>
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <circle cx="8.5" cy="9" r="1.5" />
+        <path d="m4 17 4.5-4 3.5 3 3-3 5 4.5" />
+      </svg>
+    );
+  }
+  if (type === "qr_code") {
+    return (
+      <svg {...commonProps}>
+        <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
+        <rect x="7" y="7" width="3" height="3" />
+        <path d="M14 7h3v3h-3zM7 14h3v3H7zM14 14h1v1h2v2h-3z" />
+      </svg>
+    );
+  }
+  if (type === "sound_asset") {
+    return (
+      <svg {...commonProps}>
+        <path d="M5 10v4h3l4 3V7l-4 3H5Z" />
+        <path d="M15 9a4 4 0 0 1 0 6M17.5 6.5a7.5 7.5 0 0 1 0 11" />
+      </svg>
+    );
+  }
+  if (type === "vocabulary_list") {
+    return (
+      <svg {...commonProps}>
+        <path d="M4 5.5A3.5 3.5 0 0 1 7.5 4H11v16H7.5A3.5 3.5 0 0 0 4 21.5v-16ZM20 5.5A3.5 3.5 0 0 0 16.5 4H13v16h3.5a3.5 3.5 0 0 1 3.5 1.5v-16Z" />
+      </svg>
+    );
+  }
+  if (type === "reading_passage") {
+    return (
+      <svg {...commonProps}>
+        <path d="M6 3h9l3 3v15H6zM15 3v4h4M9 11h6M9 15h6M9 18h4" />
+      </svg>
+    );
+  }
+  if (type === "character_practice") {
+    return (
+      <svg {...commonProps}>
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="M12 3v18M3 12h18M7 8h10M9 8c0 4 1 7 6 9M15 8c0 4-1 7-6 9" />
+      </svg>
+    );
+  }
+  if (type === "circle_choice") {
+    return (
+      <svg {...commonProps}>
+        <circle cx="12" cy="12" r="8" />
+        <path d="m8.5 12 2.2 2.2 4.8-5" />
+      </svg>
+    );
+  }
+  if (type === "multiple_choice") {
+    return (
+      <svg {...commonProps}>
+        <rect x="4" y="5" width="3" height="3" rx=".5" />
+        <rect x="4" y="11" width="3" height="3" rx=".5" />
+        <rect x="4" y="17" width="3" height="3" rx=".5" />
+        <path d="M10 6.5h10M10 12.5h10M10 18.5h10" />
+      </svg>
+    );
+  }
+  if (type === "fill_in_blank") {
+    return (
+      <svg {...commonProps}>
+        <path d="M3 7h18M3 17h6M15 17h6M10.5 17h3" strokeDasharray="1.5 2" />
+      </svg>
+    );
+  }
+  if (type === "matching") {
+    return (
+      <svg {...commonProps}>
+        <circle cx="6" cy="7" r="2" />
+        <circle cx="18" cy="7" r="2" />
+        <circle cx="6" cy="17" r="2" />
+        <circle cx="18" cy="17" r="2" />
+        <path d="m8 7 8 10M8 17 16 7" />
+      </svg>
+    );
+  }
+  if (type === "write") {
+    return (
+      <svg {...commonProps}>
+        <path d="m4 20 4.2-1 10.7-10.7-3.2-3.2L5 15.8 4 20ZM14.5 6.5l3 3M9 21h11" />
+      </svg>
+    );
+  }
+  if (type === "draw_box") {
+    return (
+      <svg {...commonProps}>
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="m7 16 3-3 2.5 2.5L16 11l3 4" />
+        <circle cx="9" cy="9" r="1" />
+      </svg>
+    );
+  }
+  if (type === "short_answer") {
+    return (
+      <svg {...commonProps}>
+        <path d="M4 6h16M4 12h12M4 18h9M18 15l2 2-4 4-2 .5.5-2z" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...commonProps}>
+      <path d="M5 6h14M5 11h14M5 16h10" />
+    </svg>
+  );
+}
+
 function newStableId(prefix: string) {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
 }
@@ -280,6 +439,7 @@ function WorkbookDropZone({
   }
   return (
     <div
+      data-workbook-drop-zone
       className={`my-1 h-4 rounded-full border-2 border-dashed transition ${active ? "border-[var(--studio-leaf-dark)] bg-[var(--studio-sand)]" : "border-[var(--studio-leaf)]/35 bg-white/30"}`}
       onDragEnter={(event) => {
         event.preventDefault();
@@ -293,6 +453,7 @@ function WorkbookDropZone({
       }}
       onDrop={(event) => {
         event.preventDefault();
+        event.stopPropagation();
         onDrop(target);
       }}
       aria-hidden="true"
@@ -1545,6 +1706,472 @@ function WorkbookExerciseLeafFields({
   );
 }
 
+function WorkbookLearnLeafPreview({
+  block,
+  projectId,
+}: {
+  block: WorkbookLearnBlockLeaf;
+  projectId: string;
+}) {
+  if (block.type === "paragraph") {
+    return <p className="leading-7">{block.text}</p>;
+  }
+  if (block.type === "callout") {
+    return (
+      <aside className="rounded-[10px] border-2 border-[var(--studio-leaf)] bg-[var(--studio-sand)] p-3 leading-6">
+        {block.label ? <strong>{block.label} </strong> : null}
+        {block.text}
+      </aside>
+    );
+  }
+  if (block.type === "image_asset") {
+    const imageUrl = workbookImageUrl(projectId, block);
+    const justifyContent = block.alignment === "left"
+      ? "flex-start"
+      : block.alignment === "right"
+        ? "flex-end"
+        : "center";
+    return imageUrl ? (
+      <figure>
+        <div className="flex" style={{ justifyContent }}>
+          <Image
+            src={imageUrl}
+            alt={block.altText}
+            width={block.pixelWidth ?? 1200}
+            height={block.pixelHeight ?? 800}
+            unoptimized
+            className="h-auto max-w-full object-contain"
+            style={{ width: `${block.widthPercent}%` }}
+          />
+        </div>
+        {block.caption ? (
+          <figcaption className="mt-1 text-center text-xs text-ink/55">
+            {block.caption}
+          </figcaption>
+        ) : null}
+      </figure>
+    ) : (
+      <div className="grid min-h-28 place-items-center rounded-[9px] border-2 border-dashed border-ink/20 px-4 text-center text-sm text-ink/45">
+        Image not uploaded
+      </div>
+    );
+  }
+  if (block.type === "qr_code") {
+    return (
+      <figure className="grid justify-items-center gap-2 text-center">
+        <div
+          className="grid aspect-square max-w-full place-items-center border-[10px] border-white bg-[repeating-conic-gradient(#25201b_0_25%,white_0_50%)] bg-[length:18px_18px] shadow-sm"
+          style={{ width: `${Math.min(block.sizeMm * 3, 240)}px` }}
+          aria-hidden="true"
+        >
+          <span className="rounded bg-white px-2 py-1 text-[10px] font-black text-ink">
+            QR
+          </span>
+        </div>
+        <figcaption className="max-w-sm text-xs leading-5 text-ink/60">
+          {block.description}
+        </figcaption>
+      </figure>
+    );
+  }
+  if (block.type === "sound_asset") {
+    const soundUrl = workbookSoundUrl(projectId, block);
+    return (
+      <div className="rounded-[10px] bg-[var(--studio-sand)] p-3">
+        <p className="mb-2 text-sm font-bold">{block.description}</p>
+        {soundUrl ? (
+          <audio controls preload="metadata" src={soundUrl} className="w-full">
+            Your browser does not support audio playback.
+          </audio>
+        ) : (
+          <div className="rounded-[9px] border border-dashed border-ink/25 bg-white px-4 py-3 text-center text-sm text-ink/45">
+            Sound not uploaded
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (block.type === "vocabulary_list") {
+    return (
+      <section>
+        <h4 className="font-bold text-[var(--studio-leaf-dark)]">
+          {block.title ?? "Vocabulary"}
+        </h4>
+        <dl className="mt-2 grid gap-2">
+          {block.entries.map((entry, index) => (
+            <div key={`${entry.term}-${index}`} className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-3 border-b border-[var(--studio-sand)] pb-2">
+              <dt className="font-bold">
+                {entry.term}
+                {entry.pronunciation ? (
+                  <span className="ml-1 font-normal text-ink/45">
+                    {entry.pronunciation}
+                  </span>
+                ) : null}
+              </dt>
+              <dd>{entry.definition}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+    );
+  }
+  if (block.type === "reading_passage") {
+    return (
+      <article>
+        {block.title ? (
+          <h4 className="mb-2 font-bold text-[var(--studio-leaf-dark)]">
+            {block.title}
+          </h4>
+        ) : null}
+        {block.paragraphs.map((paragraph, index) => (
+          <p key={index} className="mb-3 leading-7 last:mb-0">
+            {paragraph}
+          </p>
+        ))}
+      </article>
+    );
+  }
+  if (block.type === "character_practice") {
+    return (
+      <section className="text-center">
+        <div className="text-6xl font-bold">{block.character}</div>
+        <p className="mt-1 text-sm text-ink/55">
+          {[block.pronunciation, block.meaning].filter(Boolean).join(" · ")}
+        </p>
+        <div className="mt-3 grid gap-2">
+          {Array.from({ length: block.traceRows }, (_, index) => (
+            <div key={index} className="grid grid-cols-4 border border-[var(--studio-leaf)]/45 text-3xl text-ink/15">
+              <span className="border-r border-[var(--studio-leaf)]/35 py-2">
+                {block.character}
+              </span>
+              <span className="border-r border-[var(--studio-leaf)]/35" />
+              <span className="border-r border-[var(--studio-leaf)]/35" />
+              <span />
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+  return (
+    <figure className="rounded-[10px] border border-dashed border-[var(--studio-leaf)] p-4 text-center">
+      <strong className="text-sm">Illustration</strong>
+      <p className="mt-1 text-xs text-ink/50">{block.altText}</p>
+    </figure>
+  );
+}
+
+function WorkbookExerciseLeafPreview({
+  exercise,
+}: {
+  exercise: WorkbookExerciseLeaf;
+}) {
+  return (
+    <div>
+      <p className="leading-6">{exercise.prompt}</p>
+      {exercise.type === "circle_choice" ||
+      exercise.type === "multiple_choice" ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(exercise.options ?? []).map((option) => (
+            <span key={option} className="rounded-full border border-ink/25 px-3 py-1 text-sm">
+              {option}
+            </span>
+          ))}
+        </div>
+      ) : exercise.type === "matching" ? (
+        <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+          {(exercise.pairs ?? []).map((pair) => (
+            <div key={pair.id} className="contents">
+              <span>{pair.left}</span>
+              <span>{pair.right}</span>
+            </div>
+          ))}
+        </div>
+      ) : exercise.type === "draw_box" ? (
+        <div
+          className="mt-3 border-2 border-ink/35"
+          style={{ minHeight: `${(exercise.boxHeightMm ?? 60) * 2}px` }}
+        />
+      ) : (
+        <div className="mt-3 grid gap-3">
+          {Array.from(
+            {
+              length:
+                exercise.type === "write" || exercise.type === "short_answer"
+                  ? exercise.writingLines ?? 3
+                  : 1,
+            },
+            (_, index) => (
+              <span key={index} className="h-5 border-b border-ink/30" />
+            ),
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkbookLearnBlockBrowserPreview({
+  block,
+  projectId,
+  fallbackBorderColor,
+}: {
+  block: WorkbookLearnBlock;
+  projectId: string;
+  fallbackBorderColor: string;
+}) {
+  if (block.type === "layout_row") {
+    return (
+      <div
+        className="grid"
+        style={{
+          ...workbookBoxPreviewStyle(block.boxStyle, fallbackBorderColor),
+          gridTemplateColumns: `repeat(${block.columns.length}, minmax(0, 1fr))`,
+          gap: `${block.columnGap ?? 16}px`,
+        }}
+      >
+        {block.columns.map((column) => (
+          <div key={column.id} className="min-w-0">
+            {column.blocks.map((child, index) => (
+              <WorkbookLearnBlockBrowserPreview
+                key={`${column.id}-${index}`}
+                block={child}
+                projectId={projectId}
+                fallbackBorderColor={fallbackBorderColor}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div style={workbookBoxPreviewStyle(block.boxStyle, fallbackBorderColor)}>
+      <WorkbookLearnLeafPreview block={block} projectId={projectId} />
+    </div>
+  );
+}
+
+function workbookExerciseCount(exercise: WorkbookExercise) {
+  return exercise.type === "layout_row"
+    ? exercise.columns.reduce(
+        (total, column) => total + column.exercises.length,
+        0,
+      )
+    : 1;
+}
+
+function WorkbookExerciseBrowserPreview({
+  exercise,
+  startNumber,
+  fallbackBorderColor,
+}: {
+  exercise: WorkbookExercise;
+  startNumber: number;
+  fallbackBorderColor: string;
+}) {
+  if (exercise.type === "layout_row") {
+    let number = startNumber;
+    return (
+      <div
+        className="grid"
+        style={{
+          ...workbookBoxPreviewStyle(exercise.boxStyle, fallbackBorderColor),
+          gridTemplateColumns: `repeat(${exercise.columns.length}, minmax(0, 1fr))`,
+          gap: `${exercise.columnGap ?? 16}px`,
+        }}
+      >
+        {exercise.columns.map((column) => (
+          <div key={column.id} className="min-w-0">
+            {column.exercises.map((child) => {
+              const exerciseNumber = number;
+              number += 1;
+              return (
+                <WorkbookExerciseBrowserPreview
+                  key={child.id}
+                  exercise={child}
+                  startNumber={exerciseNumber}
+                  fallbackBorderColor={fallbackBorderColor}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div
+      className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2"
+      style={workbookBoxPreviewStyle(
+        exercise.boxStyle,
+        fallbackBorderColor,
+      )}
+    >
+      <strong>{startNumber}.</strong>
+      <WorkbookExerciseLeafPreview exercise={exercise} />
+    </div>
+  );
+}
+
+function WorkbookLessonBrowserPreview({
+  content,
+  chapterIndex,
+  lessonIndex,
+  projectId,
+  fallbackBorderColor,
+}: {
+  content: WorkbookContent;
+  chapterIndex: number;
+  lessonIndex: number;
+  projectId: string;
+  fallbackBorderColor: string;
+}) {
+  const lesson = content.chapters[chapterIndex].lessons[lessonIndex];
+  let nextExerciseNumber = 1;
+  return (
+    <article
+      className="mx-auto min-h-[900px] w-full max-w-[800px] bg-[var(--studio-canvas)] p-8 text-[var(--studio-ink)] shadow-[0_12px_40px_rgba(32,26,20,0.2)] sm:p-12"
+      style={workbookBoxPreviewStyle(lesson.boxStyle, fallbackBorderColor)}
+    >
+      <h1 className="border-b-[3px] border-[var(--studio-leaf)] pb-2 text-2xl font-bold text-[var(--studio-leaf-dark)]">
+        Lesson {chapterIndex + 1}.{lessonIndex + 1} — {lesson.title}
+      </h1>
+      {lesson.subtitle ? (
+        <p className="mt-2 text-sm text-ink/55">{lesson.subtitle}</p>
+      ) : null}
+      <p className="mt-7 inline-block border-b-2 border-[var(--studio-leaf)] text-sm font-bold text-[var(--studio-leaf-dark)]">
+        Part 1: Learn
+      </p>
+      <div
+        className="mt-4 grid gap-3"
+        style={workbookBoxPreviewStyle(
+          lesson.learnSectionBoxStyle,
+          fallbackBorderColor,
+        )}
+      >
+        {lesson.learnBlocks.map((block, index) => (
+          <WorkbookLearnBlockBrowserPreview
+            key={block.type === "layout_row" ? block.id : index}
+            block={block}
+            projectId={projectId}
+            fallbackBorderColor={fallbackBorderColor}
+          />
+        ))}
+      </div>
+      <p className="mt-8 inline-block border-b-2 border-[var(--studio-leaf)] text-sm font-bold text-[var(--studio-leaf-dark)]">
+        Part 2: Practice
+      </p>
+      <div
+        className="mt-4 grid gap-5"
+        style={workbookBoxPreviewStyle(
+          lesson.practiceSectionBoxStyle,
+          fallbackBorderColor,
+        )}
+      >
+        {lesson.exercises.map((exercise) => {
+          const startNumber = nextExerciseNumber;
+          nextExerciseNumber += workbookExerciseCount(exercise);
+          return (
+            <WorkbookExerciseBrowserPreview
+              key={exercise.id}
+              exercise={exercise}
+              startNumber={startNumber}
+              fallbackBorderColor={fallbackBorderColor}
+            />
+          );
+        })}
+      </div>
+    </article>
+  );
+}
+
+function WorkbookItemInspector({
+  item,
+  location,
+  projectId,
+  fallbackBorderColor,
+  onChange,
+  onClear,
+}: {
+  item: WorkbookEditorItem;
+  location: WorkbookItemLocation;
+  projectId: string;
+  fallbackBorderColor: string;
+  onChange: (item: WorkbookEditorItem) => void;
+  onClear: () => void;
+}) {
+  const label = item.type === "layout_row"
+    ? "Layout"
+    : location.collection === "learn"
+      ? "Learning element"
+      : "Exercise";
+  return (
+    <div className="mt-4 grid gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-earth">
+            Selected
+          </p>
+          <h3 className="mt-1 font-bold">{label}</h3>
+        </div>
+        <button
+          type="button"
+          onClick={onClear}
+          className="rounded-[9px] border border-[#d8c8ae] bg-white px-2.5 py-1.5 text-xs font-bold text-earth"
+        >
+          Done
+        </button>
+      </div>
+      {item.type === "layout_row" ? (
+        <div className="grid gap-3 rounded-[12px] bg-white p-3">
+          <p className="text-sm">
+            <strong>{item.columns.length}</strong> columns
+          </p>
+          <label className="grid gap-1 text-xs font-bold">
+            Column gap
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={item.columnGap ?? 16}
+              onChange={(event) =>
+                onChange({
+                  ...item,
+                  columnGap: Math.min(
+                    Math.max(Number(event.target.value) || 0, 0),
+                    100,
+                  ),
+                })
+              }
+              className="rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 font-normal"
+            />
+          </label>
+        </div>
+      ) : location.collection === "learn" ? (
+        <WorkbookLearnLeafFields
+          block={item as WorkbookLearnBlockLeaf}
+          projectId={projectId}
+          onChange={onChange}
+        />
+      ) : (
+        <div className="rounded-[12px] bg-white p-3">
+          <WorkbookExerciseLeafFields
+            exercise={item as WorkbookExerciseLeaf}
+            onChange={onChange}
+          />
+        </div>
+      )}
+      <WorkbookBoxStyleControls
+        label={label}
+        value={item.boxStyle}
+        fallbackBorderColor={fallbackBorderColor}
+        onChange={(boxStyle) => onChange({ ...item, boxStyle })}
+      />
+    </div>
+  );
+}
+
 function coverGradeBadgeParts(label: string) {
   const match = label.trim().match(/^(grades?|ages?)\s+(.+)$/i);
   return match
@@ -1842,17 +2469,25 @@ export function WorkbookStudioEditor({
   );
   const [editorDrag, setEditorDrag] = useState<WorkbookEditorDrag | null>(null);
   const [dropTarget, setDropTarget] = useState<WorkbookDropTarget | null>(null);
+  const [selectedItem, setSelectedItem] = useState<WorkbookItemLocation | null>(
+    null,
+  );
   const [dirty, setDirty] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [releaseOpen, setReleaseOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [lessonPreviewOpen, setLessonPreviewOpen] = useState(false);
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
+  const suppressPaletteClickRef = useRef(false);
   const [pending, startTransition] = useTransition();
   const [themePending, startThemeTransition] = useTransition();
   const chapter = content.chapters[selected.chapter] ?? content.chapters[0];
   const lesson = chapter?.lessons[selected.lesson] ?? chapter?.lessons[0];
+  const selectedEditorItem = selectedItem
+    ? workbookItemArray(lesson, selectedItem)?.[selectedItem.index] ?? null
+    : null;
   const issueCount = detail.currentRevision?.validationJson.issues?.length ?? 0;
   const hasCompletedRender = detail.renderRuns.some(
     (run) => run.status === "completed" && Boolean(run.pageCount),
@@ -1891,6 +2526,19 @@ export function WorkbookStudioEditor({
     );
   }
 
+  function selectEditorItem(location: WorkbookItemLocation) {
+    setSelectedItem(location);
+    setRightSidebarCollapsed(false);
+  }
+
+  function updateSelectedEditorItem(next: WorkbookEditorItem) {
+    if (!selectedItem) return;
+    mutateLesson((draft) => {
+      const items = workbookItemArray(draft, selectedItem);
+      if (items?.[selectedItem.index]) items[selectedItem.index] = next;
+    });
+  }
+
   function startEditorDrag(
     event: DragEvent<HTMLElement>,
     drag: WorkbookEditorDrag,
@@ -1904,17 +2552,76 @@ export function WorkbookStudioEditor({
         ? `new:workbook-${drag.collection}`
         : `move:workbook-${drag.collection}`,
     );
+    if (copy) suppressPaletteClickRef.current = true;
     setEditorDrag(drag);
     setDropTarget(null);
+    setSelectedItem(null);
   }
 
   function endEditorDrag() {
     setEditorDrag(null);
     setDropTarget(null);
+    window.setTimeout(() => {
+      suppressPaletteClickRef.current = false;
+    }, 0);
+  }
+
+  function paletteClickWasDrag() {
+    if (!suppressPaletteClickRef.current) return false;
+    suppressPaletteClickRef.current = false;
+    return true;
   }
 
   function updateDropTarget(target: WorkbookDropTarget) {
     setDropTarget((current) => sameWorkbookDropTarget(current, target) ? current : target);
+  }
+
+  function canvasDropTarget(): WorkbookDropTarget | null {
+    if (!editorDrag) return null;
+    return editorDrag.collection === "learn"
+      ? {
+          collection: "learn",
+          container: "root",
+          index: lesson.learnBlocks.length,
+        }
+      : {
+          collection: "exercise",
+          container: "root",
+          index: lesson.exercises.length,
+        };
+  }
+
+  function dragOverLessonCanvas(event: DragEvent<HTMLElement>) {
+    if (!editorDrag) return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest("[data-workbook-drop-zone]")
+    ) {
+      return;
+    }
+    const target = canvasDropTarget();
+    if (!target) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect =
+      editorDrag.mode === "new" || editorDrag.mode === "new_row"
+        ? "copy"
+        : "move";
+    updateDropTarget(target);
+  }
+
+  function dropOnLessonCanvas(event: DragEvent<HTMLElement>) {
+    if (!editorDrag) return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest("[data-workbook-drop-zone]")
+    ) {
+      return;
+    }
+    const target = canvasDropTarget();
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dropEditorItem(target);
   }
 
   function reorderLessonItems(
@@ -1922,6 +2629,7 @@ export function WorkbookStudioEditor({
     sourceIndex: number,
     insertionIndex: number,
   ) {
+    setSelectedItem(null);
     mutateLesson((draft) => {
       if (collection === "learn") {
         moveItemAtInsertionPoint(
@@ -1994,6 +2702,9 @@ export function WorkbookStudioEditor({
       );
     });
     endEditorDrag();
+    if (drag.mode === "new" || drag.mode === "new_row") {
+      selectEditorItem(target);
+    }
   }
 
   function save() {
@@ -2077,7 +2788,10 @@ export function WorkbookStudioEditor({
             </div>
             <button
               type="button"
-              onClick={() => setEditorView("chapter")}
+              onClick={() => {
+                setSelectedItem(null);
+                setEditorView("chapter");
+              }}
               className="mt-3 w-full rounded-[10px] border border-[#d8c8ae] bg-white px-3 py-2 text-xs font-bold text-earth"
             >
               Open Chapter {selected.chapter + 1}
@@ -2122,12 +2836,13 @@ export function WorkbookStudioEditor({
                   <button
                     type="button"
                     key={child.id}
-                    onClick={() =>
+                    onClick={() => {
+                      setSelectedItem(null);
                       setSelected({
                         chapter: selected.chapter,
                         lesson: lessonIndex,
-                      })
-                    }
+                      });
+                    }}
                     className={`rounded-[10px] px-3 py-2.5 text-left text-xs ${selected.lesson === lessonIndex ? "bg-[#dfead4] font-bold text-[#486a38]" : "text-ink/58 hover:bg-white"}`}
                   >
                     {selected.chapter + 1}.{lessonIndex + 1} {child.title}
@@ -2154,6 +2869,7 @@ export function WorkbookStudioEditor({
                       chapter: selected.chapter,
                       lesson: number - 1,
                     });
+                    setSelectedItem(null);
                   })
                 }
                 className="mt-3 w-full rounded-[10px] border border-[#bca98a] bg-white px-3 py-2 text-xs font-bold text-earth"
@@ -2182,6 +2898,7 @@ export function WorkbookStudioEditor({
                       ],
                     });
                     setSelected({ chapter: chapterNumber - 1, lesson: 0 });
+                    setSelectedItem(null);
                   })
                 }
                 className="mt-2 w-full px-3 py-2 text-xs font-bold text-ink/48"
@@ -2214,11 +2931,18 @@ export function WorkbookStudioEditor({
                         type="button"
                         draggable
                         key={type}
-                        onClick={() =>
+                        onClick={() => {
+                          if (paletteClickWasDrag()) return;
+                          const index = lesson.learnBlocks.length;
                           mutateLesson((draft) => {
                             draft.learnBlocks.push(makeLearnBlock(type));
-                          })
-                        }
+                          });
+                          selectEditorItem({
+                            collection: "learn",
+                            container: "root",
+                            index,
+                          });
+                        }}
                         onDragStart={(event) =>
                           startEditorDrag(event, {
                             collection: "learn",
@@ -2227,9 +2951,11 @@ export function WorkbookStudioEditor({
                           })
                         }
                         onDragEnd={endEditorDrag}
-                        className="cursor-grab rounded-[10px] border border-dashed border-[#9fbd89] bg-white px-2 py-2.5 text-xs font-bold text-[#486a38] active:cursor-grabbing"
+                        title={`Drag ${label} into the lesson`}
+                        className="flex cursor-grab items-center gap-2 rounded-[10px] border border-dashed border-[#9fbd89] bg-white px-2.5 py-2.5 text-left text-xs font-bold text-[#486a38] active:cursor-grabbing"
                       >
-                        ⠿ {label}
+                        <WorkbookPaletteIcon type={type} />
+                        <span>{label}</span>
                       </button>
                     ),
                   )}
@@ -2254,11 +2980,18 @@ export function WorkbookStudioEditor({
                       type="button"
                       draggable
                       key={type}
-                      onClick={() =>
+                      onClick={() => {
+                        if (paletteClickWasDrag()) return;
+                        const index = lesson.exercises.length;
                         mutateLesson((draft) => {
                           draft.exercises.push(makeExercise(type));
-                        })
-                      }
+                        });
+                        selectEditorItem({
+                          collection: "exercise",
+                          container: "root",
+                          index,
+                        });
+                      }}
                       onDragStart={(event) =>
                         startEditorDrag(event, {
                           collection: "exercise",
@@ -2267,9 +3000,11 @@ export function WorkbookStudioEditor({
                         })
                       }
                       onDragEnd={endEditorDrag}
-                      className="cursor-grab rounded-[10px] border border-dashed border-[#c2ae8e] bg-white px-2 py-2.5 text-xs font-bold text-ink/65 active:cursor-grabbing"
+                      title={`Drag ${label} into the lesson`}
+                      className="flex cursor-grab items-center gap-2 rounded-[10px] border border-dashed border-[#c2ae8e] bg-white px-2.5 py-2.5 text-left text-xs font-bold text-ink/65 active:cursor-grabbing"
                     >
-                      ⠿ {label}
+                      <WorkbookPaletteIcon type={type} />
+                      <span>{label}</span>
                     </button>
                   ))}
                 </div>
@@ -2288,7 +3023,11 @@ export function WorkbookStudioEditor({
                             type="button"
                             draggable
                             key={columnCount}
-                            onClick={() =>
+                            onClick={() => {
+                              if (paletteClickWasDrag()) return;
+                              const index = collection === "learn"
+                                ? lesson.learnBlocks.length
+                                : lesson.exercises.length;
                               mutateLesson((draft) => {
                                 if (collection === "learn") {
                                   draft.learnBlocks.push(
@@ -2305,8 +3044,13 @@ export function WorkbookStudioEditor({
                                     ) as WorkbookExercise,
                                   );
                                 }
-                              })
-                            }
+                              });
+                              selectEditorItem({
+                                collection,
+                                container: "root",
+                                index,
+                              });
+                            }}
                             onDragStart={(event) =>
                               startEditorDrag(event, {
                                 collection,
@@ -2315,9 +3059,11 @@ export function WorkbookStudioEditor({
                               })
                             }
                             onDragEnd={endEditorDrag}
-                            className="cursor-grab rounded-[10px] border border-[#b7cda3] bg-[#edf5e7] px-2 py-2 text-xs font-bold text-[#486a38] active:cursor-grabbing"
+                            title={`Drag a ${columnCount}-column row into the lesson`}
+                            className="flex cursor-grab items-center gap-2 rounded-[10px] border border-[#b7cda3] bg-[#edf5e7] px-2.5 py-2 text-left text-xs font-bold text-[#486a38] active:cursor-grabbing"
                           >
-                            ⠿ {columnCount} col
+                            <WorkbookPaletteIcon columns={columnCount} />
+                            <span>{columnCount} col</span>
                           </button>
                         ),
                       )}
@@ -2377,6 +3123,16 @@ export function WorkbookStudioEditor({
               ) : null}
               Save revision
             </button>
+            {editorView === "chapter" ? (
+              <button
+                type="button"
+                onClick={() => setLessonPreviewOpen(true)}
+                disabled={pending}
+                className="cta-button cta-button--outline cta-button--small"
+              >
+                Preview lesson
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={renderPdf}
@@ -2414,6 +3170,8 @@ export function WorkbookStudioEditor({
           />
         ) : (
         <div
+          onDragOver={dragOverLessonCanvas}
+          onDrop={dropOnLessonCanvas}
           className="mx-auto min-h-[900px] max-w-[800px] rounded-[4px] bg-[var(--studio-canvas)] p-8 text-[var(--studio-ink)] shadow-[0_12px_40px_rgba(70,50,30,0.18)] sm:p-12"
           style={workbookBoxPreviewStyle(
             lesson.boxStyle,
@@ -2444,7 +3202,14 @@ export function WorkbookStudioEditor({
               <div key={index}>
                 {editorDrag ? <WorkbookDropZone target={{ collection: "learn", container: "root", index }} drag={editorDrag} active={sameWorkbookDropTarget(dropTarget, { collection: "learn", container: "root", index })} onTarget={updateDropTarget} onDrop={dropEditorItem} /> : null}
                 <div
-                  className={`group relative rounded-[12px] border border-[var(--studio-sand)] p-3 transition ${editorDrag?.collection === "learn" && editorDrag.mode === "existing" && editorDrag.source.container === "root" && editorDrag.source.index === index ? "opacity-35" : ""}`}
+                  onClick={() =>
+                    selectEditorItem({
+                      collection: "learn",
+                      container: "root",
+                      index,
+                    })
+                  }
+                  className={`group relative cursor-pointer rounded-[12px] border p-3 transition ${selectedItem?.collection === "learn" && selectedItem.container === "root" && selectedItem.index === index ? "border-[var(--studio-leaf)] ring-2 ring-[var(--studio-leaf)]/20" : "border-[var(--studio-sand)]"} ${editorDrag?.collection === "learn" && editorDrag.mode === "existing" && editorDrag.source.container === "root" && editorDrag.source.index === index ? "opacity-35" : ""}`}
                 >
                 <div
                   style={workbookBoxPreviewStyle(
@@ -2454,18 +3219,11 @@ export function WorkbookStudioEditor({
                 >
                 {block.type === "layout_row" ? (
                   <div>
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                      <strong className="text-xs uppercase tracking-wide text-[var(--studio-leaf-dark)]">
-                        {block.columns.length}-column row
-                      </strong>
-                      <span className="text-[10px] text-ink/45">
-                        Drag learning elements into a column
-                      </span>
-                    </div>
                     <div
                       className="grid gap-3"
                       style={{
                         gridTemplateColumns: `repeat(${block.columns.length}, minmax(0, 1fr))`,
+                        gap: `${block.columnGap ?? 16}px`,
                       }}
                     >
                       {block.columns.map((column, columnIndex) => (
@@ -2496,42 +3254,19 @@ export function WorkbookStudioEditor({
                                   />
                                 ) : null}
                                 <div
-                                  className="group/child relative rounded-[9px] border border-[#e2d5c2] bg-white p-2"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    selectEditorItem(target);
+                                  }}
+                                  className={`group/child relative cursor-pointer rounded-[9px] border bg-white p-2 ${selectedItem && sameWorkbookDropTarget(selectedItem, target) ? "border-[var(--studio-leaf)] ring-2 ring-[var(--studio-leaf)]/20" : "border-[#e2d5c2]"}`}
                                   style={workbookBoxPreviewStyle(
                                     child.boxStyle,
                                     detail.effectiveTheme.colorLeaf,
                                   )}
                                 >
-                                  <WorkbookLearnLeafFields
+                                  <WorkbookLearnLeafPreview
                                     block={child}
                                     projectId={detail.project.id}
-                                    onChange={(next) =>
-                                      mutateLesson((draft) => {
-                                        const row = draft.learnBlocks[index];
-                                        if (row?.type === "layout_row") {
-                                          row.columns[columnIndex].blocks[
-                                            childIndex
-                                          ] = next;
-                                        }
-                                      })
-                                    }
-                                  />
-                                  <WorkbookBoxStyleControls
-                                    label={`Column ${columnIndex + 1} element ${childIndex + 1}`}
-                                    value={child.boxStyle}
-                                    fallbackBorderColor={
-                                      detail.effectiveTheme.colorLeaf
-                                    }
-                                    onChange={(boxStyle) =>
-                                      mutateLesson((draft) => {
-                                        const row = draft.learnBlocks[index];
-                                        if (row?.type === "layout_row") {
-                                          row.columns[columnIndex].blocks[
-                                            childIndex
-                                          ].boxStyle = boxStyle;
-                                        }
-                                      })
-                                    }
                                   />
                                   <div className="absolute right-1 top-1 flex gap-1 rounded bg-white p-0.5 opacity-0 shadow group-hover/child:opacity-100 group-focus-within/child:opacity-100">
                                     <button
@@ -2553,7 +3288,9 @@ export function WorkbookStudioEditor({
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() =>
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setSelectedItem(null);
                                         mutateLesson((draft) => {
                                           const row = draft.learnBlocks[index];
                                           if (row?.type === "layout_row") {
@@ -2561,8 +3298,8 @@ export function WorkbookStudioEditor({
                                               columnIndex
                                             ].blocks.splice(childIndex, 1);
                                           }
-                                        })
-                                      }
+                                        });
+                                      }}
                                       className="px-1 text-[10px] font-bold text-[#8c3f2f]"
                                     >
                                       ×
@@ -2603,39 +3340,26 @@ export function WorkbookStudioEditor({
                     </div>
                   </div>
                 ) : (
-                  <WorkbookLearnLeafFields
+                  <WorkbookLearnLeafPreview
                     block={block}
                     projectId={detail.project.id}
-                    onChange={(next) =>
-                      mutateLesson((draft) => {
-                        draft.learnBlocks[index] = next;
-                      })
-                    }
                   />
                 )}
                 </div>
-                  <WorkbookBoxStyleControls
-                    label={`Learning block ${index + 1}`}
-                    value={block.boxStyle}
-                    fallbackBorderColor={detail.effectiveTheme.colorLeaf}
-                    onChange={(boxStyle) =>
-                      mutateLesson((draft) => {
-                        draft.learnBlocks[index].boxStyle = boxStyle;
-                      })
-                    }
-                  />
                   <div className="absolute right-2 top-2 flex gap-1 rounded-[9px] bg-white p-1 opacity-0 shadow-md transition group-hover:opacity-100 group-focus-within:opacity-100">
                     <button type="button" draggable onDragStart={(event) => startEditorDrag(event, { collection: "learn", mode: "existing", source: { collection: "learn", container: "root", index }, isLayoutRow: block.type === "layout_row" })} onDragEnd={endEditorDrag} className="cursor-grab rounded px-1.5 py-0.5 text-sm text-ink/55 active:cursor-grabbing" aria-label={`Drag learning block ${index + 1}`} title="Drag to reorder">⠿</button>
-                    <button type="button" disabled={index === 0} onClick={() => reorderLessonItems("learn", index, index - 1)} className="rounded px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-30" aria-label={`Move learning block ${index + 1} earlier`}>↑</button>
-                    <button type="button" disabled={index === lesson.learnBlocks.length - 1} onClick={() => reorderLessonItems("learn", index, index + 2)} className="rounded px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-30" aria-label={`Move learning block ${index + 1} later`}>↓</button>
+                    <button type="button" disabled={index === 0} onClick={(event) => { event.stopPropagation(); reorderLessonItems("learn", index, index - 1); }} className="rounded px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-30" aria-label={`Move learning block ${index + 1} earlier`}>↑</button>
+                    <button type="button" disabled={index === lesson.learnBlocks.length - 1} onClick={(event) => { event.stopPropagation(); reorderLessonItems("learn", index, index + 2); }} className="rounded px-1.5 py-0.5 text-[10px] font-bold disabled:opacity-30" aria-label={`Move learning block ${index + 1} later`}>↓</button>
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedItem(null);
                         mutateLesson((draft) => {
                           if (draft.learnBlocks.length > 1)
                             draft.learnBlocks.splice(index, 1);
-                        })
-                      }
+                        });
+                      }}
                       className="rounded px-1.5 py-0.5 text-[10px] font-bold text-[#8c3f2f]"
                     >
                       Remove
@@ -2659,31 +3383,48 @@ export function WorkbookStudioEditor({
             {lesson.exercises.map((exercise, index) => (
               <div key={exercise.id}>
                 {editorDrag ? <WorkbookDropZone target={{ collection: "exercise", container: "root", index }} drag={editorDrag} active={sameWorkbookDropTarget(dropTarget, { collection: "exercise", container: "root", index })} onTarget={updateDropTarget} onDrop={dropEditorItem} /> : null}
-                <div className={`rounded-[12px] border border-[var(--studio-sand)] p-3 transition ${editorDrag?.collection === "exercise" && editorDrag.mode === "existing" && editorDrag.source.container === "root" && editorDrag.source.index === index ? "opacity-35" : ""}`}>
+                <div
+                  onClick={() =>
+                    selectEditorItem({
+                      collection: "exercise",
+                      container: "root",
+                      index,
+                    })
+                  }
+                  className={`cursor-pointer rounded-[12px] border p-3 transition ${selectedItem?.collection === "exercise" && selectedItem.container === "root" && selectedItem.index === index ? "border-[var(--studio-leaf)] ring-2 ring-[var(--studio-leaf)]/20" : "border-[var(--studio-sand)]"} ${editorDrag?.collection === "exercise" && editorDrag.mode === "existing" && editorDrag.source.container === "root" && editorDrag.source.index === index ? "opacity-35" : ""}`}
+                >
                 <div
                   style={workbookBoxPreviewStyle(
                     exercise.boxStyle,
                     detail.effectiveTheme.colorLeaf,
                   )}
                 >
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <span className="rounded-full bg-[var(--studio-sand)] px-2 py-1 text-xs font-black text-[var(--studio-leaf-dark)]">
-                    {exercise.type === "layout_row"
-                      ? `${exercise.columns.length}-column row`
-                      : `Exercise ${index + 1}`}
-                  </span>
+                <div
+                  className={`flex flex-wrap items-center gap-2 ${
+                    exercise.type === "layout_row"
+                      ? "mb-1 justify-end"
+                      : "mb-2 justify-between"
+                  }`}
+                >
+                  {exercise.type !== "layout_row" ? (
+                    <span className="rounded-full bg-[var(--studio-sand)] px-2 py-1 text-xs font-black text-[var(--studio-leaf-dark)]">
+                      Exercise {index + 1}
+                    </span>
+                  ) : null}
                   <div className="flex items-center gap-1">
                     <button type="button" draggable onDragStart={(event) => startEditorDrag(event, { collection: "exercise", mode: "existing", source: { collection: "exercise", container: "root", index }, isLayoutRow: exercise.type === "layout_row" })} onDragEnd={endEditorDrag} className="cursor-grab rounded border border-[#d8c8ae] bg-white px-2 py-1 text-sm text-ink/55 active:cursor-grabbing" aria-label={`Drag exercise ${index + 1}`} title="Drag to reorder">⠿</button>
-                    <button type="button" disabled={index === 0} onClick={() => reorderLessonItems("exercise", index, index - 1)} className="rounded border border-[#d8c8ae] bg-white px-2 py-1 text-xs font-bold disabled:opacity-30" aria-label={`Move exercise ${index + 1} earlier`}>↑</button>
-                    <button type="button" disabled={index === lesson.exercises.length - 1} onClick={() => reorderLessonItems("exercise", index, index + 2)} className="rounded border border-[#d8c8ae] bg-white px-2 py-1 text-xs font-bold disabled:opacity-30" aria-label={`Move exercise ${index + 1} later`}>↓</button>
+                    <button type="button" disabled={index === 0} onClick={(event) => { event.stopPropagation(); reorderLessonItems("exercise", index, index - 1); }} className="rounded border border-[#d8c8ae] bg-white px-2 py-1 text-xs font-bold disabled:opacity-30" aria-label={`Move exercise ${index + 1} earlier`}>↑</button>
+                    <button type="button" disabled={index === lesson.exercises.length - 1} onClick={(event) => { event.stopPropagation(); reorderLessonItems("exercise", index, index + 2); }} className="rounded border border-[#d8c8ae] bg-white px-2 py-1 text-xs font-bold disabled:opacity-30" aria-label={`Move exercise ${index + 1} later`}>↓</button>
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedItem(null);
                         mutateLesson((draft) => {
                           if (draft.exercises.length > 1)
                             draft.exercises.splice(index, 1);
-                        })
-                      }
+                        });
+                      }}
                       className="px-1 py-1 text-[11px] font-bold text-[#8c3f2f]"
                     >
                       Remove
@@ -2695,6 +3436,7 @@ export function WorkbookStudioEditor({
                     className="grid gap-3"
                     style={{
                       gridTemplateColumns: `repeat(${exercise.columns.length}, minmax(0, 1fr))`,
+                      gap: `${exercise.columnGap ?? 16}px`,
                     }}
                   >
                     {exercise.columns.map((column, columnIndex) => (
@@ -2725,41 +3467,18 @@ export function WorkbookStudioEditor({
                                 />
                               ) : null}
                               <div
-                                className="group/child relative rounded-[9px] border border-[#e2d5c2] bg-white p-2"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  selectEditorItem(target);
+                                }}
+                                className={`group/child relative cursor-pointer rounded-[9px] border bg-white p-2 ${selectedItem && sameWorkbookDropTarget(selectedItem, target) ? "border-[var(--studio-leaf)] ring-2 ring-[var(--studio-leaf)]/20" : "border-[#e2d5c2]"}`}
                                 style={workbookBoxPreviewStyle(
                                   child.boxStyle,
                                   detail.effectiveTheme.colorLeaf,
                                 )}
                               >
-                                <WorkbookExerciseLeafFields
+                                <WorkbookExerciseLeafPreview
                                   exercise={child}
-                                  onChange={(next) =>
-                                    mutateLesson((draft) => {
-                                      const row = draft.exercises[index];
-                                      if (row?.type === "layout_row") {
-                                        row.columns[columnIndex].exercises[
-                                          childIndex
-                                        ] = next;
-                                      }
-                                    })
-                                  }
-                                />
-                                <WorkbookBoxStyleControls
-                                  label={`Column ${columnIndex + 1} exercise ${childIndex + 1}`}
-                                  value={child.boxStyle}
-                                  fallbackBorderColor={
-                                    detail.effectiveTheme.colorLeaf
-                                  }
-                                  onChange={(boxStyle) =>
-                                    mutateLesson((draft) => {
-                                      const row = draft.exercises[index];
-                                      if (row?.type === "layout_row") {
-                                        row.columns[columnIndex].exercises[
-                                          childIndex
-                                        ].boxStyle = boxStyle;
-                                      }
-                                    })
-                                  }
                                 />
                                 <div className="absolute right-1 top-1 flex gap-1 rounded bg-white p-0.5 opacity-0 shadow group-hover/child:opacity-100 group-focus-within/child:opacity-100">
                                   <button
@@ -2781,7 +3500,9 @@ export function WorkbookStudioEditor({
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() =>
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedItem(null);
                                       mutateLesson((draft) => {
                                         const row = draft.exercises[index];
                                         if (row?.type === "layout_row") {
@@ -2789,8 +3510,8 @@ export function WorkbookStudioEditor({
                                             columnIndex
                                           ].exercises.splice(childIndex, 1);
                                         }
-                                      })
-                                    }
+                                      });
+                                    }}
                                     className="px-1 text-[10px] font-bold text-[#8c3f2f]"
                                   >
                                     ×
@@ -2830,26 +3551,11 @@ export function WorkbookStudioEditor({
                     ))}
                   </div>
                 ) : (
-                  <WorkbookExerciseLeafFields
+                  <WorkbookExerciseLeafPreview
                     exercise={exercise}
-                    onChange={(next) =>
-                      mutateLesson((draft) => {
-                        draft.exercises[index] = next;
-                      })
-                    }
                   />
                 )}
                 </div>
-                  <WorkbookBoxStyleControls
-                    label={`Exercise ${index + 1}`}
-                    value={exercise.boxStyle}
-                    fallbackBorderColor={detail.effectiveTheme.colorLeaf}
-                    onChange={(boxStyle) =>
-                      mutateLesson((draft) => {
-                        draft.exercises[index].boxStyle = boxStyle;
-                      })
-                    }
-                  />
                 </div>
               </div>
             ))}
@@ -2874,6 +3580,15 @@ export function WorkbookStudioEditor({
             themePending={themePending}
             onChange={mutate}
             onThemeChange={changeTheme}
+          />
+        ) : selectedItem && selectedEditorItem ? (
+          <WorkbookItemInspector
+            item={selectedEditorItem}
+            location={selectedItem}
+            projectId={detail.project.id}
+            fallbackBorderColor={detail.effectiveTheme.colorLeaf}
+            onChange={updateSelectedEditorItem}
+            onClear={() => setSelectedItem(null)}
           />
         ) : <div className="mt-4 grid gap-4">
           <label className="grid gap-1 text-xs font-bold">
@@ -3089,6 +3804,47 @@ export function WorkbookStudioEditor({
               src={`${coverPreviewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
               title={`${content.subjectLabel} print-ready cover`}
               className="min-h-0 flex-1 bg-[#d8d2c9]"
+            />
+          </div>
+        </div>
+      ) : null}
+      {lessonPreviewOpen ? (
+        <div
+          className="fixed inset-0 z-[100] flex flex-col bg-[#201a14]/75 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Lesson ${selected.chapter + 1}.${selected.lesson + 1} browser preview`}
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target)
+              setLessonPreviewOpen(false);
+          }}
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-white/15 bg-[#fffaf2] px-4 py-3 sm:px-6">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-earth">
+                Browser preview · current draft
+              </p>
+              <h2 className="mt-1 font-semibold">
+                Lesson {selected.chapter + 1}.{selected.lesson + 1} —{" "}
+                {lesson.title}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLessonPreviewOpen(false)}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#d8c8ae] bg-white text-xl text-ink/65"
+              aria-label="Close lesson preview"
+            >
+              ×
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto bg-[#d8d2c9] p-3 sm:p-8">
+            <WorkbookLessonBrowserPreview
+              content={content}
+              chapterIndex={selected.chapter}
+              lessonIndex={selected.lesson}
+              projectId={detail.project.id}
+              fallbackBorderColor={detail.effectiveTheme.colorLeaf}
             />
           </div>
         </div>
