@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Suspense } from "react";
+import "@fontsource/comic-neue/400.css";
+import "@fontsource/comic-neue/700.css";
 import "./globals.css";
 import { getRequestDictionary } from "../lib/i18n/server";
 import { GlobalButtonClickSound } from "./global-button-click-sound";

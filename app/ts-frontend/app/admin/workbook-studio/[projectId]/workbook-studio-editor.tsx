@@ -2032,9 +2032,17 @@ function WorkbookLessonBrowserPreview({
   return (
     <article
       className="mx-auto min-h-[900px] w-full max-w-[800px] bg-[var(--studio-canvas)] p-8 text-[var(--studio-ink)] shadow-[0_12px_40px_rgba(32,26,20,0.2)] sm:p-12"
-      style={workbookBoxPreviewStyle(lesson.boxStyle, fallbackBorderColor)}
+      style={{
+        ...workbookBoxPreviewStyle(lesson.boxStyle, fallbackBorderColor),
+        fontFamily: "var(--studio-body-font)",
+        fontSize: "var(--studio-body-font-size)",
+        lineHeight: "var(--studio-body-line-height)",
+      }}
     >
-      <h1 className="border-b-[3px] border-[var(--studio-leaf)] pb-2 text-2xl font-bold text-[var(--studio-leaf-dark)]">
+      <h1
+        className="border-b-[3px] border-[var(--studio-leaf)] pb-2 text-2xl font-bold text-[var(--studio-leaf-dark)]"
+        style={{ fontFamily: "var(--studio-heading-font)" }}
+      >
         Lesson {chapterIndex + 1}.{lessonIndex + 1} — {lesson.title}
       </h1>
       {lesson.subtitle ? (
@@ -2197,6 +2205,7 @@ function WorkbookCoverCanvas({
         backgroundColor: detail.effectiveTheme.colorSand,
         borderColor: detail.effectiveTheme.colorLeaf,
         color: detail.effectiveTheme.colorInk,
+        fontFamily: detail.effectiveTheme.bodyFontFamily,
       }}
     >
       <div
@@ -2211,7 +2220,10 @@ function WorkbookCoverCanvas({
           unoptimized
           className="h-[86%] w-auto object-contain"
         />
-        <span className="text-[clamp(1.2rem,4vw,2.5rem)] font-black lowercase tracking-[-0.05em] text-white">
+        <span
+          className="text-[clamp(1.2rem,4vw,2.5rem)] font-black lowercase tracking-[-0.05em] text-white"
+          style={{ fontFamily: detail.effectiveTheme.headingFontFamily }}
+        >
           treeschool
         </span>
       </div>
@@ -2219,7 +2231,10 @@ function WorkbookCoverCanvas({
         className="absolute right-0 top-0 z-10 flex h-[25%] w-[31%] flex-col items-center justify-center rounded-bl-[38%] px-2 text-white"
         style={{ backgroundColor: detail.effectiveTheme.colorCoverAccent }}
       >
-        <strong className="text-[clamp(1.7rem,8vw,5rem)] leading-none">
+        <strong
+          className="text-[clamp(1.7rem,8vw,5rem)] leading-none"
+          style={{ fontFamily: detail.effectiveTheme.headingFontFamily }}
+        >
           {badge.value}
         </strong>
         <span className="mt-2 text-[clamp(0.65rem,2.2vw,1.35rem)] font-black uppercase tracking-wide">
@@ -2253,7 +2268,10 @@ function WorkbookCoverCanvas({
           }
           aria-label="Cover title"
           className="mt-[2%] w-full border-0 bg-transparent text-center text-[clamp(2rem,8vw,5.5rem)] font-black leading-none outline-none"
-          style={{ color: detail.effectiveTheme.colorCoverAccent }}
+          style={{
+            color: detail.effectiveTheme.colorCoverAccent,
+            fontFamily: detail.effectiveTheme.headingFontFamily,
+          }}
         />
         {content.isCore ? (
           <span
@@ -2504,6 +2522,10 @@ export function WorkbookStudioEditor({
         "--studio-cream": detail.effectiveTheme.colorCream,
         "--studio-sand": detail.effectiveTheme.colorSand,
         "--studio-canvas": detail.effectiveTheme.colorCanvas,
+        "--studio-heading-font": detail.effectiveTheme.headingFontFamily,
+        "--studio-body-font": detail.effectiveTheme.bodyFontFamily,
+        "--studio-body-font-size": `${detail.effectiveTheme.bodyFontSizePt}pt`,
+        "--studio-body-line-height": detail.effectiveTheme.bodyLineHeight,
       }) as React.CSSProperties,
     [detail.effectiveTheme],
   );
@@ -2916,7 +2938,7 @@ export function WorkbookStudioEditor({
                 <p className="text-[10px] font-black uppercase tracking-[0.12em] text-earth">
                   Learning content
                 </p>
-                <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="mt-2 grid grid-cols-1 gap-2">
                   {([
                     ["paragraph", "Paragraph"],
                     ["image_asset", "Image"],
@@ -2966,7 +2988,7 @@ export function WorkbookStudioEditor({
                 <p className="text-[10px] font-black uppercase tracking-[0.12em] text-earth">
                   Exercises
                 </p>
-                <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="mt-2 grid grid-cols-1 gap-2">
                   {([
                     ["circle_choice", "Circle choice"],
                     ["multiple_choice", "Multiple choice"],
@@ -3016,7 +3038,7 @@ export function WorkbookStudioEditor({
                     <p className="text-[10px] font-black uppercase tracking-[0.12em] text-earth">
                       {collection === "learn" ? "Learning" : "Exercise"} rows
                     </p>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div className="mt-2 grid grid-cols-1 gap-2">
                       {([1, 2, 3, 4] as WorkbookLayoutColumnCount[]).map(
                         (columnCount) => (
                           <button
@@ -3173,10 +3195,15 @@ export function WorkbookStudioEditor({
           onDragOver={dragOverLessonCanvas}
           onDrop={dropOnLessonCanvas}
           className="mx-auto min-h-[900px] max-w-[800px] rounded-[4px] bg-[var(--studio-canvas)] p-8 text-[var(--studio-ink)] shadow-[0_12px_40px_rgba(70,50,30,0.18)] sm:p-12"
-          style={workbookBoxPreviewStyle(
-            lesson.boxStyle,
-            detail.effectiveTheme.colorLeaf,
-          )}
+          style={{
+            ...workbookBoxPreviewStyle(
+              lesson.boxStyle,
+              detail.effectiveTheme.colorLeaf,
+            ),
+            fontFamily: "var(--studio-body-font)",
+            fontSize: "var(--studio-body-font-size)",
+            lineHeight: "var(--studio-body-line-height)",
+          }}
         >
           <input
             value={lesson.title}
@@ -3186,6 +3213,7 @@ export function WorkbookStudioEditor({
               })
             }
             className="w-full border-0 border-b-[3px] border-[var(--studio-leaf)] bg-transparent pb-2 text-2xl font-bold text-[var(--studio-leaf-dark)] outline-none"
+            style={{ fontFamily: "var(--studio-heading-font)" }}
             aria-label="Lesson title"
           />
           <p className="mt-7 inline-block border-b-2 border-[var(--studio-leaf)] text-sm font-bold text-[var(--studio-leaf-dark)]">

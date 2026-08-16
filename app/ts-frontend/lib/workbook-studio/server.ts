@@ -433,6 +433,10 @@ export type WorkbookStudioProjectDetail = {
     colorCanvas: string;
     colorCoverAccent: string;
     colorCoverAccentSoft: string;
+    headingFontFamily: string;
+    bodyFontFamily: string;
+    bodyFontSizePt: number;
+    bodyLineHeight: number;
   };
   generationRuns: Array<{
     id: string;
