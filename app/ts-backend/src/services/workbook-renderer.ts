@@ -13,10 +13,11 @@ import {
   workbookRenderRuns,
   workbookThemeVersions,
 } from "ts-db";
-import { db } from "../db";
+import { db, env } from "../db";
 import { downloadPrivateFile, uploadPrivateFile } from "./media";
 import {
   flattenWorkbookExercises,
+  flattenWorkbookLearnBlocks,
   parseWorkbookContent,
   type WorkbookContent,
   type WorkbookExercise,
@@ -24,6 +25,8 @@ import {
   type WorkbookPracticeItem,
 } from "./workbook-studio-model";
 import { validateWorkbookForScope } from "./workbook-studio-validation";
+import { renderWorkbookQrCodeDataUrl } from "./workbook-qr-code";
+import { workbookSoundPublicUrl } from "./workbook-media";
 import {
   compileWorkbookThemeCss,
   resolveSvgThemeTokens,
@@ -392,6 +395,9 @@ function renderLearnBlockContent(
   block: WorkbookLearnBlockLeaf,
   definitions: Map<string, IllustrationDefinition>,
   theme: WorkbookThemeTokens,
+  imageAssetDataUrls: Record<string, string>,
+  qrCodeDataUrls: Map<string, string>,
+  soundAssetPublicUrls: Map<string, string>,
 ) {
   if (block.type === "paragraph") return `<p>${escapeHtml(block.text)}</p>`;
   if (block.type === "illustration")
@@ -400,7 +406,33 @@ function renderLearnBlockContent(
     return `<aside class="lesson-callout lesson-callout--${block.tone}">${block.label ? `<strong>${escapeHtml(block.label)}</strong> ` : ""}${escapeHtml(block.text)}</aside>`;
   }
   if (block.type === "image_asset") {
+    const imageDataUrl = block.assetId
+      ? imageAssetDataUrls[block.assetId]
+      : null;
+    if (imageDataUrl) {
+      const margins = block.alignment === "left"
+        ? "margin-left:0;margin-right:auto"
+        : block.alignment === "right"
+          ? "margin-left:auto;margin-right:0"
+          : "margin-left:auto;margin-right:auto";
+      return `<figure class="workbook-image" style="width:${block.widthPercent}%;${margins}"><img src="${escapeHtml(imageDataUrl)}" alt="${escapeHtml(block.altText)}">${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ""}</figure>`;
+    }
     return `<div class="image-asset-placeholder"><strong>Illustration brief</strong><p>${escapeHtml(block.description)}</p></div>`;
+  }
+  if (block.type === "qr_code") {
+    const dataUrl = qrCodeDataUrls.get(block.data);
+    if (!dataUrl) throw new Error("A workbook QR code could not be generated.");
+    return `<figure class="workbook-qr-code" style="width:${block.sizeMm}mm"><img src="${escapeHtml(dataUrl)}" alt="${escapeHtml(block.description)}"><figcaption>${escapeHtml(block.description)}</figcaption></figure>`;
+  }
+  if (block.type === "sound_asset") {
+    const publicUrl = block.assetId
+      ? soundAssetPublicUrls.get(block.assetId)
+      : null;
+    const dataUrl = publicUrl ? qrCodeDataUrls.get(publicUrl) : null;
+    if (!dataUrl) {
+      return `<div class="sound-asset-placeholder"><strong>Sound</strong><p>${escapeHtml(block.description)}</p></div>`;
+    }
+    return `<figure class="workbook-sound-qr" style="width:${block.qrSizeMm}mm"><strong>Listen</strong><img src="${escapeHtml(dataUrl)}" alt="${escapeHtml(block.description)}"><figcaption>${escapeHtml(block.description)}</figcaption></figure>`;
   }
   if (block.type === "vocabulary_list") {
     return `<section class="reader-vocabulary"><h4>${escapeHtml(block.title ?? "Vocabulary")}</h4><dl>${block.entries.map((entry) => `<div><dt>${escapeHtml(entry.term)}${entry.pronunciation ? ` <span>${escapeHtml(entry.pronunciation)}</span>` : ""}</dt><dd>${escapeHtml(entry.definition)}</dd></div>`).join("")}</dl></section>`;
@@ -415,14 +447,24 @@ function renderLearnBlock(
   block: WorkbookContent["chapters"][number]["lessons"][number]["learnBlocks"][number],
   definitions: Map<string, IllustrationDefinition>,
   theme: WorkbookThemeTokens,
+  imageAssetDataUrls: Record<string, string>,
+  qrCodeDataUrls: Map<string, string>,
+  soundAssetPublicUrls: Map<string, string>,
 ): string {
   if (block.type === "layout_row") {
-    const row: string = `<div class="workbook-layout-row" style="display:grid;grid-template-columns:repeat(${block.columns.length},minmax(0,1fr));gap:${block.columnGap ?? 16}px">${block.columns.map((column) => `<div class="workbook-layout-column">${column.blocks.map((child) => renderLearnBlock(child, definitions, theme)).join("")}</div>`).join("")}</div>`;
+    const row: string = `<div class="workbook-layout-row" style="display:grid;grid-template-columns:repeat(${block.columns.length},minmax(0,1fr));gap:${block.columnGap ?? 16}px">${block.columns.map((column) => `<div class="workbook-layout-column">${column.blocks.map((child) => renderLearnBlock(child, definitions, theme, imageAssetDataUrls, qrCodeDataUrls, soundAssetPublicUrls)).join("")}</div>`).join("")}</div>`;
     return block.boxStyle
       ? `<div class="workbook-content-box"${workbookBoxStyleAttributes(block.boxStyle)}>${row}</div>`
       : row;
   }
-  const html = renderLearnBlockContent(block, definitions, theme);
+  const html = renderLearnBlockContent(
+    block,
+    definitions,
+    theme,
+    imageAssetDataUrls,
+    qrCodeDataUrls,
+    soundAssetPublicUrls,
+  );
   return block.boxStyle
     ? `<div class="workbook-content-box"${workbookBoxStyleAttributes(block.boxStyle)}>${html}</div>`
     : html;
@@ -512,6 +554,9 @@ function renderWorkbookBody(
   logoDataUrl: string,
   copyrightYear: number,
   layoutProfile: string,
+  imageAssetDataUrls: Record<string, string>,
+  qrCodeDataUrls: Map<string, string>,
+  soundAssetPublicUrls: Map<string, string>,
   coverImageDataUrl?: string | null,
   coverImageAlt?: string | null,
 ) {
@@ -535,7 +580,7 @@ function renderWorkbookBody(
         <div class="lesson" id="${escapeHtml(lesson.id)}"${workbookBoxStyleAttributes(lesson.boxStyle)}>
           <h3 class="lesson-title">Lesson ${lessonNumber} — ${escapeHtml(lesson.title)}</h3>
           <span class="part-label">Part 1: Learn</span>
-          <div class="intro"${workbookBoxStyleAttributes(lesson.learnSectionBoxStyle)}>${lesson.learnBlocks.map((block) => renderLearnBlock(block, definitions, theme)).join("")}</div>
+          <div class="intro"${workbookBoxStyleAttributes(lesson.learnSectionBoxStyle)}>${lesson.learnBlocks.map((block) => renderLearnBlock(block, definitions, theme, imageAssetDataUrls, qrCodeDataUrls, soundAssetPublicUrls)).join("")}</div>
           <span class="part-label">Part 2: Practice</span>
           <div class="exercises"${workbookBoxStyleAttributes(lesson.practiceSectionBoxStyle)}>${renderPracticeItems(lesson.exercises)}</div>
         </div>
@@ -561,7 +606,7 @@ function renderWorkbookBody(
       <div class="cover-edition-bar"><p class="edition-label">${escapeHtml(content.editionLabel)}</p></div>
     </div>
     <div class="publisher-page"><span class="header-label">Front Matter</span><p>Copyright &copy; ${copyrightYear} Treeschool. All rights reserved.</p><p>No part of this workbook may be reproduced, distributed, or transmitted in any form without prior written permission from Treeschool, except for personal or single-classroom use by the purchaser.</p><p class="publisher-site">www.treehomeschool.com</p></div>
-    ${content.introduction.length ? `<div class="intro-page"><h1>Introduction</h1>${content.introduction.map((block) => renderLearnBlock(block, definitions, theme)).join("")}</div>` : ""}
+    ${content.introduction.length ? `<div class="intro-page"><h1>Introduction</h1>${content.introduction.map((block) => renderLearnBlock(block, definitions, theme, imageAssetDataUrls, qrCodeDataUrls, soundAssetPublicUrls)).join("")}</div>` : ""}
     <div class="toc"><h1>Table of Contents</h1>${toc}</div>
     ${chapters}
   `;
@@ -580,9 +625,12 @@ export async function buildWorkbookHtml(input: {
   layoutProfile: string;
   scriptProfile: string;
   illustrationDefinitions?: IllustrationDefinition[];
+  imageAssetDataUrls?: Record<string, string>;
   coverImageDataUrl?: string | null;
   coverImageAlt?: string | null;
   editionLabelOverride?: string | null;
+  projectId?: string;
+  publicAppUrl?: string;
   copyrightYear?: number;
 }) {
   const [canonicalCss, overlayCss, fontCss, pagedJs, logo] = await Promise.all([
@@ -621,6 +669,48 @@ export async function buildWorkbookHtml(input: {
   const renderedContent = input.editionLabelOverride
     ? { ...input.content, editionLabel: input.editionLabelOverride }
     : input.content;
+  const learnBlocks = [
+    ...flattenWorkbookLearnBlocks(renderedContent.introduction),
+    ...renderedContent.chapters.flatMap((chapter) =>
+      chapter.lessons.flatMap((lesson) =>
+        flattenWorkbookLearnBlocks(lesson.learnBlocks),
+      ),
+    ),
+  ];
+  const soundAssetPublicUrls = new Map<string, string>();
+  for (const block of learnBlocks) {
+    if (block.type !== "sound_asset" || !block.assetId || !block.contentType) {
+      continue;
+    }
+    if (!input.projectId) {
+      throw new Error("A workbook project id is required to render sound assets.");
+    }
+    soundAssetPublicUrls.set(
+      block.assetId,
+      workbookSoundPublicUrl(
+        {
+          projectId: input.projectId,
+          assetId: block.assetId,
+          contentType: block.contentType,
+        },
+        input.publicAppUrl ?? env.PUBLIC_APP_URL ?? "https://www.treehomeschool.com",
+      ),
+    );
+  }
+  const qrCodeData = new Set([
+    ...learnBlocks
+      .filter((block) => block.type === "qr_code")
+      .map((block) => block.data),
+    ...soundAssetPublicUrls.values(),
+  ]);
+  const qrCodeDataUrls = new Map(
+    await Promise.all(
+      [...qrCodeData].map(async (data) => [
+        data,
+        await renderWorkbookQrCodeDataUrl(data, input.theme.colorInk),
+      ] as const),
+    ),
+  );
   const body = renderWorkbookBody(
     renderedContent,
     definitions,
@@ -628,6 +718,9 @@ export async function buildWorkbookHtml(input: {
     logo,
     input.copyrightYear ?? 2026,
     input.layoutProfile,
+    input.imageAssetDataUrls ?? {},
+    qrCodeDataUrls,
+    soundAssetPublicUrls,
     input.coverImageDataUrl,
     input.coverImageAlt,
   );
@@ -641,7 +734,17 @@ export async function buildWorkbookHtml(input: {
 .workbook-illustration { margin: 12px auto; break-inside: avoid; page-break-inside: avoid; text-align: center; }
 .workbook-illustration svg { max-width: 100%; height: auto; }
 .workbook-illustration figcaption { margin-top: 4px; color: var(--earth); font-size: 10pt; }
-.lesson-callout, .image-asset-placeholder { margin: 10px 0; padding: 10px 14px; border: 2px solid var(--leaf); border-radius: 12px; break-inside: avoid; }
+.workbook-image { break-inside: avoid; page-break-inside: avoid; text-align: center; }
+.workbook-image img { display: block; width: 100%; max-width: 100%; height: auto; }
+.workbook-image figcaption { margin-top: 4px; color: var(--earth); font-size: 10pt; }
+.workbook-qr-code { margin: 12px auto; break-inside: avoid; page-break-inside: avoid; text-align: center; }
+.workbook-qr-code img { display: block; width: 100%; height: auto; }
+.workbook-qr-code figcaption { margin-top: 5px; color: var(--earth); font-size: 10pt; line-height: 1.35; }
+.workbook-sound-qr { margin: 12px auto; break-inside: avoid; page-break-inside: avoid; text-align: center; }
+.workbook-sound-qr strong { display: block; margin-bottom: 4px; color: var(--leaf-dark); font-family: var(--heading-font); font-size: 12pt; }
+.workbook-sound-qr img { display: block; width: 100%; height: auto; }
+.workbook-sound-qr figcaption { margin-top: 5px; color: var(--earth); font-size: 10pt; line-height: 1.35; }
+.lesson-callout, .image-asset-placeholder, .sound-asset-placeholder { margin: 10px 0; padding: 10px 14px; border: 2px solid var(--leaf); border-radius: 12px; break-inside: avoid; }
 .draw-box { margin-top: 10px; border: 2px solid var(--ink); break-inside: avoid; }
 .reader-vocabulary, .reader-passage, .character-practice { margin: 12px 0; break-inside: avoid; page-break-inside: avoid; }
 .reader-vocabulary dl > div { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--sand); }
@@ -759,6 +862,52 @@ export function themeTokensFromRow(
   });
 }
 
+function workbookImageAssetExtension(contentType: string) {
+  if (contentType === "image/jpeg") return "jpg";
+  if (contentType === "image/png") return "png";
+  if (contentType === "image/webp") return "webp";
+  throw new Error(`Unsupported workbook image type: ${contentType}`);
+}
+
+async function loadWorkbookImageAssetDataUrls(
+  projectId: string,
+  content: WorkbookContent,
+) {
+  const blocks = [
+    ...flattenWorkbookLearnBlocks(content.introduction),
+    ...content.chapters.flatMap((chapter) =>
+      chapter.lessons.flatMap((lesson) =>
+        flattenWorkbookLearnBlocks(lesson.learnBlocks),
+      ),
+    ),
+  ];
+  const assets = new Map<
+    string,
+    { assetId: string; contentType: "image/jpeg" | "image/png" | "image/webp" }
+  >();
+  for (const block of blocks) {
+    if (block.type === "image_asset" && block.assetId && block.contentType) {
+      assets.set(block.assetId, {
+        assetId: block.assetId,
+        contentType: block.contentType,
+      });
+    }
+  }
+  return Object.fromEntries(
+    await Promise.all(
+      [...assets.values()].map(async (asset) => {
+        const extension = workbookImageAssetExtension(asset.contentType);
+        const objectPath = `workbook-studio/${projectId}/assets/${asset.assetId}.${extension}`;
+        const bytes = await downloadPrivateFile(objectPath);
+        return [
+          asset.assetId,
+          `data:${asset.contentType};base64,${Buffer.from(bytes).toString("base64")}`,
+        ] as const;
+      }),
+    ),
+  );
+}
+
 export async function executeWorkbookRenderRun(renderRunId: string) {
   const [row] = await db
     .select({
@@ -819,6 +968,10 @@ export async function executeWorkbookRenderRun(renderRunId: string) {
     .set({ status: "running", lastError: null })
     .where(eq(workbookRenderRuns.id, renderRunId));
   try {
+    const imageAssetDataUrls = await loadWorkbookImageAssetDataUrls(
+      row.project.id,
+      content,
+    );
     const coverImageDataUrl = row.project.coverImageObjectPath
       ? `data:image/png;base64,${Buffer.from(
           await downloadPrivateFile(row.project.coverImageObjectPath),
@@ -832,9 +985,11 @@ export async function executeWorkbookRenderRun(renderRunId: string) {
       layoutProfile: row.project.layoutProfile,
       scriptProfile: row.project.scriptProfile,
       illustrationDefinitions: illustrations,
+      imageAssetDataUrls,
       coverImageDataUrl,
       coverImageAlt: row.project.coverImageAlt,
       editionLabelOverride: row.run.optionsJson.editionLabelOverride ?? null,
+      projectId: row.project.id,
       copyrightYear: row.run.optionsJson.copyrightYear ?? 2026,
     });
     const rendered = await renderWorkbookPdf(html);

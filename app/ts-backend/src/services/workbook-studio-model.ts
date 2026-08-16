@@ -64,9 +64,44 @@ const learnBlockLeafSchema = z.discriminatedUnion("type", [
     ...workbookBoxStyleField,
     type: z.literal("image_asset"),
     assetId: z.string().uuid().nullable().default(null),
+    contentType: z
+      .enum(["image/jpeg", "image/png", "image/webp"])
+      .nullable()
+      .default(null),
+    pixelWidth: z.number().int().min(1).max(10_000).nullable().default(null),
+    pixelHeight: z.number().int().min(1).max(10_000).nullable().default(null),
     description: z.string().trim().min(1),
     altText: z.string().trim().min(1),
+    caption: z.string().trim().optional(),
+    widthPercent: z.number().int().min(10).max(100).default(100),
+    alignment: z.enum(["left", "center", "right"]).default("center"),
     generationBrief: z.string().trim().optional(),
+  }),
+  z.object({
+    ...workbookBoxStyleField,
+    type: z.literal("qr_code"),
+    data: z.string().trim().min(1).max(2_048),
+    description: z.string().trim().min(1).max(500),
+    sizeMm: z.number().int().min(20).max(80).default(35),
+  }),
+  z.object({
+    ...workbookBoxStyleField,
+    type: z.literal("sound_asset"),
+    assetId: z.string().uuid().nullable().default(null),
+    contentType: z
+      .enum(["audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg"])
+      .nullable()
+      .default(null),
+    fileName: z.string().trim().max(255).nullable().default(null),
+    sizeBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(30 * 1024 * 1024)
+      .nullable()
+      .default(null),
+    description: z.string().trim().min(1).max(500),
+    qrSizeMm: z.number().int().min(20).max(80).default(35),
   }),
   z.object({
     ...workbookBoxStyleField,
@@ -241,6 +276,52 @@ export const workbookContentSchema = z
     const chapterIds = new Set<string>();
     const lessonIds = new Set<string>();
     const exerciseIds = new Set<string>();
+    const validateLearnBlock = (
+      block: (typeof content.introduction)[number],
+      path: Array<string | number>,
+    ) => {
+      if (block.type === "layout_row") {
+        block.columns.forEach((column, columnIndex) => {
+          column.blocks.forEach((child, childIndex) =>
+            validateLearnBlock(child, [
+              ...path,
+              "columns",
+              columnIndex,
+              "blocks",
+              childIndex,
+            ]),
+          );
+        });
+        return;
+      }
+      if (
+        block.type === "image_asset" &&
+        (block.assetId === null) !== (block.contentType === null)
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [...path, "assetId"],
+          message:
+            "An uploaded workbook image requires both an asset id and content type.",
+        });
+      }
+      if (
+        block.type === "sound_asset" &&
+        ((block.assetId === null) !== (block.contentType === null) ||
+          (block.assetId === null) !== (block.sizeBytes === null))
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [...path, "assetId"],
+          message:
+            "An uploaded workbook sound requires an asset id, content type, and file size.",
+        });
+      }
+    };
+
+    content.introduction.forEach((block, blockIndex) =>
+      validateLearnBlock(block, ["introduction", blockIndex]),
+    );
 
     content.chapters.forEach((chapter, chapterIndex) => {
       if (chapterIds.has(chapter.id)) {
@@ -261,6 +342,16 @@ export const workbookContentSchema = z
           });
         }
         lessonIds.add(lesson.id);
+        lesson.learnBlocks.forEach((block, blockIndex) =>
+          validateLearnBlock(block, [
+            "chapters",
+            chapterIndex,
+            "lessons",
+            lessonIndex,
+            "learnBlocks",
+            blockIndex,
+          ]),
+        );
 
         const validateExercise = (
           exercise: (typeof lesson.exercises)[number],
@@ -439,11 +530,35 @@ export function validateWorkbookForPublish(
 ): WorkbookValidationIssue[] {
   const issues: WorkbookValidationIssue[] = [];
 
+  for (const block of flattenWorkbookLearnBlocks(content.introduction)) {
+    if (block.type === "sound_asset" && !block.assetId) {
+      issues.push({
+        severity: "error",
+        code: "missing_sound_asset",
+        path: "introduction",
+        message: "An introduction sound element needs an uploaded sound file.",
+      });
+    }
+  }
+
   for (const chapter of content.chapters) {
     for (const lesson of chapter.lessons) {
-      const illustrations = flattenWorkbookLearnBlocks(lesson.learnBlocks).filter(
-        (block) => block.type === "illustration",
+      const learnBlocks = flattenWorkbookLearnBlocks(lesson.learnBlocks);
+      const illustrations = learnBlocks.filter(
+        (block) =>
+          block.type === "illustration" ||
+          (block.type === "image_asset" && block.assetId !== null),
       );
+      for (const block of learnBlocks) {
+        if (block.type === "sound_asset" && !block.assetId) {
+          issues.push({
+            severity: "error",
+            code: "missing_sound_asset",
+            path: `chapters.${chapter.id}.lessons.${lesson.id}.learnBlocks`,
+            message: `${lesson.title} has a sound element without an uploaded sound file.`,
+          });
+        }
+      }
       if (
         policy.requireFlaggedIllustrations &&
         lesson.needsIllustration &&

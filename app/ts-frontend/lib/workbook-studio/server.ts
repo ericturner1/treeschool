@@ -61,9 +61,35 @@ export type WorkbookLearnBlockLeaf = (
   | {
       type: "image_asset";
       assetId: string | null;
+      contentType: "image/jpeg" | "image/png" | "image/webp" | null;
+      pixelWidth: number | null;
+      pixelHeight: number | null;
       description: string;
       altText: string;
+      caption?: string;
+      widthPercent: number;
+      alignment: "left" | "center" | "right";
       generationBrief?: string;
+    }
+  | {
+      type: "qr_code";
+      data: string;
+      description: string;
+      sizeMm: number;
+    }
+  | {
+      type: "sound_asset";
+      assetId: string | null;
+      contentType:
+        | "audio/mpeg"
+        | "audio/mp4"
+        | "audio/wav"
+        | "audio/ogg"
+        | null;
+      fileName: string | null;
+      sizeBytes: number | null;
+      description: string;
+      qrSizeMm: number;
     }
   | {
       type: "vocabulary_list";
@@ -487,6 +513,114 @@ export function getAdminWorkbookStudioCoverPreviewResponse(
   return backendFetch(
     `${getBackendUrl()}/internal/workbook-studio/admin/project/cover-preview?${query}`,
     { cache: "no-store" },
+  );
+}
+
+export function prepareAdminWorkbookImageUpload(input: Record<string, unknown>) {
+  return postJson<{
+    assetId: string;
+    objectPath: string;
+    contentType: "image/jpeg" | "image/png" | "image/webp";
+    uploadUrl: string;
+  }>(
+    "/internal/workbook-studio/admin/project/image-asset/prepare",
+    input,
+    "Could not prepare the workbook image upload.",
+  );
+}
+
+export function completeAdminWorkbookImageUpload(input: Record<string, unknown>) {
+  return postJson<{
+    assetId: string;
+    contentType: "image/jpeg" | "image/png" | "image/webp";
+    pixelWidth: number;
+    pixelHeight: number;
+  }>(
+    "/internal/workbook-studio/admin/project/image-asset/complete",
+    input,
+    "Could not save the workbook image.",
+  );
+}
+
+export function discardAdminWorkbookImageUpload(input: Record<string, unknown>) {
+  return postJson<{ discarded: boolean }>(
+    "/internal/workbook-studio/admin/project/image-asset/discard",
+    input,
+    "Could not discard the workbook image.",
+  );
+}
+
+export function getAdminWorkbookImageAssetResponse(input: {
+  userId: string;
+  projectId: string;
+  filename: string;
+}) {
+  const query = new URLSearchParams(input);
+  return backendFetch(
+    `${getBackendUrl()}/internal/workbook-studio/admin/project/image-asset?${query}`,
+    { cache: "force-cache" },
+  );
+}
+
+export function prepareAdminWorkbookSoundUpload(input: Record<string, unknown>) {
+  return postJson<{
+    assetId: string;
+    objectPath: string;
+    contentType: "audio/mpeg" | "audio/mp4" | "audio/wav" | "audio/ogg";
+    uploadUrl: string;
+    publicUrl: string;
+  }>(
+    "/internal/workbook-studio/admin/project/sound-asset/prepare",
+    input,
+    "Could not prepare the workbook sound upload.",
+  );
+}
+
+export function completeAdminWorkbookSoundUpload(input: Record<string, unknown>) {
+  return postJson<{
+    assetId: string;
+    contentType: "audio/mpeg" | "audio/mp4" | "audio/wav" | "audio/ogg";
+    fileName: string | null;
+    sizeBytes: number;
+    publicUrl: string;
+  }>(
+    "/internal/workbook-studio/admin/project/sound-asset/complete",
+    input,
+    "Could not save the workbook sound.",
+  );
+}
+
+export function discardAdminWorkbookSoundUpload(input: Record<string, unknown>) {
+  return postJson<{ discarded: boolean }>(
+    "/internal/workbook-studio/admin/project/sound-asset/discard",
+    input,
+    "Could not discard the workbook sound.",
+  );
+}
+
+export function getPublicWorkbookSoundAssetResponse(input: {
+  projectId: string;
+  filename: string;
+  rangeHeader?: string | null;
+}) {
+  const query = new URLSearchParams({
+    projectId: input.projectId,
+    filename: input.filename,
+  });
+  return backendFetch(
+    `${getBackendUrl()}/internal/workbook-studio/media?${query}`,
+    {
+      cache: "force-cache",
+      headers: input.rangeHeader ? { Range: input.rangeHeader } : undefined,
+    },
+  );
+}
+
+export function generateAdminWorkbookQrCodePreview(input: Record<string, unknown>) {
+  return postJson<{ dataUrl: string }>(
+    "/internal/workbook-studio/admin/project/qr-code",
+    input,
+    "Could not generate the QR code.",
   );
 }
 

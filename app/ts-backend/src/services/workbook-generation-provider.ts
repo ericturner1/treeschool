@@ -448,7 +448,7 @@ export async function generateWorkbookContent(input: {
   outline: WorkbookOutline;
 }) {
   const response = await callAnthropicTool({
-    prompt: `${input.assembledPrompt}\n\nUse this approved outline exactly; preserve every chapter and lesson id:\n${JSON.stringify(input.outline, null, 2)}\n\nWrite the complete workbook content. Learn blocks may be paragraph, callout, illustration, image_asset, vocabulary_list, reading_passage, or character_practice. Use vocabulary and passage blocks for reader layouts and character-practice blocks for Japanese writing instruction. Exercise types are circle_choice, multiple_choice, matching, fill_in_blank, short_answer, write, and draw_box. Include a correctAnswer or sampleAnswer as required. Use exactly five exercises per standard lesson.`,
+    prompt: `${input.assembledPrompt}\n\nUse this approved outline exactly; preserve every chapter and lesson id:\n${JSON.stringify(input.outline, null, 2)}\n\nWrite the complete workbook content. Learn blocks may be paragraph, callout, illustration, image_asset, qr_code, sound_asset, vocabulary_list, reading_passage, or character_practice. Use vocabulary and passage blocks for reader layouts and character-practice blocks for Japanese writing instruction. QR code blocks require data and a visible description. Sound assets require uploaded media, so generated drafts should only preserve an existing sound_asset rather than invent one. Exercise types are circle_choice, multiple_choice, matching, fill_in_blank, short_answer, write, and draw_box. Include a correctAnswer or sampleAnswer as required. Use exactly five exercises per standard lesson.`,
     toolName: "save_workbook_content",
     toolDescription:
       "Save a complete Workbook Studio schemaVersion 1 content tree.",

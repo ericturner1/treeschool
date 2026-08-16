@@ -1,6 +1,13 @@
 "use client";
 
-import { useMemo, useState, useTransition, type DragEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type DragEvent,
+} from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -25,7 +32,13 @@ import {
 type ExerciseType = WorkbookExerciseLeaf["type"];
 type AddableLearnBlockType = Extract<
   WorkbookLearnBlockLeaf["type"],
-  "paragraph" | "vocabulary_list" | "reading_passage" | "character_practice"
+  | "paragraph"
+  | "image_asset"
+  | "qr_code"
+  | "sound_asset"
+  | "vocabulary_list"
+  | "reading_passage"
+  | "character_practice"
 >;
 type WorkbookLayoutColumnCount = 1 | 2 | 3 | 4;
 type WorkbookEditorCollection = "learn" | "exercise";
@@ -112,6 +125,38 @@ function makeExercise(
 }
 
 function makeLearnBlock(type: AddableLearnBlockType): WorkbookLearnBlockLeaf {
+  if (type === "qr_code") {
+    return {
+      type,
+      data: "https://www.treehomeschool.com",
+      description: "Scan this QR code for more information.",
+      sizeMm: 35,
+    };
+  }
+  if (type === "sound_asset") {
+    return {
+      type,
+      assetId: null,
+      contentType: null,
+      fileName: null,
+      sizeBytes: null,
+      description: "Listen to this sound.",
+      qrSizeMm: 35,
+    };
+  }
+  if (type === "image_asset") {
+    return {
+      type,
+      assetId: null,
+      contentType: null,
+      pixelWidth: null,
+      pixelHeight: null,
+      description: "Workbook image",
+      altText: "Describe this image",
+      widthPercent: 100,
+      alignment: "center",
+    };
+  }
   if (type === "vocabulary_list") {
     return {
       type,
@@ -451,11 +496,712 @@ function WorkbookBoxStyleControls({
   );
 }
 
-function WorkbookLearnLeafFields({
+type WorkbookImageBlock = Extract<
+  WorkbookLearnBlockLeaf,
+  { type: "image_asset" }
+>;
+
+function workbookImageFilename(block: WorkbookImageBlock) {
+  if (!block.assetId || !block.contentType) return null;
+  const extension = block.contentType === "image/jpeg"
+    ? "jpg"
+    : block.contentType === "image/png"
+      ? "png"
+      : "webp";
+  return `${block.assetId}.${extension}`;
+}
+
+function workbookImageUrl(projectId: string, block: WorkbookImageBlock) {
+  const filename = workbookImageFilename(block);
+  return filename
+    ? `/api/workbook-studio/assets/${encodeURIComponent(projectId)}/${encodeURIComponent(filename)}`
+    : null;
+}
+
+async function workbookUploadError(response: Response, fallback: string) {
+  const payload = (await response.json().catch(() => ({}))) as {
+    error?: string;
+  };
+  return payload.error ?? fallback;
+}
+
+function WorkbookImageFields({
+  block,
+  projectId,
+  onChange,
+}: {
+  block: WorkbookImageBlock;
+  projectId: string;
+  onChange: (block: WorkbookImageBlock) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const imageUrl = workbookImageUrl(projectId, block);
+
+  function update(recipe: (draft: WorkbookImageBlock) => void) {
+    const next = structuredClone(block);
+    recipe(next);
+    onChange(next);
+  }
+
+  async function upload(file: File) {
+    if (uploading) return;
+    setUploading(true);
+    setUploadError("");
+    type PreparedUpload = {
+      assetId: string;
+      objectPath: string;
+      contentType: "image/jpeg" | "image/png" | "image/webp";
+      uploadUrl: string;
+    };
+    let prepared: PreparedUpload | null = null;
+    try {
+      const prepareResponse = await fetch("/api/workbook-studio/assets/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          contentType: file.type,
+          sizeBytes: file.size,
+        }),
+      });
+      if (!prepareResponse.ok) {
+        throw new Error(
+          await workbookUploadError(
+            prepareResponse,
+            "Could not prepare the workbook image upload.",
+          ),
+        );
+      }
+      prepared = await prepareResponse.json() as PreparedUpload;
+      const storageResponse = await fetch(prepared!.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": prepared!.contentType },
+        body: file,
+      });
+      if (!storageResponse.ok) {
+        throw new Error("The image could not be uploaded to storage.");
+      }
+      const completeResponse = await fetch("/api/workbook-studio/assets/upload", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          objectPath: prepared!.objectPath,
+          assetId: prepared!.assetId,
+        }),
+      });
+      if (!completeResponse.ok) {
+        throw new Error(
+          await workbookUploadError(
+            completeResponse,
+            "Could not verify the workbook image.",
+          ),
+        );
+      }
+      const asset = await completeResponse.json() as {
+        assetId: string;
+        contentType: "image/jpeg" | "image/png" | "image/webp";
+        pixelWidth: number;
+        pixelHeight: number;
+      };
+      const filename = file.name.replace(/\.[^.]+$/, "").trim();
+      onChange({
+        ...block,
+        assetId: asset.assetId,
+        contentType: asset.contentType,
+        pixelWidth: asset.pixelWidth,
+        pixelHeight: asset.pixelHeight,
+        description: filename || block.description,
+        altText:
+          block.altText === "Describe this image" && filename
+            ? filename
+            : block.altText,
+      });
+      prepared = null;
+    } catch (error) {
+      if (prepared) {
+        await fetch("/api/workbook-studio/assets/upload", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            objectPath: prepared.objectPath,
+          }),
+        }).catch(() => undefined);
+      }
+      setUploadError(
+        error instanceof Error ? error.message : "Could not upload the image.",
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const justifyContent = block.alignment === "left"
+    ? "flex-start"
+    : block.alignment === "right"
+      ? "flex-end"
+      : "center";
+
+  return (
+    <div className="grid gap-3 rounded-[12px] bg-[var(--studio-sand)] p-3">
+      {imageUrl ? (
+        <figure>
+          <div className="flex" style={{ justifyContent }}>
+            <Image
+              src={imageUrl}
+              alt={block.altText}
+              width={block.pixelWidth ?? 1200}
+              height={block.pixelHeight ?? 800}
+              unoptimized
+              className="h-auto max-w-full rounded-[8px] object-contain"
+              style={{ width: `${block.widthPercent}%` }}
+            />
+          </div>
+          {block.caption ? (
+            <figcaption className="mt-1 text-center text-xs text-ink/55">
+              {block.caption}
+            </figcaption>
+          ) : null}
+        </figure>
+      ) : (
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+          className="grid min-h-32 place-items-center rounded-[10px] border-2 border-dashed border-[#9fbd89] bg-white px-4 text-center text-sm font-bold text-[#486a38] disabled:opacity-60"
+        >
+          {uploading ? "Uploading image…" : "Upload a JPEG, PNG, or WebP image"}
+        </button>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void upload(file);
+          event.currentTarget.value = "";
+        }}
+      />
+      {uploadError ? (
+        <p className="rounded-[9px] bg-[#fff0ea] px-3 py-2 text-xs font-semibold text-[#8c3f2f]">
+          {uploadError}
+        </p>
+      ) : null}
+      <label className="grid gap-1 text-xs font-bold">
+        Alternative text
+        <input
+          value={block.altText}
+          onChange={(event) =>
+            update((draft) => {
+              draft.altText = event.target.value;
+            })
+          }
+          className="rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 font-normal"
+        />
+      </label>
+      <label className="grid gap-1 text-xs font-bold">
+        Caption
+        <input
+          value={block.caption ?? ""}
+          onChange={(event) =>
+            update((draft) => {
+              draft.caption = event.target.value || undefined;
+            })
+          }
+          className="rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 font-normal"
+          placeholder="Optional caption"
+        />
+      </label>
+      <label className="grid gap-1 text-xs font-bold">
+        Width: {block.widthPercent}%
+        <input
+          type="range"
+          min={10}
+          max={100}
+          step={5}
+          value={block.widthPercent}
+          onChange={(event) =>
+            update((draft) => {
+              draft.widthPercent = Number(event.target.value);
+            })
+          }
+          className="accent-[#739e56]"
+        />
+      </label>
+      <label className="grid gap-1 text-xs font-bold">
+        Alignment
+        <select
+          value={block.alignment}
+          onChange={(event) =>
+            update((draft) => {
+              draft.alignment = event.target.value as WorkbookImageBlock["alignment"];
+            })
+          }
+          className="rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 font-normal"
+        >
+          <option value="left">Left</option>
+          <option value="center">Center</option>
+          <option value="right">Right</option>
+        </select>
+      </label>
+      {imageUrl ? (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+            className="rounded-[9px] border border-[#bca98a] bg-white px-3 py-2 text-xs font-bold disabled:opacity-60"
+          >
+            {uploading ? "Uploading…" : "Replace image"}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              update((draft) => {
+                draft.assetId = null;
+                draft.contentType = null;
+                draft.pixelWidth = null;
+                draft.pixelHeight = null;
+              })
+            }
+            className="rounded-[9px] border border-[#e4b9a9] bg-white px-3 py-2 text-xs font-bold text-[#8c3f2f]"
+          >
+            Remove image
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type WorkbookQrCodeBlock = Extract<
+  WorkbookLearnBlockLeaf,
+  { type: "qr_code" }
+>;
+
+function WorkbookQrCodeFields({
   block,
   onChange,
 }: {
+  block: WorkbookQrCodeBlock;
+  onChange: (block: WorkbookQrCodeBlock) => void;
+}) {
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewError, setPreviewError] = useState("");
+  const [previewing, setPreviewing] = useState(false);
+
+  useEffect(() => {
+    const data = block.data.trim();
+    if (!data) {
+      setPreviewUrl("");
+      setPreviewError("");
+      setPreviewing(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      setPreviewing(true);
+      setPreviewUrl("");
+      setPreviewError("");
+      void fetch("/api/workbook-studio/qr-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data }),
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error(
+              await workbookUploadError(
+                response,
+                "Could not generate the QR code preview.",
+              ),
+            );
+          }
+          return response.json() as Promise<{ dataUrl: string }>;
+        })
+        .then((payload) => {
+          if (!controller.signal.aborted) setPreviewUrl(payload.dataUrl);
+        })
+        .catch((error: unknown) => {
+          if (controller.signal.aborted) return;
+          setPreviewUrl("");
+          setPreviewError(
+            error instanceof Error
+              ? error.message
+              : "Could not generate the QR code preview.",
+          );
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setPreviewing(false);
+        });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [block.data]);
+
+  function update(recipe: (draft: WorkbookQrCodeBlock) => void) {
+    const next = structuredClone(block);
+    recipe(next);
+    onChange(next);
+  }
+
+  return (
+    <div className="grid gap-3 rounded-[12px] bg-[var(--studio-sand)] p-3">
+      <figure className="grid justify-items-center gap-2 rounded-[10px] bg-white p-4 text-center">
+        {previewUrl ? (
+          <Image
+            src={previewUrl}
+            alt={block.description || "QR code preview"}
+            width={512}
+            height={512}
+            unoptimized
+            className="h-auto max-w-full"
+            style={{ width: `${block.sizeMm * 4}px` }}
+          />
+        ) : (
+          <div className="grid aspect-square w-36 place-items-center rounded-[8px] border-2 border-dashed border-[#9fbd89] px-3 text-xs font-bold text-[#486a38]">
+            {previewing ? "Generating QR code…" : "Enter data to generate a QR code"}
+          </div>
+        )}
+        <figcaption className="max-w-sm text-xs leading-5 text-ink/60">
+          {block.description}
+        </figcaption>
+      </figure>
+      {previewError ? (
+        <p className="rounded-[9px] bg-[#fff0ea] px-3 py-2 text-xs font-semibold text-[#8c3f2f]">
+          {previewError}
+        </p>
+      ) : null}
+      <label className="grid gap-1 text-xs font-bold">
+        Data
+        <textarea
+          value={block.data}
+          maxLength={2_048}
+          rows={3}
+          onChange={(event) =>
+            update((draft) => {
+              draft.data = event.target.value;
+            })
+          }
+          className="resize-y rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 font-normal"
+          placeholder="https://example.com or any text"
+        />
+        <span className="font-normal text-ink/45">
+          URLs, plain text, and other QR-compatible data are supported.
+        </span>
+      </label>
+      <label className="grid gap-1 text-xs font-bold">
+        Description
+        <textarea
+          value={block.description}
+          maxLength={500}
+          rows={2}
+          onChange={(event) =>
+            update((draft) => {
+              draft.description = event.target.value;
+            })
+          }
+          className="resize-y rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 font-normal"
+          placeholder="This text appears below the QR code."
+        />
+      </label>
+      <label className="grid gap-1 text-xs font-bold">
+        Printed size: {block.sizeMm} mm
+        <input
+          type="range"
+          min={20}
+          max={80}
+          step={1}
+          value={block.sizeMm}
+          onChange={(event) =>
+            update((draft) => {
+              draft.sizeMm = Number(event.target.value);
+            })
+          }
+          className="accent-[#739e56]"
+        />
+      </label>
+    </div>
+  );
+}
+
+type WorkbookSoundBlock = Extract<
+  WorkbookLearnBlockLeaf,
+  { type: "sound_asset" }
+>;
+
+function workbookSoundExtension(block: WorkbookSoundBlock) {
+  if (block.contentType === "audio/mpeg") return "mp3";
+  if (block.contentType === "audio/mp4") return "m4a";
+  if (block.contentType === "audio/wav") return "wav";
+  if (block.contentType === "audio/ogg") return "ogg";
+  return null;
+}
+
+function workbookSoundUrl(projectId: string, block: WorkbookSoundBlock) {
+  const extension = workbookSoundExtension(block);
+  return block.assetId && extension
+    ? `/media/workbooks/${encodeURIComponent(projectId)}/${encodeURIComponent(`${block.assetId}.${extension}`)}`
+    : null;
+}
+
+function workbookSoundUploadContentType(file: File) {
+  const normalized = file.type.split(";", 1)[0]!.trim().toLowerCase();
+  if (normalized === "audio/mp3") return "audio/mpeg";
+  if (normalized === "audio/x-m4a") return "audio/mp4";
+  if (normalized === "audio/x-wav" || normalized === "audio/wave") {
+    return "audio/wav";
+  }
+  if (["audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg"].includes(normalized)) {
+    return normalized;
+  }
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  if (extension === "mp3") return "audio/mpeg";
+  if (extension === "m4a") return "audio/mp4";
+  if (extension === "wav") return "audio/wav";
+  if (extension === "ogg") return "audio/ogg";
+  return file.type;
+}
+
+function WorkbookSoundFields({
+  block,
+  projectId,
+  onChange,
+}: {
+  block: WorkbookSoundBlock;
+  projectId: string;
+  onChange: (block: WorkbookSoundBlock) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const soundUrl = workbookSoundUrl(projectId, block);
+
+  function update(recipe: (draft: WorkbookSoundBlock) => void) {
+    const next = structuredClone(block);
+    recipe(next);
+    onChange(next);
+  }
+
+  async function upload(file: File) {
+    if (uploading) return;
+    setUploading(true);
+    setUploadError("");
+    type PreparedUpload = {
+      assetId: string;
+      objectPath: string;
+      contentType: "audio/mpeg" | "audio/mp4" | "audio/wav" | "audio/ogg";
+      uploadUrl: string;
+    };
+    let prepared: PreparedUpload | null = null;
+    try {
+      const prepareResponse = await fetch("/api/workbook-studio/media/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          contentType: workbookSoundUploadContentType(file),
+          sizeBytes: file.size,
+        }),
+      });
+      if (!prepareResponse.ok) {
+        throw new Error(
+          await workbookUploadError(
+            prepareResponse,
+            "Could not prepare the workbook sound upload.",
+          ),
+        );
+      }
+      prepared = await prepareResponse.json() as PreparedUpload;
+      const storageResponse = await fetch(prepared.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": prepared.contentType },
+        body: file,
+      });
+      if (!storageResponse.ok) {
+        throw new Error("The sound could not be uploaded to storage.");
+      }
+      const completeResponse = await fetch("/api/workbook-studio/media/upload", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          objectPath: prepared.objectPath,
+          assetId: prepared.assetId,
+          fileName: file.name,
+        }),
+      });
+      if (!completeResponse.ok) {
+        throw new Error(
+          await workbookUploadError(
+            completeResponse,
+            "Could not verify the workbook sound.",
+          ),
+        );
+      }
+      const asset = await completeResponse.json() as {
+        assetId: string;
+        contentType: PreparedUpload["contentType"];
+        fileName: string | null;
+        sizeBytes: number;
+      };
+      onChange({
+        ...block,
+        assetId: asset.assetId,
+        contentType: asset.contentType,
+        fileName: asset.fileName,
+        sizeBytes: asset.sizeBytes,
+      });
+      prepared = null;
+    } catch (error) {
+      if (prepared) {
+        await fetch("/api/workbook-studio/media/upload", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            objectPath: prepared.objectPath,
+          }),
+        }).catch(() => undefined);
+      }
+      setUploadError(
+        error instanceof Error ? error.message : "Could not upload the sound.",
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-3 rounded-[12px] bg-[var(--studio-sand)] p-3">
+      {soundUrl ? (
+        <div className="rounded-[10px] bg-white p-4">
+          <p className="mb-2 text-sm font-bold text-ink">
+            {block.description}
+          </p>
+          <audio
+            key={soundUrl}
+            controls
+            preload="metadata"
+            src={soundUrl}
+            className="w-full"
+          >
+            Your browser does not support audio playback.
+          </audio>
+          <p className="mt-2 truncate text-xs text-ink/45">
+            {block.fileName ?? "Workbook sound"}
+            {block.sizeBytes
+              ? ` · ${(block.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
+              : ""}
+          </p>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+          className="grid min-h-32 place-items-center rounded-[10px] border-2 border-dashed border-[#9fbd89] bg-white px-4 text-center text-sm font-bold text-[#486a38] disabled:opacity-60"
+        >
+          {uploading ? "Uploading sound…" : "Upload an MP3, M4A, WAV, or OGG sound"}
+        </button>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="audio/mpeg,audio/mp4,audio/wav,audio/ogg,.mp3,.m4a,.wav,.ogg"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void upload(file);
+          event.currentTarget.value = "";
+        }}
+      />
+      {uploadError ? (
+        <p className="rounded-[9px] bg-[#fff0ea] px-3 py-2 text-xs font-semibold text-[#8c3f2f]">
+          {uploadError}
+        </p>
+      ) : null}
+      <label className="grid gap-1 text-xs font-bold">
+        Description
+        <textarea
+          value={block.description}
+          maxLength={500}
+          rows={2}
+          onChange={(event) =>
+            update((draft) => {
+              draft.description = event.target.value;
+            })
+          }
+          className="resize-y rounded-[8px] border border-[#d8c8ae] bg-white px-3 py-2 font-normal"
+          placeholder="Listen to the pronunciation."
+        />
+        <span className="font-normal text-ink/45">
+          In PDFs, this appears below a QR code linked to the sound.
+        </span>
+      </label>
+      <label className="grid gap-1 text-xs font-bold">
+        Printed QR size: {block.qrSizeMm} mm
+        <input
+          type="range"
+          min={20}
+          max={80}
+          step={1}
+          value={block.qrSizeMm}
+          onChange={(event) =>
+            update((draft) => {
+              draft.qrSizeMm = Number(event.target.value);
+            })
+          }
+          className="accent-[#739e56]"
+        />
+      </label>
+      {soundUrl ? (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+            className="rounded-[9px] border border-[#bca98a] bg-white px-3 py-2 text-xs font-bold disabled:opacity-60"
+          >
+            {uploading ? "Uploading…" : "Replace sound"}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              update((draft) => {
+                draft.assetId = null;
+                draft.contentType = null;
+                draft.fileName = null;
+                draft.sizeBytes = null;
+              })
+            }
+            className="rounded-[9px] border border-[#e4b9a9] bg-white px-3 py-2 text-xs font-bold text-[#8c3f2f]"
+          >
+            Remove sound
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function WorkbookLearnLeafFields({
+  block,
+  projectId,
+  onChange,
+}: {
   block: WorkbookLearnBlockLeaf;
+  projectId: string;
   onChange: (block: WorkbookLearnBlockLeaf) => void;
 }) {
   function update(recipe: (draft: WorkbookLearnBlockLeaf) => void) {
@@ -619,14 +1365,30 @@ function WorkbookLearnLeafFields({
       </div>
     );
   }
+  if (block.type === "image_asset") {
+    return (
+      <WorkbookImageFields
+        block={block}
+        projectId={projectId}
+        onChange={onChange}
+      />
+    );
+  }
+  if (block.type === "qr_code") {
+    return <WorkbookQrCodeFields block={block} onChange={onChange} />;
+  }
+  if (block.type === "sound_asset") {
+    return (
+      <WorkbookSoundFields
+        block={block}
+        projectId={projectId}
+        onChange={onChange}
+      />
+    );
+  }
   return (
     <div className="rounded-[10px] bg-[var(--studio-sand)] p-4 text-sm">
-      <strong>
-        Image asset
-      </strong>
-      <p className="mt-1 text-ink/60">
-        {block.description}
-      </p>
+      Unsupported learning element.
     </div>
   );
 }
@@ -1440,6 +2202,9 @@ export function WorkbookStudioEditor({
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   {([
                     ["paragraph", "Paragraph"],
+                    ["image_asset", "Image"],
+                    ["qr_code", "QR code"],
+                    ["sound_asset", "Sound"],
                     ["vocabulary_list", "Vocabulary"],
                     ["reading_passage", "Passage"],
                     ["character_practice", "Characters"],
@@ -1739,6 +2504,7 @@ export function WorkbookStudioEditor({
                                 >
                                   <WorkbookLearnLeafFields
                                     block={child}
+                                    projectId={detail.project.id}
                                     onChange={(next) =>
                                       mutateLesson((draft) => {
                                         const row = draft.learnBlocks[index];
@@ -1839,6 +2605,7 @@ export function WorkbookStudioEditor({
                 ) : (
                   <WorkbookLearnLeafFields
                     block={block}
+                    projectId={detail.project.id}
                     onChange={(next) =>
                       mutateLesson((draft) => {
                         draft.learnBlocks[index] = next;

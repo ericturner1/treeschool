@@ -169,6 +169,104 @@ describe("Workbook Studio validation", () => {
     );
   });
 
+  test("persists an uploaded image and accepts it as a required visual", () => {
+    const content = validContent();
+    content.chapters[0].lessons[0].needsIllustration = true;
+    content.chapters[0].lessons[0].learnBlocks = [
+      {
+        type: "image_asset",
+        assetId: "11111111-1111-4111-8111-111111111111",
+        contentType: "image/png",
+        pixelWidth: 1200,
+        pixelHeight: 800,
+        description: "A tree diagram",
+        altText: "A labeled tree diagram",
+        caption: "Parts of a tree",
+        widthPercent: 65,
+        alignment: "center",
+      },
+    ];
+
+    const parsed = parseWorkbookContent(content);
+    expect(parsed.chapters[0].lessons[0].learnBlocks[0]).toMatchObject({
+      type: "image_asset",
+      widthPercent: 65,
+      alignment: "center",
+    });
+    expect(validateWorkbookForPublish(parsed)).not.toContainEqual(
+      expect.objectContaining({ code: "missing_required_illustration" }),
+    );
+  });
+
+  test("persists QR code data, its printed description, and size", () => {
+    const content = validContent();
+    content.chapters[0].lessons[0].learnBlocks.push({
+      type: "qr_code",
+      data: "https://www.treehomeschool.com/lessons/guitar-a-1",
+      description: "Scan to hear the chord progression.",
+      sizeMm: 42,
+    });
+
+    const parsed = parseWorkbookContent(content);
+    expect(parsed.chapters[0].lessons[0].learnBlocks.at(-1)).toEqual({
+      type: "qr_code",
+      data: "https://www.treehomeschool.com/lessons/guitar-a-1",
+      description: "Scan to hear the chord progression.",
+      sizeMm: 42,
+    });
+  });
+
+  test("persists uploaded sounds and blocks empty sound elements at publish", () => {
+    const content = validContent();
+    content.chapters[0].lessons[0].learnBlocks.push({
+      type: "sound_asset",
+      assetId: "22222222-2222-4222-8222-222222222222",
+      contentType: "audio/mpeg",
+      fileName: "g-major-chord.mp3",
+      sizeBytes: 48_000,
+      description: "Listen to a G major chord.",
+      qrSizeMm: 38,
+    });
+
+    const parsed = parseWorkbookContent(content);
+    expect(parsed.chapters[0].lessons[0].learnBlocks.at(-1)).toMatchObject({
+      type: "sound_asset",
+      contentType: "audio/mpeg",
+      description: "Listen to a G major chord.",
+      qrSizeMm: 38,
+    });
+    expect(validateWorkbookForPublish(parsed)).not.toContainEqual(
+      expect.objectContaining({ code: "missing_sound_asset" }),
+    );
+
+    const draft = structuredClone(parsed);
+    const sound = draft.chapters[0].lessons[0].learnBlocks.at(-1);
+    if (sound?.type !== "sound_asset") throw new Error("Missing sound fixture");
+    sound.assetId = null;
+    sound.contentType = null;
+    sound.fileName = null;
+    sound.sizeBytes = null;
+    expect(validateWorkbookForPublish(draft)).toContainEqual(
+      expect.objectContaining({ code: "missing_sound_asset" }),
+    );
+  });
+
+  test("rejects incomplete uploaded-image metadata", () => {
+    const content = validContent();
+    content.chapters[0].lessons[0].learnBlocks = [
+      {
+        type: "image_asset",
+        assetId: "11111111-1111-4111-8111-111111111111",
+        description: "A tree diagram",
+        altText: "A labeled tree diagram",
+      } as never,
+    ];
+
+    expect(() => parseWorkbookContent(content)).toThrow(
+      "requires both an asset id and content type",
+    );
+  });
+
   test("uses the active structured exercise-count policy", () => {
     const content = validContent();
 

@@ -171,6 +171,75 @@ describe("Workbook Studio deterministic renderer", () => {
     expect(html).not.toContain("fonts.googleapis.com");
   }, 30_000);
 
+  test("embeds uploaded images and generated QR codes with print controls", async () => {
+    const assetId = "11111111-1111-4111-8111-111111111111";
+    const content = rendererFixture();
+    content.chapters[0].lessons[0].learnBlocks.push({
+      type: "image_asset",
+      assetId,
+      contentType: "image/png",
+      pixelWidth: 1200,
+      pixelHeight: 800,
+      description: "A labeled tree",
+      altText: "A labeled tree diagram",
+      caption: "Parts of a tree",
+      widthPercent: 65,
+      alignment: "right",
+    });
+    content.chapters[0].lessons[0].learnBlocks.push({
+      type: "qr_code",
+      data: "https://www.treehomeschool.com/lessons/guitar-a-1",
+      description: "Scan to hear the chord progression.",
+      sizeMm: 32,
+    });
+    content.chapters[0].lessons[0].learnBlocks.push({
+      type: "sound_asset",
+      assetId: "22222222-2222-4222-8222-222222222222",
+      contentType: "audio/mpeg",
+      fileName: "g-major-chord.mp3",
+      sizeBytes: 48_000,
+      description: "Listen to a G major chord.",
+      qrSizeMm: 36,
+    });
+    const { buildWorkbookHtml } = await import("./workbook-renderer");
+    const html = await buildWorkbookHtml({
+      content: parseWorkbookContent(content),
+      theme: classicTheme,
+      subjectKey: "science",
+      languageCode: "en",
+      layoutProfile: "standard",
+      scriptProfile: "latin",
+      illustrationDefinitions: [
+        {
+          key: "test-tree",
+          rendererKind: "parameterized_svg",
+          svgTemplate:
+            '<svg viewBox="0 0 20 20"><path stroke="{{theme:stroke}}" d="M1 1L19 19"/></svg>',
+          tokenBindingsJson: { stroke: "leafDark" },
+        },
+      ],
+      imageAssetDataUrls: {
+        [assetId]: "data:image/png;base64,AAAA",
+      },
+      projectId: "33333333-3333-4333-8333-333333333333",
+      publicAppUrl: "https://workbooks.example.test",
+    });
+
+    expect(html).toContain('class="workbook-image"');
+    expect(html).toContain("width:65%");
+    expect(html).toContain("margin-left:auto;margin-right:0");
+    expect(html).toContain('alt="A labeled tree diagram"');
+    expect(html).toContain("Parts of a tree");
+    expect(html).toContain("data:image/png;base64,AAAA");
+    expect(html).toContain('class="workbook-qr-code"');
+    expect(html).toContain('style="width:32mm"');
+    expect(html).toContain("Scan to hear the chord progression.");
+    expect(html).toContain("data:image/svg+xml;base64,");
+    expect(html).toContain('class="workbook-sound-qr"');
+    expect(html).toContain('style="width:36mm"');
+    expect(html).toContain("Listen to a G major chord.");
+  }, 30_000);
+
   test("renders the self-contained HTML with pinned Chromium and Paged.js", async () => {
     const { renderWorkbookPdf } = await import("./workbook-renderer");
     const rendered = await renderWorkbookPdf(await fixtureHtml());

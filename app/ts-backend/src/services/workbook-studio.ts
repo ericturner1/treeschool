@@ -26,11 +26,18 @@ import {
 } from "ts-db";
 import { z } from "zod";
 import { PDFDocument } from "pdf-lib";
+import { loadImage } from "@napi-rs/canvas";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { db } from "../db";
-import { downloadPrivateFile } from "./media";
+import {
+  deletePrivateFile,
+  downloadPrivateFile,
+  downloadPrivateFileRange,
+  getPrivateFileMetadata,
+  getSignedPrivateUploadUrl,
+} from "./media";
 import {
   parseWorkbookCatalogPlan,
   workbookGenerationModel,
@@ -45,6 +52,17 @@ import {
   type WorkbookContent,
 } from "./workbook-studio-model";
 import { validateWorkbookForScope } from "./workbook-studio-validation";
+import { renderWorkbookQrCodeDataUrl } from "./workbook-qr-code";
+import {
+  normalizedWorkbookSoundType,
+  parseWorkbookSoundByteRange,
+  validWorkbookSoundAsset,
+  workbookSoundAssetObjectPath,
+  workbookSoundAssetParts,
+  workbookSoundPublicPath,
+  WORKBOOK_SOUND_ASSET_MAX_BYTES,
+  WORKBOOK_SOUND_ASSET_TYPES,
+} from "./workbook-media";
 import {
   compileWorkbookThemeCss,
   workbookThemeTokensSchema,
@@ -653,6 +671,302 @@ export async function getAdminWorkbookStudioCoverPreview(input: {
   preview.addPage(cover);
   preview.setTitle("Workbook cover preview");
   return preview.save({ useObjectStreams: false });
+}
+
+const WORKBOOK_IMAGE_ASSET_TYPES = new Map([
+  ["image/jpeg", "jpg"],
+  ["image/png", "png"],
+  ["image/webp", "webp"],
+]);
+const WORKBOOK_IMAGE_ASSET_MAX_BYTES = 10 * 1024 * 1024;
+const WORKBOOK_IMAGE_ASSET_MAX_PIXELS = 40_000_000;
+
+function normalizedWorkbookImageType(contentType: string | null | undefined) {
+  return String(contentType ?? "").split(";", 1)[0]!.trim().toLowerCase();
+}
+
+function workbookImageAssetParts(objectPath: string) {
+  const match = objectPath.match(
+    /^workbook-studio\/([0-9a-f-]{36})\/assets\/([0-9a-f-]{36}\.(jpg|png|webp))$/i,
+  );
+  if (!match) throw new Error("The workbook image upload is invalid.");
+  return {
+    projectId: match[1]!,
+    filename: match[2]!,
+    extension: match[3]!.toLowerCase(),
+  };
+}
+
+function validWorkbookImageAsset(bytes: Uint8Array, contentType: string) {
+  if (contentType === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (contentType === "image/png") {
+    return bytes.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+      .every((value, index) => bytes[index] === value);
+  }
+  return contentType === "image/webp"
+    && bytes.length >= 12
+    && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF"
+    && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+}
+
+async function requireWorkbookProject(projectId: string) {
+  const [project] = await db
+    .select({ id: workbookProjects.id })
+    .from(workbookProjects)
+    .where(eq(workbookProjects.id, projectId))
+    .limit(1);
+  if (!project) throw new Error("Workbook project not found.");
+}
+
+export async function prepareAdminWorkbookImageUpload(input: {
+  userId: string;
+  projectId: string;
+  contentType: string;
+  sizeBytes: number;
+}) {
+  await requireAdmin(input.userId);
+  const projectId = uuidSchema.parse(input.projectId);
+  await requireWorkbookProject(projectId);
+  const contentType = normalizedWorkbookImageType(input.contentType);
+  const extension = WORKBOOK_IMAGE_ASSET_TYPES.get(contentType);
+  if (!extension) throw new Error("Choose a JPEG, PNG, or WebP image.");
+  if (
+    !Number.isInteger(input.sizeBytes) ||
+    input.sizeBytes <= 0 ||
+    input.sizeBytes > WORKBOOK_IMAGE_ASSET_MAX_BYTES
+  ) {
+    throw new Error("Workbook images may be up to 10 MB.");
+  }
+  const assetId = crypto.randomUUID();
+  const objectPath = `workbook-studio/${projectId}/assets/${assetId}.${extension}`;
+  return {
+    assetId,
+    objectPath,
+    contentType,
+    uploadUrl: await getSignedPrivateUploadUrl({
+      objectPath,
+      contentType,
+      expiresInMinutes: 15,
+    }),
+  };
+}
+
+export async function completeAdminWorkbookImageUpload(input: {
+  userId: string;
+  projectId: string;
+  objectPath: string;
+  assetId: string;
+}) {
+  await requireAdmin(input.userId);
+  const projectId = uuidSchema.parse(input.projectId);
+  const assetId = uuidSchema.parse(input.assetId);
+  const parts = workbookImageAssetParts(input.objectPath);
+  if (
+    parts.projectId !== projectId ||
+    !parts.filename.startsWith(`${assetId}.`)
+  ) {
+    throw new Error("The workbook image upload is invalid.");
+  }
+  await requireWorkbookProject(projectId);
+  const metadata = await getPrivateFileMetadata(input.objectPath);
+  const contentType = normalizedWorkbookImageType(metadata.contentType);
+  if (
+    !WORKBOOK_IMAGE_ASSET_TYPES.has(contentType) ||
+    WORKBOOK_IMAGE_ASSET_TYPES.get(contentType) !== parts.extension ||
+    metadata.size <= 0 ||
+    metadata.size > WORKBOOK_IMAGE_ASSET_MAX_BYTES
+  ) {
+    throw new Error("The uploaded file must be a JPEG, PNG, or WebP image up to 10 MB.");
+  }
+  const bytes = await downloadPrivateFile(input.objectPath);
+  if (!validWorkbookImageAsset(bytes, contentType)) {
+    throw new Error("The uploaded file does not appear to be a valid image.");
+  }
+  const image = await loadImage(bytes);
+  if (
+    image.width <= 0 ||
+    image.height <= 0 ||
+    image.width > 10_000 ||
+    image.height > 10_000 ||
+    image.width * image.height > WORKBOOK_IMAGE_ASSET_MAX_PIXELS
+  ) {
+    throw new Error("Workbook images may be up to 10,000 pixels per side and 40 megapixels.");
+  }
+  return {
+    assetId,
+    contentType,
+    pixelWidth: image.width,
+    pixelHeight: image.height,
+  };
+}
+
+export async function discardAdminWorkbookImageUpload(input: {
+  userId: string;
+  projectId: string;
+  objectPath: string;
+}) {
+  await requireAdmin(input.userId);
+  const projectId = uuidSchema.parse(input.projectId);
+  const parts = workbookImageAssetParts(input.objectPath);
+  if (parts.projectId !== projectId) {
+    throw new Error("The workbook image upload is invalid.");
+  }
+  await requireWorkbookProject(projectId);
+  await deletePrivateFile(input.objectPath);
+  return { discarded: true };
+}
+
+export async function getAdminWorkbookImageAsset(input: {
+  userId: string;
+  projectId: string;
+  filename: string;
+}) {
+  await requireAdmin(input.userId);
+  const projectId = uuidSchema.parse(input.projectId);
+  const objectPath = `workbook-studio/${projectId}/assets/${input.filename}`;
+  const parts = workbookImageAssetParts(objectPath);
+  if (parts.projectId !== projectId) throw new Error("Workbook image not found.");
+  await requireWorkbookProject(projectId);
+  const metadata = await getPrivateFileMetadata(objectPath);
+  const contentType = normalizedWorkbookImageType(metadata.contentType);
+  if (
+    !WORKBOOK_IMAGE_ASSET_TYPES.has(contentType) ||
+    WORKBOOK_IMAGE_ASSET_TYPES.get(contentType) !== parts.extension
+  ) {
+    throw new Error("Workbook image not found.");
+  }
+  return { bytes: await downloadPrivateFile(objectPath), contentType };
+}
+
+export async function generateAdminWorkbookQrCodePreview(input: {
+  userId: string;
+  data: string;
+}) {
+  await requireAdmin(input.userId);
+  return { dataUrl: await renderWorkbookQrCodeDataUrl(input.data) };
+}
+
+export async function prepareAdminWorkbookSoundUpload(input: {
+  userId: string;
+  projectId: string;
+  contentType: string;
+  sizeBytes: number;
+}) {
+  await requireAdmin(input.userId);
+  const projectId = uuidSchema.parse(input.projectId);
+  await requireWorkbookProject(projectId);
+  const contentType = normalizedWorkbookSoundType(input.contentType);
+  if (!contentType) throw new Error("Choose an MP3, M4A, WAV, or OGG sound file.");
+  if (
+    !Number.isInteger(input.sizeBytes) ||
+    input.sizeBytes <= 0 ||
+    input.sizeBytes > WORKBOOK_SOUND_ASSET_MAX_BYTES
+  ) {
+    throw new Error("Workbook sounds may be up to 30 MB.");
+  }
+  const assetId = crypto.randomUUID();
+  const objectPath = workbookSoundAssetObjectPath({
+    projectId,
+    assetId,
+    contentType,
+  });
+  return {
+    assetId,
+    objectPath,
+    contentType,
+    uploadUrl: await getSignedPrivateUploadUrl({
+      objectPath,
+      contentType,
+      expiresInMinutes: 15,
+    }),
+    publicUrl: workbookSoundPublicPath({ projectId, assetId, contentType }),
+  };
+}
+
+export async function completeAdminWorkbookSoundUpload(input: {
+  userId: string;
+  projectId: string;
+  objectPath: string;
+  assetId: string;
+  fileName?: string | null;
+}) {
+  await requireAdmin(input.userId);
+  const projectId = uuidSchema.parse(input.projectId);
+  const assetId = uuidSchema.parse(input.assetId);
+  const parts = workbookSoundAssetParts(input.objectPath);
+  if (parts.projectId !== projectId || parts.assetId !== assetId) {
+    throw new Error("The workbook sound upload is invalid.");
+  }
+  await requireWorkbookProject(projectId);
+  const metadata = await getPrivateFileMetadata(input.objectPath);
+  const contentType = normalizedWorkbookSoundType(metadata.contentType);
+  if (
+    !contentType ||
+    WORKBOOK_SOUND_ASSET_TYPES.get(contentType) !== parts.extension ||
+    metadata.size <= 0 ||
+    metadata.size > WORKBOOK_SOUND_ASSET_MAX_BYTES
+  ) {
+    throw new Error("The uploaded file must be an MP3, M4A, WAV, or OGG sound up to 30 MB.");
+  }
+  const bytes = await downloadPrivateFile(input.objectPath);
+  if (!validWorkbookSoundAsset(bytes, contentType)) {
+    throw new Error("The uploaded file does not appear to be a valid sound file.");
+  }
+  return {
+    assetId,
+    contentType,
+    fileName: z.string().trim().max(255).nullable().parse(input.fileName ?? null),
+    sizeBytes: metadata.size,
+    publicUrl: workbookSoundPublicPath({ projectId, assetId, contentType }),
+  };
+}
+
+export async function discardAdminWorkbookSoundUpload(input: {
+  userId: string;
+  projectId: string;
+  objectPath: string;
+}) {
+  await requireAdmin(input.userId);
+  const projectId = uuidSchema.parse(input.projectId);
+  const parts = workbookSoundAssetParts(input.objectPath);
+  if (parts.projectId !== projectId) {
+    throw new Error("The workbook sound upload is invalid.");
+  }
+  await requireWorkbookProject(projectId);
+  await deletePrivateFile(input.objectPath);
+  return { discarded: true };
+}
+
+export async function getPublicWorkbookSoundAsset(input: {
+  projectId: string;
+  filename: string;
+  rangeHeader?: string | null;
+}) {
+  const projectId = uuidSchema.parse(input.projectId);
+  const objectPath = `media-library/workbooks/${projectId}/${input.filename}`;
+  const parts = workbookSoundAssetParts(objectPath);
+  if (parts.projectId !== projectId) throw new Error("Workbook sound not found.");
+  const metadata = await getPrivateFileMetadata(objectPath);
+  const contentType = normalizedWorkbookSoundType(metadata.contentType);
+  if (
+    !contentType ||
+    WORKBOOK_SOUND_ASSET_TYPES.get(contentType) !== parts.extension ||
+    metadata.size <= 0
+  ) {
+    throw new Error("Workbook sound not found.");
+  }
+  const range = parseWorkbookSoundByteRange(input.rangeHeader, metadata.size);
+  const bytes = range
+    ? await downloadPrivateFileRange(objectPath, range.start, range.end)
+    : await downloadPrivateFile(objectPath);
+  return {
+    bytes,
+    contentType,
+    totalSize: metadata.size,
+    range,
+  };
 }
 
 export async function createWorkbookStudioProject(

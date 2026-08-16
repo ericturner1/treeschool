@@ -211,13 +211,22 @@ import {
 } from "./services/sales-faqs";
 import { getAdminDashboardMetrics } from "./services/admin-dashboard";
 import {
+  completeAdminWorkbookSoundUpload,
+  completeAdminWorkbookImageUpload,
   createWorkbookStudioCurriculum,
   createWorkbookStudioProject,
   createWorkbookThemeVersion,
+  discardAdminWorkbookSoundUpload,
+  discardAdminWorkbookImageUpload,
+  generateAdminWorkbookQrCodePreview,
+  getAdminWorkbookImageAsset,
   getAdminWorkbookStudioCoverPreview,
   getAdminWorkbookStudioCurriculum,
   getAdminWorkbookStudioProject,
+  getPublicWorkbookSoundAsset,
   listAdminWorkbookStudio,
+  prepareAdminWorkbookSoundUpload,
+  prepareAdminWorkbookImageUpload,
   publishWorkbookStudioCurriculum,
   queueWorkbookCurriculumGeneration,
   queueWorkbookGradeLevelGeneration,
@@ -399,6 +408,132 @@ const server = Bun.serve({
         });
       } catch (error) {
         return Response.json({ error: publicErrorMessage(error, "Could not load the workbook cover preview.") }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/image-asset" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        const projectId = url.searchParams.get("projectId");
+        const filename = url.searchParams.get("filename");
+        if (!userId || !projectId || !filename) {
+          return Response.json({ error: "userId, projectId, and filename are required." }, { status: 400 });
+        }
+        const asset = await getAdminWorkbookImageAsset({ userId, projectId, filename });
+        return new Response(asset.bytes, {
+          headers: {
+            "Content-Type": asset.contentType,
+            "Cache-Control": "private, max-age=31536000, immutable",
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
+      } catch (error) {
+        return Response.json({ error: publicErrorMessage(error, "Workbook image not found.") }, { status: 404 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/image-asset/prepare" && request.method === "POST") {
+      try {
+        return Response.json(await prepareAdminWorkbookImageUpload(
+          await request.json() as Parameters<typeof prepareAdminWorkbookImageUpload>[0],
+        ));
+      } catch (error) {
+        return Response.json({ error: publicErrorMessage(error, "Could not prepare the workbook image upload.") }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/image-asset/complete" && request.method === "POST") {
+      try {
+        return Response.json(await completeAdminWorkbookImageUpload(
+          await request.json() as Parameters<typeof completeAdminWorkbookImageUpload>[0],
+        ));
+      } catch (error) {
+        return Response.json({ error: publicErrorMessage(error, "Could not save the workbook image.") }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/image-asset/discard" && request.method === "POST") {
+      try {
+        return Response.json(await discardAdminWorkbookImageUpload(
+          await request.json() as Parameters<typeof discardAdminWorkbookImageUpload>[0],
+        ));
+      } catch (error) {
+        return Response.json({ error: publicErrorMessage(error, "Could not discard the workbook image.") }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/media" && request.method === "GET") {
+      try {
+        const projectId = url.searchParams.get("projectId");
+        const filename = url.searchParams.get("filename");
+        if (!projectId || !filename) {
+          return Response.json({ error: "projectId and filename are required." }, { status: 400 });
+        }
+        const asset = await getPublicWorkbookSoundAsset({
+          projectId,
+          filename,
+          rangeHeader: request.headers.get("range"),
+        });
+        return new Response(asset.bytes, {
+          status: asset.range ? 206 : 200,
+          headers: {
+            "Content-Type": asset.contentType,
+            "Content-Length": String(asset.bytes.byteLength),
+            "Accept-Ranges": "bytes",
+            ...(asset.range
+              ? {
+                  "Content-Range": `bytes ${asset.range.start}-${asset.range.end}/${asset.totalSize}`,
+                }
+              : {}),
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
+      } catch (error) {
+        if (error instanceof RangeError) {
+          return Response.json({ error: "The requested audio range is invalid." }, { status: 416 });
+        }
+        return Response.json({ error: "Workbook sound not found." }, { status: 404 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/sound-asset/prepare" && request.method === "POST") {
+      try {
+        return Response.json(await prepareAdminWorkbookSoundUpload(
+          await request.json() as Parameters<typeof prepareAdminWorkbookSoundUpload>[0],
+        ));
+      } catch (error) {
+        return Response.json({ error: publicErrorMessage(error, "Could not prepare the workbook sound upload.") }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/sound-asset/complete" && request.method === "POST") {
+      try {
+        return Response.json(await completeAdminWorkbookSoundUpload(
+          await request.json() as Parameters<typeof completeAdminWorkbookSoundUpload>[0],
+        ));
+      } catch (error) {
+        return Response.json({ error: publicErrorMessage(error, "Could not save the workbook sound.") }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/sound-asset/discard" && request.method === "POST") {
+      try {
+        return Response.json(await discardAdminWorkbookSoundUpload(
+          await request.json() as Parameters<typeof discardAdminWorkbookSoundUpload>[0],
+        ));
+      } catch (error) {
+        return Response.json({ error: publicErrorMessage(error, "Could not discard the workbook sound.") }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/workbook-studio/admin/project/qr-code" && request.method === "POST") {
+      try {
+        return Response.json(await generateAdminWorkbookQrCodePreview(
+          await request.json() as Parameters<typeof generateAdminWorkbookQrCodePreview>[0],
+        ));
+      } catch (error) {
+        return Response.json({ error: publicErrorMessage(error, "Could not generate the QR code.") }, { status: 400 });
       }
     }
 

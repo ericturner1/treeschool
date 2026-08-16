@@ -164,6 +164,16 @@ export async function downloadPrivateFile(objectPath: string) {
   return new Uint8Array(bytes);
 }
 
+export async function downloadPrivateFileRange(
+  objectPath: string,
+  start: number,
+  end: number,
+) {
+  const bucket = getStorage().bucket(getBucketName());
+  const [bytes] = await bucket.file(objectPath).download({ start, end });
+  return new Uint8Array(bytes);
+}
+
 export async function deletePrivateFile(objectPath: string) {
   const bucket = getStorage().bucket(getBucketName());
   await bucket.file(objectPath).delete({ ignoreNotFound: true });
