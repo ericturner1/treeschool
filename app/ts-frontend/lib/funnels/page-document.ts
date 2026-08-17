@@ -54,9 +54,13 @@ export type FunnelListTypography = {
 };
 
 export type FunnelListAppearance = {
+  layout?: "stacked" | "inline";
   marker?: FunnelListMarker;
   markerSize?: number;
   markerColor?: string;
+  markerBadge?: boolean;
+  markerBadgeColor?: string;
+  markerBadgeSize?: number;
   itemSpacing?: number;
   markerGap?: number;
   backgroundColor?: string;
@@ -220,6 +224,7 @@ export type FunnelPageElement =
 export type FunnelPageColumn = {
   id: string;
   span: number;
+  offset?: number;
   elements: FunnelPageElement[];
 };
 

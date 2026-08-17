@@ -309,7 +309,22 @@ function PageElement({
         </div>
       );
     }
-    if (!target) return null;
+    if (!target) {
+      if (!preview) return null;
+      return (
+        <div className={`${visibility} flex ${alignClass(element.props.align)}`}>
+          <button
+            type="button"
+            disabled
+            title="Add a next funnel step or choose a button destination to activate this CTA."
+            className={`${className} cursor-not-allowed`}
+            style={style}
+          >
+            {contents}
+          </button>
+        </div>
+      );
+    }
     const linkedTarget = withSourceCheckoutSession(target, sourceCheckoutSessionId);
     return (
       <div className={`${visibility} flex ${alignClass(element.props.align)}`}>
@@ -509,7 +524,9 @@ export async function ManagedFunnelPageView({
                         <div
                           key={column.id}
                           className="grid gap-5"
-                          style={{ gridColumn: `span ${column.span} / span ${column.span}` }}
+                          style={{ gridColumn: column.offset !== undefined
+                            ? `${column.offset + 1} / span ${column.span}`
+                            : `span ${column.span} / span ${column.span}` }}
                         >
                           {column.elements.map((element) => (
                             <div key={element.id} className={visibilityClass(element)} style={funnelElementSpacingStyle(element)}>

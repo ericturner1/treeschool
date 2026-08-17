@@ -499,7 +499,7 @@ function EditorCanvas({
                   {rowDrag ? <FunnelRowDropZone target={{ sectionIndex, rowIndex }} active={sameRowDropTarget(rowDropTarget, { sectionIndex, rowIndex })} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
                   <div className="group/row relative">
                   <div className={`grid ${viewport === "mobile" ? "grid-cols-1" : "grid-cols-12"}`} style={{ gap: columnGap }}>
-                  {row.columns.map((column, columnIndex) => <div key={column.id} className="grid content-start gap-4" style={viewport === "mobile" ? undefined : { gridColumn: `span ${column.span}` }}>
+                  {row.columns.map((column, columnIndex) => <div key={column.id} className="grid content-start gap-4" style={viewport === "mobile" ? undefined : { gridColumn: column.offset !== undefined ? `${column.offset + 1} / span ${column.span}` : `span ${column.span}` }}>
                     {column.elements.map((element, elementIndex) => {
                       const location: FunnelElementLocation = { kind: "element", sectionIndex, rowIndex, columnIndex, elementIndex };
                       const target: FunnelElementDropTarget = { sectionIndex, rowIndex, columnIndex, elementIndex };
@@ -632,10 +632,13 @@ function ListInspector({ element, update, palette }: { element: FunnelListElemen
       <label className="grid gap-1.5 text-xs font-semibold">Items<textarea rows={8} className={`${INPUT} resize-y`} value={props.items.join("\n")} onChange={(event) => updateProps({ items: event.target.value.split("\n").map((item) => item.trim()).filter(Boolean) })} /></label>
     </InspectorGroup>
     <InspectorGroup title="Marker & spacing" open>
+      <label className="grid gap-1.5 text-xs font-semibold">Layout<select className={INPUT} value={appearance.layout ?? "stacked"} onChange={(event) => updateAppearance({ layout: event.target.value as "stacked" | "inline" })}><option value="stacked">Stacked</option><option value="inline">Inline, wrapping</option></select></label>
       <label className="grid gap-1.5 text-xs font-semibold">Bullet icon<select className={INPUT} value={marker} onChange={(event) => { const nextMarker = event.target.value as FunnelListMarker; updateProps({ style: nextMarker === "bullet" ? "bullets" : "checks", appearance: { ...appearance, marker: nextMarker } }); }}><option value="check">Checkmark ✓</option><option value="bullet">Bullet •</option><option value="arrow">Arrow →</option><option value="star">Star ★</option></select></label>
       <div className="grid grid-cols-2 gap-2"><NumberControl label="Icon size" value={appearance.markerSize ?? 22} min={8} max={96} onChange={(markerSize) => updateAppearance({ markerSize })} /><NumberControl label="Icon gap" value={appearance.markerGap ?? 12} min={0} max={80} onChange={(markerGap) => updateAppearance({ markerGap })} /></div>
-      <NumberControl label="Vertical spacing" value={appearance.itemSpacing ?? 8} min={0} max={80} onChange={(itemSpacing) => updateAppearance({ itemSpacing })} />
+      <NumberControl label={appearance.layout === "inline" ? "Item spacing" : "Vertical spacing"} value={appearance.itemSpacing ?? 8} min={0} max={80} onChange={(itemSpacing) => updateAppearance({ itemSpacing })} />
       <ColorControl label="Icon color" value={appearance.markerColor ?? palette.primary} onChange={(markerColor) => updateAppearance({ markerColor })} />
+      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Circular icon badge</span><input type="checkbox" checked={appearance.markerBadge === true} onChange={(event) => updateAppearance({ markerBadge: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+      {appearance.markerBadge ? <div className="grid grid-cols-[1fr_96px] gap-2"><ColorControl label="Badge color" value={appearance.markerBadgeColor ?? "#dfead4"} onChange={(markerBadgeColor) => updateAppearance({ markerBadgeColor })} /><NumberControl label="Badge size" value={appearance.markerBadgeSize ?? 24} min={16} max={96} onChange={(markerBadgeSize) => updateAppearance({ markerBadgeSize })} /></div> : null}
     </InspectorGroup>
     <InspectorGroup title="Typography" open>
       <FontFamilyControl label="Font type" value={typography.fontFamily ?? ""} onChange={(fontFamily) => updateTypography({ fontFamily: fontFamily || undefined })} />

@@ -29,4 +29,34 @@ describe("funnel list styles", () => {
     expect(funnelListTextStyle(props)).toMatchObject({ fontFamily: "Georgia, serif", fontSize: 20, lineHeight: "30px" });
     expect(funnelListMarkerStyle(props, "#000000")).toMatchObject({ color: "#76a456", fontSize: 24 });
   });
+
+  test("supports wrapping inline benefits with circular marker badges", () => {
+    const props = {
+      items: ["Downloadable PDF", "Print at home"],
+      style: "checks" as const,
+      align: "left" as const,
+      appearance: {
+        layout: "inline" as const,
+        markerBadge: true,
+        markerBadgeColor: "#dfead4",
+        markerBadgeSize: 24,
+        markerColor: "#4d6a39",
+        itemSpacing: 20
+      }
+    };
+    expect(funnelListContainerStyle(props)).toMatchObject({
+      display: "flex",
+      flexWrap: "wrap",
+      rowGap: 20,
+      columnGap: 20
+    });
+    expect(funnelListMarkerStyle(props, "#000000")).toMatchObject({
+      backgroundColor: "#dfead4",
+      borderRadius: 999,
+      color: "#4d6a39",
+      display: "inline-grid",
+      height: 24,
+      width: 24
+    });
+  });
 });

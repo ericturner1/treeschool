@@ -240,6 +240,53 @@ describe("funnel administration normalization", () => {
     expect(element.props.previewSlug).toBe("math-1");
   });
 
+  test("preserves inline list layouts and circular marker badges", () => {
+    const content = funnelPageContentSchema.parse({
+      schemaVersion: 2,
+      kind: "funnel_page",
+      theme: "sage",
+      sections: [{
+        id: "section_benefits",
+        props: { tone: "default", width: "standard", background: null },
+        rows: [{
+          id: "row_benefits",
+          columns: [{
+            id: "column_benefits",
+            span: 12,
+            offset: 0,
+            elements: [{
+              id: "list_benefits",
+              type: "list",
+              props: {
+                items: ["Downloadable PDF", "Print at home"],
+                style: "checks",
+                align: "left",
+                appearance: {
+                  layout: "inline",
+                  marker: "check",
+                  markerBadge: true,
+                  markerBadgeColor: "#dfead4",
+                  markerBadgeSize: 24
+                }
+              }
+            }]
+          }]
+        }]
+      }]
+    });
+
+    const element = content.sections[0]?.rows[0]?.columns[0]?.elements[0];
+    expect(element?.type).toBe("list");
+    if (element?.type !== "list") throw new Error("Expected a list element.");
+    expect(element.props.appearance).toMatchObject({
+      layout: "inline",
+      markerBadge: true,
+      markerBadgeColor: "#dfead4",
+      markerBadgeSize: 24
+    });
+    expect(content.sections[0]?.rows[0]?.columns[0]?.offset).toBe(0);
+  });
+
   test("preserves conversion-focused button typography and appearance", () => {
     const content = funnelPageContentSchema.parse({
       schemaVersion: 2,

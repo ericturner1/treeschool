@@ -296,9 +296,13 @@ const funnelListTypographySchema = z.object({
 });
 
 const funnelListAppearanceSchema = z.object({
+  layout: z.enum(["stacked", "inline"]).optional(),
   marker: z.enum(["check", "bullet", "arrow", "star"]).optional(),
   markerSize: z.number().int().min(8).max(96).optional(),
   markerColor: z.string().trim().max(40).optional(),
+  markerBadge: z.boolean().optional(),
+  markerBadgeColor: z.string().trim().max(40).optional(),
+  markerBadgeSize: z.number().int().min(16).max(96).optional(),
   itemSpacing: z.number().int().min(0).max(80).optional(),
   markerGap: z.number().int().min(0).max(80).optional(),
   backgroundColor: z.string().trim().max(40).optional(),
@@ -505,8 +509,12 @@ const funnelPageDocumentSchema = z.object({
       columns: z.array(z.object({
         id: z.string().trim().min(1).max(160),
         span: z.number().int().min(1).max(12).default(12),
+        offset: z.number().int().min(0).max(11).optional(),
         elements: z.array(funnelPageElementSchema).max(100)
-      })).min(1).max(4)
+      }).refine(
+        ({ offset = 0, span }) => offset + span <= 12,
+        { message: "Column offset and width must fit within the 12-column row." }
+      )).min(1).max(4)
     })).min(1).max(30)
   })).min(1).max(40)
 });
