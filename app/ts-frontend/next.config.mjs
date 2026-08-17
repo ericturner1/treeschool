@@ -35,7 +35,10 @@ const contentSecurityPolicy = [
   [
     "connect-src 'self'",
     "https://www.google-analytics.com",
-    "https://region1.google-analytics.com",
+    "https://*.google-analytics.com",
+    "https://analytics.google.com",
+    "https://*.analytics.google.com",
+    "https://www.googletagmanager.com",
     "https://www.facebook.com",
     "https://connect.facebook.net",
     "https://storage.googleapis.com",
