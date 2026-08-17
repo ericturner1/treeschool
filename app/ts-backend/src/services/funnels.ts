@@ -370,7 +370,27 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
       images: z.array(funnelMediaSnapshotSchema).max(8).default([]),
       previewSlug: z.string().trim().min(1).max(180).optional(),
       fit: z.enum(["contain", "cover"]).default("contain"),
-      caption: z.string().trim().max(1000).default("")
+      caption: z.string().trim().max(1000).default(""),
+      appearance: z.object({
+        preset: z.enum(["funnel_card", "bookstore_frameless"]).optional(),
+        aspectRatio: z.enum(["3:4", "4:5", "square"]).optional(),
+        frameBackgroundColor: z.string().trim().max(40).optional(),
+        frameBorderColor: z.string().trim().max(40).optional(),
+        frameBorderWidth: z.number().int().min(0).max(16).optional(),
+        frameBorderRadius: z.number().int().min(0).max(160).optional(),
+        framePadding: z.number().int().min(0).max(100).optional(),
+        restingShadow: z.boolean().optional(),
+        imageScale: z.number().int().min(80).max(160).optional(),
+        zoomOnHover: z.boolean().optional(),
+        darkenOnHover: z.boolean().optional(),
+        hoverBrightness: z.number().int().min(10).max(100).optional(),
+        hoverLift: z.boolean().optional(),
+        hoverShadow: z.boolean().optional(),
+        showOverlay: z.boolean().optional(),
+        overlayText: z.string().trim().max(160).optional(),
+        overlayBackgroundColor: z.string().trim().max(40).optional(),
+        overlayTextColor: z.string().trim().max(40).optional()
+      }).optional()
     })
   }),
   funnelElementBaseSchema.extend({

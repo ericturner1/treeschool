@@ -19,9 +19,20 @@ type WorkbookGalleryProps = {
   fit?: "contain" | "cover";
   sizes?: string;
   thumbnailClassName?: string;
+  thumbnailStyle?: CSSProperties;
   imageClassName?: string;
   imageStyle?: CSSProperties;
   previewEndpoint?: string;
+  imageScale?: number;
+  zoomOnHover?: boolean;
+  darkenOnHover?: boolean;
+  hoverBrightness?: number;
+  hoverLift?: boolean;
+  hoverShadow?: boolean;
+  showOverlay?: boolean;
+  overlayText?: string;
+  overlayBackgroundColor?: string;
+  overlayTextColor?: string;
 };
 
 export function WorkbookGallery({
@@ -33,9 +44,20 @@ export function WorkbookGallery({
   fit = "contain",
   sizes = "(min-width: 1024px) 210px, (min-width: 640px) 26vw, 42vw",
   thumbnailClassName = "aspect-[3/4] rounded-[16px] border border-[#d8c7ad] bg-white shadow-[0_8px_20px_rgba(80,58,39,0.1)]",
+  thumbnailStyle,
   imageClassName = "p-2.5",
   imageStyle,
-  previewEndpoint
+  previewEndpoint,
+  imageScale = 100,
+  zoomOnHover = false,
+  darkenOnHover = false,
+  hoverBrightness = 52,
+  hoverLift = true,
+  hoverShadow = true,
+  showOverlay = true,
+  overlayText = "View sample pages",
+  overlayBackgroundColor = "#24311d",
+  overlayTextColor = "#ffffff"
 }: WorkbookGalleryProps) {
   const dialogTitleId = useId();
   const openerRef = useRef<HTMLButtonElement>(null);
@@ -61,6 +83,19 @@ export function WorkbookGallery({
   galleryImageCountRef.current = galleryImages.length;
   const thumbnail = cover ?? galleryImages[0] ?? null;
   const selected = galleryImages[selectedIndex] ?? galleryImages[0] ?? null;
+  const baseScale = Math.max(0.8, Math.min(1.6, imageScale / 100));
+  const hoverScale = zoomOnHover ? baseScale * 1.04 : baseScale;
+  const interactiveImageClass = [
+    "transition-[filter,transform] duration-200 ease-out [transform:scale(var(--workbook-gallery-base-scale))]",
+    zoomOnHover ? "group-hover:[transform:scale(var(--workbook-gallery-hover-scale))] group-focus-visible:[transform:scale(var(--workbook-gallery-hover-scale))]" : "",
+    darkenOnHover ? "group-hover:[filter:brightness(var(--workbook-gallery-hover-brightness))] group-focus-visible:[filter:brightness(var(--workbook-gallery-hover-brightness))]" : ""
+  ].filter(Boolean).join(" ");
+  const resolvedImageStyle = {
+    ...imageStyle,
+    "--workbook-gallery-base-scale": baseScale,
+    "--workbook-gallery-hover-scale": hoverScale,
+    "--workbook-gallery-hover-brightness": `${Math.max(10, Math.min(100, hoverBrightness))}%`
+  } as CSSProperties;
 
   useEffect(() => setMounted(true), []);
 
@@ -149,7 +184,8 @@ export function WorkbookGallery({
         }}
         aria-haspopup="dialog"
         aria-label={`Open sample pages for ${title}`}
-        className={`group relative w-full overflow-hidden text-left transition duration-200 enabled:hover:-translate-y-1 enabled:hover:shadow-[0_14px_28px_rgba(80,58,39,0.18)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#739655]/40 ${thumbnailClassName}`}
+        className={`group relative w-full overflow-hidden text-left transition duration-200 ${hoverLift ? "enabled:hover:-translate-y-1" : ""} ${hoverShadow ? "enabled:hover:shadow-[0_14px_28px_rgba(80,58,39,0.18)]" : ""} focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#739655]/40 ${thumbnailClassName}`}
+        style={thumbnailStyle}
       >
         {thumbnail && !coverFailed ? (
           <Image
@@ -159,8 +195,8 @@ export function WorkbookGallery({
             priority={priority}
             unoptimized={thumbnail.url.startsWith("http")}
             sizes={sizes}
-            className={`${fit === "cover" ? "object-cover" : "object-contain"} ${imageClassName}`}
-            style={imageStyle}
+            className={`${fit === "cover" ? "object-cover" : "object-contain"} ${interactiveImageClass} ${imageClassName}`}
+            style={resolvedImageStyle}
             onError={() => setCoverFailed(true)}
           />
         ) : (
@@ -169,9 +205,12 @@ export function WorkbookGallery({
             <span className="absolute bottom-5 text-xs font-bold text-earth">Printable workbook</span>
           </span>
         )}
-        {galleryImages.length > 1 || previewEndpoint ? (
-          <span className="absolute inset-x-2 bottom-2 translate-y-2 rounded-full bg-[#24311d]/88 px-2 py-1.5 text-center text-[10px] font-bold text-white opacity-0 shadow-lg transition group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100 sm:text-xs">
-            View sample pages
+        {showOverlay && (galleryImages.length > 1 || previewEndpoint) ? (
+          <span
+            className="absolute inset-x-2 bottom-2 translate-y-2 rounded-full px-2 py-1.5 text-center text-[10px] font-bold opacity-0 shadow-lg transition group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100 sm:text-xs"
+            style={{ backgroundColor: overlayBackgroundColor, color: overlayTextColor }}
+          >
+            {overlayText}
           </span>
         ) : null}
       </button>

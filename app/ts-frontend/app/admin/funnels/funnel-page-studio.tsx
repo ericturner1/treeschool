@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import { FunnelProgressSteps } from "../../../components/funnel-progress-steps";
 import { moveItemAtInsertionPoint } from "../../../lib/editor-drag";
 import { allSpacingSides, funnelElementSpacingStyle } from "../../../lib/funnels/element-spacing";
@@ -36,6 +36,10 @@ import {
   funnelListTextStyle,
   isCustomizedFunnelList
 } from "../../../lib/funnels/list-style";
+import {
+  funnelWorkbookGalleryAspectClass,
+  resolveFunnelWorkbookGalleryAppearance
+} from "../../../lib/funnels/workbook-gallery-style";
 import type { AdminManagedFunnelPagePayload, FunnelSubscriptionProduct, ManagedFunnelPage } from "../../../lib/funnels/server";
 import type { NativeWorkbookCatalogItem } from "../../../lib/native-workbooks/server";
 import { showGlobalToast } from "../../../lib/toast";
@@ -286,7 +290,21 @@ function PreviewElement({ element, palette, onSelect, selected }: { element: Fun
   if (element.type === "image") return <button type="button" onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} min-h-28 w-full overflow-hidden border border-dashed border-ink/20 bg-white/40`}>{element.props.media.publicUrl ? <Image src={element.props.media.publicUrl} alt={element.props.media.alt} width={1000} height={700} unoptimized className={`max-h-96 w-full ${element.props.fit === "cover" ? "object-cover" : "object-contain"}`} /> : <span className="text-sm text-ink/45">Choose an image in the inspector</span>}</button>;
   if (element.type === "workbook_gallery") {
     const preview = element.props.cover.publicUrl ?? element.props.images.find((image) => image.publicUrl)?.publicUrl;
-    return <button type="button" onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} relative mx-auto aspect-[4/5] w-full max-w-sm overflow-hidden border border-dashed border-ink/20 bg-white/40`}>{preview ? <Image src={preview} alt={element.props.cover.alt} fill unoptimized className={element.props.fit === "cover" ? "object-cover" : "object-contain p-3"} /> : <span className="absolute inset-0 grid place-items-center px-4 text-sm text-ink/45">Choose a cover and sample pages in the inspector</span>}<span className="absolute bottom-2 right-2 rounded-full bg-[#24311d]/85 px-2 py-1 text-[10px] font-bold text-white">Gallery · {element.props.previewSlug ? "generated previews" : element.props.images.length + (element.props.cover.publicUrl ? 1 : 0)}</span></button>;
+    const appearance = resolveFunnelWorkbookGalleryAppearance(element.props.appearance);
+    const baseScale = Math.max(0.8, Math.min(1.6, appearance.imageScale / 100));
+    const hoverScale = appearance.zoomOnHover ? baseScale * 1.04 : baseScale;
+    const imageStyle = {
+      padding: appearance.framePadding,
+      "--workbook-gallery-base-scale": baseScale,
+      "--workbook-gallery-hover-scale": hoverScale,
+      "--workbook-gallery-hover-brightness": `${appearance.hoverBrightness}%`
+    } as CSSProperties;
+    const imageInteraction = [
+      "transition-[filter,transform] duration-200 [transform:scale(var(--workbook-gallery-base-scale))]",
+      appearance.zoomOnHover ? "group-hover:[transform:scale(var(--workbook-gallery-hover-scale))]" : "",
+      appearance.darkenOnHover ? "group-hover:[filter:brightness(var(--workbook-gallery-hover-brightness))]" : ""
+    ].filter(Boolean).join(" ");
+    return <button type="button" onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} group relative mx-auto w-full max-w-sm overflow-hidden ${funnelWorkbookGalleryAspectClass(appearance.aspectRatio)} ${appearance.restingShadow ? "shadow-[0_10px_26px_rgba(60,45,32,.12)]" : ""} ${appearance.hoverLift ? "hover:-translate-y-1" : ""} ${appearance.hoverShadow ? "hover:shadow-[0_14px_28px_rgba(80,58,39,.18)]" : ""}`} style={{ backgroundColor: appearance.frameBackgroundColor, borderColor: appearance.frameBorderColor, borderRadius: appearance.frameBorderRadius, borderStyle: appearance.frameBorderWidth > 0 ? "solid" : undefined, borderWidth: appearance.frameBorderWidth }}>{preview ? <Image src={preview} alt={element.props.cover.alt} fill unoptimized className={`${element.props.fit === "cover" ? "object-cover" : "object-contain"} ${imageInteraction}`} style={imageStyle} /> : <span className="absolute inset-0 grid place-items-center px-4 text-sm text-ink/45">Choose a cover and sample pages in the inspector</span>}{appearance.showOverlay ? <span className="absolute inset-x-2 bottom-2 translate-y-2 rounded-full px-2 py-1.5 text-center text-[10px] font-bold opacity-0 shadow-lg transition group-hover:translate-y-0 group-hover:opacity-100" style={{ backgroundColor: appearance.overlayBackgroundColor, color: appearance.overlayTextColor }}>{appearance.overlayText}</span> : null}<span className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold text-ink/65 shadow-sm">Gallery · {element.props.previewSlug ? "generated previews" : element.props.images.length + (element.props.cover.publicUrl ? 1 : 0)}</span></button>;
   }
   if (element.type === "button") {
     const textColor = funnelButtonDefaultTextColor(element.props, palette);
@@ -720,9 +738,13 @@ function WorkbookGalleryInspector({
   update: (next: FunnelWorkbookGalleryElement) => void;
   chooseMedia: (slot: "cover" | "append" | number) => void;
 }) {
+  const appearance = resolveFunnelWorkbookGalleryAppearance(element.props.appearance);
   const updateProps = (next: Partial<FunnelWorkbookGalleryElement["props"]>) => update({
     ...element,
     props: { ...element.props, ...next }
+  });
+  const updateAppearance = (next: Partial<NonNullable<FunnelWorkbookGalleryElement["props"]["appearance"]>>) => updateProps({
+    appearance: { ...element.props.appearance, ...next }
   });
   const updateImage = (index: number, next: FunnelMediaSnapshot) => {
     const images = [...element.props.images];
@@ -762,7 +784,29 @@ function WorkbookGalleryInspector({
       </div>)}
       <button type="button" disabled={element.props.images.length >= 8} onClick={() => chooseMedia("append")} className="rounded-[11px] border-2 border-[#739655] bg-[#edf5e7] px-3 py-2 text-xs font-semibold text-[#4d6a39] disabled:opacity-45">+ Add sample page</button>
     </InspectorGroup>
-    <label className="grid gap-1.5 text-xs font-semibold">Image fit<select className={INPUT} value={element.props.fit} onChange={(event) => updateProps({ fit: event.target.value as "contain" | "cover" })}><option value="contain">Show whole page</option><option value="cover">Fill and crop</option></select></label>
+    <InspectorGroup title="Thumbnail style" open>
+      <label className="grid gap-1.5 text-xs font-semibold">Style preset<select className={INPUT} value={appearance.preset} onChange={(event) => updateProps({ appearance: { preset: event.target.value as "funnel_card" | "bookstore_frameless" } })}><option value="funnel_card">Funnel card</option><option value="bookstore_frameless">Bookstore frameless</option></select></label>
+      <p className="text-[10px] leading-4 text-ink/50">The bookstore preset removes the white frame and darkens the cover on hover so the label stays readable. Any setting below can be adjusted independently.</p>
+      <label className="grid gap-1.5 text-xs font-semibold">Thumbnail shape<select className={INPUT} value={appearance.aspectRatio} onChange={(event) => updateAppearance({ aspectRatio: event.target.value as "3:4" | "4:5" | "square" })}><option value="3:4">Workbook cover (3:4)</option><option value="4:5">Tall card (4:5)</option><option value="square">Square</option></select></label>
+      <label className="grid gap-1.5 text-xs font-semibold">Image fit<select className={INPUT} value={element.props.fit} onChange={(event) => updateProps({ fit: event.target.value as "contain" | "cover" })}><option value="contain">Show whole page</option><option value="cover">Fill and crop</option></select></label>
+      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Transparent frame</span><input type="checkbox" checked={appearance.frameBackgroundColor === "transparent"} onChange={(event) => updateAppearance({ frameBackgroundColor: event.target.checked ? "transparent" : "#ffffff" })} className="h-4 w-4 accent-[#76a456]" /></label>
+      {appearance.frameBackgroundColor === "transparent" ? null : <ColorControl label="Frame background" value={appearance.frameBackgroundColor} onChange={(frameBackgroundColor) => updateAppearance({ frameBackgroundColor })} />}
+      <ColorControl label="Frame border color" value={appearance.frameBorderColor === "transparent" ? "#ffffff" : appearance.frameBorderColor} onChange={(frameBorderColor) => updateAppearance({ frameBorderColor })} />
+      <div className="grid grid-cols-2 gap-2"><NumberControl label="Border width" value={appearance.frameBorderWidth} min={0} max={16} onChange={(frameBorderWidth) => updateAppearance({ frameBorderWidth })} /><NumberControl label="Corner radius" value={appearance.frameBorderRadius} min={0} max={160} onChange={(frameBorderRadius) => updateAppearance({ frameBorderRadius })} /></div>
+      <div className="grid grid-cols-2 gap-2"><NumberControl label="Inner padding" value={appearance.framePadding} min={0} max={100} onChange={(framePadding) => updateAppearance({ framePadding })} /><NumberControl label="Image scale %" value={appearance.imageScale} min={80} max={160} onChange={(imageScale) => updateAppearance({ imageScale })} /></div>
+      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show resting shadow</span><input type="checkbox" checked={appearance.restingShadow} onChange={(event) => updateAppearance({ restingShadow: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+    </InspectorGroup>
+    <InspectorGroup title="Hover effect" open>
+      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Zoom image on hover</span><input type="checkbox" checked={appearance.zoomOnHover} onChange={(event) => updateAppearance({ zoomOnHover: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Darken image on hover</span><input type="checkbox" checked={appearance.darkenOnHover} onChange={(event) => updateAppearance({ darkenOnHover: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+      {appearance.darkenOnHover ? <NumberControl label="Hover brightness %" value={appearance.hoverBrightness} min={10} max={100} onChange={(hoverBrightness) => updateAppearance({ hoverBrightness })} /> : null}
+      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Lift thumbnail on hover</span><input type="checkbox" checked={appearance.hoverLift} onChange={(event) => updateAppearance({ hoverLift: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Add shadow on hover</span><input type="checkbox" checked={appearance.hoverShadow} onChange={(event) => updateAppearance({ hoverShadow: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+    </InspectorGroup>
+    <InspectorGroup title="Hover label" open>
+      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show hover label</span><input type="checkbox" checked={appearance.showOverlay} onChange={(event) => updateAppearance({ showOverlay: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+      {appearance.showOverlay ? <><label className="grid gap-1.5 text-xs font-semibold">Label text<input className={INPUT} value={appearance.overlayText} maxLength={160} onChange={(event) => updateAppearance({ overlayText: event.target.value })} /></label><ColorControl label="Label background" value={appearance.overlayBackgroundColor} onChange={(overlayBackgroundColor) => updateAppearance({ overlayBackgroundColor })} /><ColorControl label="Label text color" value={appearance.overlayTextColor} onChange={(overlayTextColor) => updateAppearance({ overlayTextColor })} /></> : null}
+    </InspectorGroup>
     <label className="grid gap-1.5 text-xs font-semibold">Caption<input className={INPUT} value={element.props.caption} onChange={(event) => updateProps({ caption: event.target.value })} placeholder="Optional text below the thumbnail" /></label>
   </div>;
 }

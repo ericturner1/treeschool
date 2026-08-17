@@ -113,6 +113,27 @@ export type FunnelMediaSnapshot = {
   height: number | null;
 };
 
+export type FunnelWorkbookGalleryAppearance = {
+  preset?: "funnel_card" | "bookstore_frameless";
+  aspectRatio?: "3:4" | "4:5" | "square";
+  frameBackgroundColor?: string;
+  frameBorderColor?: string;
+  frameBorderWidth?: number;
+  frameBorderRadius?: number;
+  framePadding?: number;
+  restingShadow?: boolean;
+  imageScale?: number;
+  zoomOnHover?: boolean;
+  darkenOnHover?: boolean;
+  hoverBrightness?: number;
+  hoverLift?: boolean;
+  hoverShadow?: boolean;
+  showOverlay?: boolean;
+  overlayText?: string;
+  overlayBackgroundColor?: string;
+  overlayTextColor?: string;
+};
+
 export type FunnelElementSpacing = {
   marginTop?: number;
   marginRight?: number;
@@ -166,6 +187,7 @@ export type FunnelPageElement =
         previewSlug?: string;
         fit: "contain" | "cover";
         caption: string;
+        appearance?: FunnelWorkbookGalleryAppearance;
       };
     })
   | (FunnelElementBase & {

@@ -226,7 +226,23 @@ describe("funnel administration normalization", () => {
             elements: [{
               id: "gallery_math",
               type: "workbook_gallery",
-              props: { title: "Math 1", cover, images: [sample], previewSlug: "math-1", fit: "contain", caption: "Look inside" }
+              props: {
+                title: "Math 1",
+                cover,
+                images: [sample],
+                previewSlug: "math-1",
+                fit: "contain",
+                caption: "Look inside",
+                appearance: {
+                  preset: "bookstore_frameless",
+                  zoomOnHover: true,
+                  darkenOnHover: true,
+                  hoverBrightness: 48,
+                  overlayText: "See inside",
+                  overlayBackgroundColor: "#24311d",
+                  overlayTextColor: "#ffffff"
+                }
+              }
             }]
           }]
         }]
@@ -238,6 +254,12 @@ describe("funnel administration normalization", () => {
     if (element?.type !== "workbook_gallery") throw new Error("Expected a workbook gallery element.");
     expect(element.props.images[0]?.alt).toBe("Table of contents");
     expect(element.props.previewSlug).toBe("math-1");
+    expect(element.props.appearance).toMatchObject({
+      preset: "bookstore_frameless",
+      zoomOnHover: true,
+      hoverBrightness: 48,
+      overlayText: "See inside"
+    });
   });
 
   test("preserves inline list layouts and circular marker badges", () => {

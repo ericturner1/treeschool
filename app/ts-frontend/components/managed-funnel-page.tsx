@@ -27,6 +27,10 @@ import {
   isCustomizedFunnelList
 } from "../lib/funnels/list-style";
 import { funnelElementSpacingStyle } from "../lib/funnels/element-spacing";
+import {
+  funnelWorkbookGalleryAspectClass,
+  resolveFunnelWorkbookGalleryAppearance
+} from "../lib/funnels/workbook-gallery-style";
 import { ManagedFunnelLeadForm } from "./managed-funnel-lead-form";
 import { ManagedFunnelOneClickButton } from "./managed-funnel-one-click-button";
 import { ManagedFunnelOrderForm } from "./managed-funnel-order-form";
@@ -237,6 +241,7 @@ function PageElement({
       return source ? [{ url: source, alt: media.alt, label: media.alt }] : [];
     });
     if (!coverSource && images.length === 0) return null;
+    const appearance = resolveFunnelWorkbookGalleryAppearance(element.props.appearance);
     return (
       <div className={visibility}>
         <WorkbookGallery
@@ -253,8 +258,26 @@ function PageElement({
           caption={element.props.caption}
           fit={element.props.fit}
           sizes="(min-width: 1024px) 500px, 90vw"
-          thumbnailClassName="mx-auto aspect-[4/5] max-h-[620px] max-w-[500px] rounded-[20px] border border-ink/10 bg-white shadow-[0_10px_26px_rgba(60,45,32,.12)]"
-          imageClassName="p-3 sm:p-5"
+          thumbnailClassName={`mx-auto max-h-[620px] max-w-[500px] ${funnelWorkbookGalleryAspectClass(appearance.aspectRatio)} ${appearance.restingShadow ? "shadow-[0_10px_26px_rgba(60,45,32,.12)]" : ""}`}
+          thumbnailStyle={{
+            backgroundColor: appearance.frameBackgroundColor,
+            borderColor: appearance.frameBorderColor,
+            borderRadius: appearance.frameBorderRadius,
+            borderStyle: appearance.frameBorderWidth > 0 ? "solid" : undefined,
+            borderWidth: appearance.frameBorderWidth
+          }}
+          imageClassName=""
+          imageStyle={{ padding: appearance.framePadding }}
+          imageScale={appearance.imageScale}
+          zoomOnHover={appearance.zoomOnHover}
+          darkenOnHover={appearance.darkenOnHover}
+          hoverBrightness={appearance.hoverBrightness}
+          hoverLift={appearance.hoverLift}
+          hoverShadow={appearance.hoverShadow}
+          showOverlay={appearance.showOverlay}
+          overlayText={appearance.overlayText}
+          overlayBackgroundColor={appearance.overlayBackgroundColor}
+          overlayTextColor={appearance.overlayTextColor}
         />
       </div>
     );
