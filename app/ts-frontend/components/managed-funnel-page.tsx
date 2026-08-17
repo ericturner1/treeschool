@@ -523,10 +523,12 @@ export async function ManagedFunnelPageView({
                       {row.columns.map((column) => (
                         <div
                           key={column.id}
-                          className="grid gap-5"
-                          style={{ gridColumn: column.offset !== undefined
-                            ? `${column.offset + 1} / span ${column.span}`
-                            : `span ${column.span} / span ${column.span}` }}
+                          className="grid gap-5 lg:[grid-column:var(--funnel-grid-column)]"
+                          style={{
+                            "--funnel-grid-column": column.offset !== undefined
+                              ? `${column.offset + 1} / span ${column.span}`
+                              : `span ${column.span} / span ${column.span}`
+                          } as CSSProperties}
                         >
                           {column.elements.map((element) => (
                             <div key={element.id} className={visibilityClass(element)} style={funnelElementSpacingStyle(element)}>
