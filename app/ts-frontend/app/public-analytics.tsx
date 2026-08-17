@@ -11,6 +11,7 @@ import {
   requiresPriorAnalyticsConsent,
   shouldEnablePublicAnalytics
 } from "../lib/analytics/public-routes";
+import { createGoogleTagQueue } from "../lib/analytics/google-tag";
 
 const GOOGLE_ANALYTICS_MEASUREMENT_ID = "G-CNXCLD3PLH";
 const META_PIXEL_ID = "930584153407646";
@@ -39,9 +40,7 @@ function setAnalyticsDisabled(disabled: boolean) {
 
 function configureGoogleAnalytics() {
   window.dataLayer ??= [];
-  window.gtag ??= (...args: unknown[]) => {
-    window.dataLayer?.push(args);
-  };
+  window.gtag ??= createGoogleTagQueue(window.dataLayer);
 
   window.gtag("consent", "default", {
     analytics_storage: "granted",
