@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { FunnelProgressSteps } from "../../../components/funnel-progress-steps";
 import { moveItemAtInsertionPoint } from "../../../lib/editor-drag";
 import { allSpacingSides, funnelElementSpacingStyle } from "../../../lib/funnels/element-spacing";
@@ -285,7 +285,7 @@ function AssetLibrary({
 
 function PreviewElement({ element, palette, onSelect, selected }: { element: FunnelPageElement; palette: FunnelButtonPalette; onSelect: () => void; selected: boolean }) {
   const align = "align" in element.props ? element.props.align : "left";
-  const selection = selected ? "ring-4 ring-[#739655]/35 ring-offset-2" : "hover:ring-2 hover:ring-[#739655]/25";
+  const selection = selected ? "ring-4 ring-[#739655]/35 ring-offset-2" : "";
   const common = `relative rounded-[8px] cursor-pointer transition ${selection}`;
   if (element.type === "eyebrow") return <p onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} text-xs font-black uppercase tracking-[.12em]`} style={{ textAlign: align }}>{element.props.text}</p>;
   if (element.type === "heading") {
@@ -345,6 +345,48 @@ function PreviewElement({ element, palette, onSelect, selected }: { element: Fun
 
 function sameIndexPath(left: number[], right: number[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameSelection(left: Selection | null, right: Selection) {
+  if (!left || left.kind !== right.kind) return false;
+  if (right.kind === "page") return true;
+  if (left.kind === "page" || left.sectionIndex !== right.sectionIndex) return false;
+  if (right.kind === "section") return true;
+  if (left.kind === "section" || !sameIndexPath(left.rowPath, right.rowPath)) return false;
+  if (right.kind === "row") return true;
+  if (left.kind === "row" || left.columnIndex !== right.columnIndex) return false;
+  if (right.kind === "column") return true;
+  return left.kind === "element" && left.elementIndex === right.elementIndex;
+}
+
+function selectionStackAt(location: Selection) {
+  if (location.kind === "page") return [location];
+  if (location.kind === "section") return [location];
+  const stack: Selection[] = [];
+  if (location.kind === "element") stack.push(location);
+  if (location.kind === "element" || location.kind === "column") {
+    stack.push({ kind: "column", sectionIndex: location.sectionIndex, rowPath: location.rowPath, columnIndex: location.columnIndex });
+  }
+  let rowPath = [...location.rowPath];
+  stack.push({ kind: "row", sectionIndex: location.sectionIndex, rowPath });
+  while (rowPath.length > 1) {
+    const parentColumnIndex = rowPath.at(-2);
+    rowPath = rowPath.slice(0, -2);
+    if (parentColumnIndex === undefined) break;
+    stack.push({ kind: "column", sectionIndex: location.sectionIndex, rowPath, columnIndex: parentColumnIndex });
+    stack.push({ kind: "row", sectionIndex: location.sectionIndex, rowPath });
+  }
+  stack.push({ kind: "section", sectionIndex: location.sectionIndex });
+  return stack;
+}
+
+function selectionLabel(document: FunnelPageDocument, location: Selection) {
+  if (location.kind === "page") return "Page";
+  if (location.kind === "section") return `Section ${location.sectionIndex + 1}`;
+  if (location.kind === "row") return `${location.rowPath.length > 1 ? "Nested row" : "Row"} ${(location.rowPath.at(-1) ?? 0) + 1}`;
+  if (location.kind === "column") return `Column ${location.columnIndex + 1}`;
+  const element = columnAtPath(document, location)?.elements[location.elementIndex];
+  return element ? element.type.replaceAll("_", " ") : `Element ${location.elementIndex + 1}`;
 }
 
 function indexPathStartsWith(path: number[], prefix: number[]) {
@@ -617,6 +659,10 @@ function EditorCanvas({
   onEndColumnDrag: () => void;
   orderFormPreview?: ReactNode;
 }) {
+  const [hoverSelection, setHoverSelection] = useState<Selection | null>(null);
+  const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; location: Selection } | null>(null);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverPointRef = useRef<{ x: number; y: number; location: Selection } | null>(null);
   const baseTheme = themes[document.theme];
   const styles = document.styles;
   const pageBg = styles?.colors?.pageBackground ?? baseTheme.page;
@@ -635,6 +681,60 @@ function EditorCanvas({
   const sectionGap = styles?.layout?.sectionGap ?? 22;
   const paddingY = styles?.layout?.sectionPaddingY ?? 38;
   const columnGap = styles?.layout?.columnGap ?? 22;
+  const activeSelection = hoverSelection ?? selection;
+  const dragging = Boolean(elementDrag || blockDrag || rowDrag || columnDrag);
+
+  function clearHoverTimer() {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = null;
+  }
+
+  function selectAt(location: Selection, cycle = false) {
+    clearHoverTimer();
+    setHoverSelection(null);
+    setSelectionMenu(null);
+    if (!cycle) {
+      onSelect(location);
+      return;
+    }
+    const stack = selectionStackAt(location);
+    const currentIndex = stack.findIndex((item) => sameSelection(selection, item));
+    onSelect(stack[currentIndex >= 0 ? (currentIndex + 1) % stack.length : 0] ?? location);
+  }
+
+  function trackPointer(event: ReactPointerEvent<HTMLElement>, location: Selection) {
+    event.stopPropagation();
+    if (dragging || selectionMenu) return;
+    setHoverSelection((current) => sameSelection(current, location) ? current : location);
+    const previous = hoverPointRef.current;
+    const moved = !previous
+      || !sameSelection(previous.location, location)
+      || Math.abs(previous.x - event.clientX) > 3
+      || Math.abs(previous.y - event.clientY) > 3;
+    if (!moved) return;
+    hoverPointRef.current = { x: event.clientX, y: event.clientY, location };
+    clearHoverTimer();
+    const stack = selectionStackAt(location);
+    if (stack.length <= 1) return;
+    const x = Math.max(12, Math.min(event.clientX + 12, window.innerWidth - 230));
+    const y = Math.max(12, Math.min(event.clientY + 12, window.innerHeight - 260));
+    hoverTimerRef.current = setTimeout(() => {
+      setSelectionMenu({ x, y, location });
+      hoverTimerRef.current = null;
+    }, 3000);
+  }
+
+  useEffect(() => () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+  }, []);
+  useEffect(() => {
+    if (!dragging) return;
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = null;
+    setHoverSelection(null);
+    setSelectionMenu(null);
+  }, [dragging]);
+
   const renderRows = (
     rows: FunnelPageRow[],
     sectionIndex: number,
@@ -656,12 +756,18 @@ function EditorCanvas({
         const canDropColumnsHere = !(columnDrag
           && columnDrag.sectionIndex === sectionIndex
           && indexPathStartsWith(rowPath, [...columnDrag.rowPath, columnDrag.columnIndex]));
-        const rowSelected = selection.kind === "row" && selection.sectionIndex === sectionIndex && sameIndexPath(selection.rowPath, rowPath);
+        const rowSelection: Selection = { kind: "row", sectionIndex, rowPath };
+        const rowSelected = sameSelection(selection, rowSelection);
+        const rowActive = sameSelection(activeSelection, rowSelection);
         return <Fragment key={row.id}>
           {rowDrag && canDropRowsHere ? <FunnelRowDropZone target={rowTarget} active={sameRowDropTarget(rowDropTarget, rowTarget)} copy={rowDrag.kind === "new"} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
           <div
-            className={`group/row relative rounded-[10px] transition ${depth > 0 ? "my-2" : ""} ${rowDragged ? "opacity-35" : ""} ${rowSelected ? "outline outline-2 outline-[#5f873f] outline-offset-4" : "hover:outline hover:outline-2 hover:outline-[#739655]/35 hover:outline-offset-4"}`}
-            onClick={(event) => { event.stopPropagation(); onSelect({ kind: "row", sectionIndex, rowPath }); }}
+            draggable
+            className={`group/row relative cursor-grab rounded-[10px] transition active:cursor-grabbing ${depth > 0 ? "my-2" : ""} ${rowDragged ? "opacity-35" : ""} ${rowActive ? "outline outline-2 outline-[#5f873f] outline-offset-4" : ""}`}
+            onClick={(event) => { event.stopPropagation(); selectAt(rowSelection, event.altKey); }}
+            onPointerMove={(event) => trackPointer(event, rowSelection)}
+            onDragStart={(event) => onStartRowDrag(event, { kind: "existing", source: rowLocation })}
+            onDragEnd={onEndRowDrag}
           >
             <div className={`grid ${viewport === "mobile" ? "grid-cols-1" : "grid-cols-12"}`} style={{ gap: columnGap }}>
               {row.columns.map((column, columnIndex) => {
@@ -673,24 +779,27 @@ function EditorCanvas({
                 const columnDragged = columnDrag?.sectionIndex === sectionIndex
                   && sameIndexPath(columnDrag.rowPath, rowPath)
                   && columnDrag.columnIndex === columnIndex;
-                const columnSelected = selection.kind === "column" && selection.sectionIndex === sectionIndex && sameIndexPath(selection.rowPath, rowPath) && selection.columnIndex === columnIndex;
+                const columnSelection: Selection = { kind: "column", ...columnLocation };
+                const columnSelected = sameSelection(selection, columnSelection);
+                const columnActive = sameSelection(activeSelection, columnSelection);
                 return <div
                   key={column.id}
-                  onClick={(event) => { event.stopPropagation(); onSelect({ kind: "column", ...columnLocation }); }}
-                  className={`group/column relative grid min-w-0 content-start gap-4 rounded-[8px] transition ${columnDragged ? "opacity-35" : ""} ${columnSelected ? "outline outline-2 outline-[#8a674d] outline-offset-2" : "hover:outline hover:outline-1 hover:outline-[#8a674d]/40 hover:outline-offset-2"}`}
+                  draggable
+                  onClick={(event) => { event.stopPropagation(); selectAt(columnSelection, event.altKey); }}
+                  onPointerMove={(event) => trackPointer(event, columnSelection)}
+                  onDragStart={(event) => onStartColumnDrag(event, columnLocation)}
+                  onDragEnd={onEndColumnDrag}
+                  className={`group/column relative grid min-w-0 cursor-grab content-start gap-4 rounded-[8px] transition active:cursor-grabbing ${columnDragged ? "opacity-35" : ""} ${columnActive ? "outline outline-2 outline-[#8a674d] outline-offset-2" : ""}`}
                   style={viewport === "mobile" ? undefined : { gridColumn: column.offset !== undefined ? `${column.offset + 1} / span ${column.span}` : `span ${column.span}` }}
                 >
                   {columnDrag && canDropColumnsHere ? <FunnelColumnDropZone target={columnLocation} side="start" active={sameColumnDropTarget(columnDropTarget, columnLocation)} onTarget={onColumnDropTarget} onDrop={onDropColumn} /> : null}
                   {columnDrag && canDropColumnsHere && columnIndex === row.columns.length - 1 ? <FunnelColumnDropZone target={{ sectionIndex, rowPath, columnIndex: row.columns.length }} side="end" active={sameColumnDropTarget(columnDropTarget, { sectionIndex, rowPath, columnIndex: row.columns.length })} onTarget={onColumnDropTarget} onDrop={onDropColumn} /> : null}
                   <button
                     type="button"
-                    draggable
-                    onClick={(event) => { event.stopPropagation(); onSelect({ kind: "column", ...columnLocation }); }}
-                    onDragStart={(event) => onStartColumnDrag(event, columnLocation)}
-                    onDragEnd={onEndColumnDrag}
-                    className={`absolute -left-1 -top-3 z-40 cursor-grab rounded-full border border-[#cbb99e] bg-white px-2 py-1 text-[9px] font-bold text-ink/55 shadow-sm transition active:cursor-grabbing ${columnSelected ? "opacity-100" : "opacity-0 group-hover/column:opacity-100 focus:opacity-100"}`}
-                    aria-label={`Select or drag column ${columnIndex + 1}`}
-                    title="Drag to move this column"
+                    onClick={(event) => { event.stopPropagation(); selectAt(columnSelection, event.altKey); }}
+                    className={`absolute -left-1 -top-3 z-40 rounded-full border border-[#cbb99e] bg-white px-2 py-1 text-[9px] font-bold text-ink/55 shadow-sm transition ${columnSelected ? "opacity-100" : "opacity-0 group-hover/column:opacity-100 focus:opacity-100"}`}
+                    aria-label={`Select column ${columnIndex + 1}`}
+                    title="Select this column; drag the column itself to move it"
                   >
                     Column {columnIndex + 1} · {column.span}/12{column.offset !== undefined ? ` · offset ${column.offset}` : ""}
                   </button>
@@ -700,8 +809,8 @@ function EditorCanvas({
                     const dragged = elementDrag?.kind === "existing" && sameElementLocation(elementDrag.source, location);
                     return <div key={element.id} className="min-w-0">
                       {elementDrag ? <FunnelElementDropZone target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} /> : null}
-                      <div draggable onDragStart={(event) => onStartElementDrag(event, { kind: "existing", source: location })} onDragEnd={onEndElementDrag} className={`group/drag relative transition ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
-                        <PreviewElement element={element} palette={palette} selected={selection.kind === "element" && sameElementLocation(selection, location)} onSelect={() => onSelect(location)} />
+                      <div draggable onClickCapture={(event) => { if (!event.altKey) return; event.preventDefault(); event.stopPropagation(); selectAt(location, true); }} onPointerMove={(event) => trackPointer(event, location)} onDragStart={(event) => onStartElementDrag(event, { kind: "existing", source: location })} onDragEnd={onEndElementDrag} className={`group/drag relative transition ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
+                        <PreviewElement element={element} palette={palette} selected={sameSelection(activeSelection, location)} onSelect={() => selectAt(location)} />
                       </div>
                     </div>;
                   })}
@@ -709,9 +818,27 @@ function EditorCanvas({
                     const target = { sectionIndex, rowPath, columnIndex, elementIndex: column.elements.length };
                     return <FunnelElementDropZone target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} />;
                   })() : null}
-                  {column.elements.length === 0 && !column.rows?.length && !elementDrag && !rowDrag ? <button type="button" onClick={(event) => { event.stopPropagation(); onSelect({ kind: "column", ...columnLocation }); }} className="min-h-24 rounded-[14px] border border-dashed border-ink/20 text-sm text-ink/40">Empty column</button> : null}
+                  {column.elements.length === 0 && !column.rows?.length && !elementDrag && !rowDrag ? <button type="button" onClick={(event) => { event.stopPropagation(); selectAt(columnSelection, event.altKey); }} className="min-h-24 rounded-[14px] border border-dashed border-ink/20 text-sm text-ink/40">Empty column</button> : null}
                   {column.rows?.length || (rowDrag && canDropInsideColumn) ? (
-                    <div className={`rounded-[10px] ${rowDrag && canDropInsideColumn ? "border border-dashed border-[#739655]/45 bg-white/20 p-2" : ""}`}>
+                    <div
+                      className={`rounded-[10px] ${rowDrag && canDropInsideColumn ? "border border-dashed border-[#739655]/45 bg-white/20 p-2" : ""}`}
+                      onDragEnter={rowDrag && canDropInsideColumn ? (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onRowDropTarget({ sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 });
+                      } : undefined}
+                      onDragOver={rowDrag && canDropInsideColumn ? (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        event.dataTransfer.dropEffect = rowDrag.kind === "new" ? "copy" : "move";
+                        onRowDropTarget({ sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 });
+                      } : undefined}
+                      onDrop={rowDrag && canDropInsideColumn ? (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onDropRow({ sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 });
+                      } : undefined}
+                    >
                       {renderRows(column.rows ?? [], sectionIndex, columnPath, depth + 1)}
                     </div>
                   ) : null}
@@ -720,13 +847,10 @@ function EditorCanvas({
             </div>
             <button
               type="button"
-              draggable
-              onClick={(event) => { event.stopPropagation(); onSelect({ kind: "row", sectionIndex, rowPath }); }}
-              onDragStart={(event) => onStartRowDrag(event, { kind: "existing", source: rowLocation })}
-              onDragEnd={onEndRowDrag}
-              className={`absolute -right-2 -top-3 z-50 cursor-grab rounded-full border border-[#9eb489] bg-[#f4f9ef] px-2 py-1 text-[10px] font-bold text-[#4d6a39] shadow-sm transition active:cursor-grabbing ${rowSelected ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus:opacity-100"}`}
-              aria-label={`Select or drag row ${rowIndex + 1}`}
-              title="Drag to move this row"
+              onClick={(event) => { event.stopPropagation(); selectAt(rowSelection, event.altKey); }}
+              className={`absolute -right-2 -top-3 z-50 rounded-full border border-[#9eb489] bg-[#f4f9ef] px-2 py-1 text-[10px] font-bold text-[#4d6a39] shadow-sm transition ${rowSelected ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus:opacity-100"}`}
+              aria-label={`Select row ${rowIndex + 1}`}
+              title="Select this row; drag the row itself to move it"
             >
               Row {rowIndex + 1} · {row.columns.length} {row.columns.length === 1 ? "column" : "columns"}
             </button>
@@ -740,7 +864,16 @@ function EditorCanvas({
     </>;
   };
   return (
-    <div className={`mx-auto min-h-full overflow-hidden bg-white shadow-2xl transition-all ${viewport === "mobile" ? "w-[390px]" : "w-full max-w-[1320px]"}`} style={{ background: pageBg, color: styles?.typography?.bodyColor, fontFamily: styles?.typography?.bodyFontFamily, fontSize: styles?.typography?.baseFontSize }} onClick={() => onSelect({ kind: "page" })}>
+    <div
+      className={`mx-auto min-h-full overflow-hidden bg-white shadow-2xl transition-all ${viewport === "mobile" ? "w-[390px]" : "w-full max-w-[1320px]"}`}
+      style={{ background: pageBg, color: styles?.typography?.bodyColor, fontFamily: styles?.typography?.bodyFontFamily, fontSize: styles?.typography?.baseFontSize }}
+      onClick={() => selectAt({ kind: "page" })}
+      onPointerLeave={() => {
+        clearHoverTimer();
+        hoverPointRef.current = null;
+        if (!selectionMenu) setHoverSelection(null);
+      }}
+    >
       {document.siteChrome?.showHeader ? (
         <header className={`flex items-center justify-between border-b border-black/10 ${viewport === "mobile" ? "px-4 py-3" : "px-6 py-4"}`}>
           <span className="inline-flex items-center gap-2.5">
@@ -752,7 +885,8 @@ function EditorCanvas({
       ) : null}
       <div className="grid" style={{ gap: sectionGap, padding: viewport === "mobile" ? 12 : 24 }}>
         {document.sections.map((section, sectionIndex) => {
-          const selected = selection.kind === "section" && selection.sectionIndex === sectionIndex;
+          const sectionSelection: Selection = { kind: "section", sectionIndex };
+          const selected = sameSelection(activeSelection, sectionSelection);
           const tone = section.props.backgroundColor ?? sectionToneColor(section, baseTheme, surface);
           const background = section.props.background?.publicUrl ? `url(${section.props.background.publicUrl}) center/cover` : tone;
           const sectionPaddingY = section.props.paddingY ?? paddingY;
@@ -760,8 +894,22 @@ function EditorCanvas({
             <Fragment key={section.id}>
             {blockDrag ? <FunnelSectionDropZone target={sectionIndex} active={sectionDropTarget === sectionIndex} onTarget={onSectionDropTarget} onDrop={onDropBlock} /> : null}
             <section
-              onClick={(event) => { event.stopPropagation(); onSelect({ kind: "section", sectionIndex }); }}
-              className={`rounded-[22px] border border-black/10 transition ${selected ? "ring-4 ring-[#739655]/35" : "hover:ring-2 hover:ring-[#739655]/20"}`}
+              onClick={(event) => { event.stopPropagation(); selectAt(sectionSelection, event.altKey); }}
+              onPointerMove={(event) => trackPointer(event, sectionSelection)}
+              onDragEnter={rowDrag ? (event) => {
+                event.preventDefault();
+                onRowDropTarget({ sectionIndex, parentColumnPath: null, rowIndex: section.rows.length });
+              } : undefined}
+              onDragOver={rowDrag ? (event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = rowDrag.kind === "new" ? "copy" : "move";
+                onRowDropTarget({ sectionIndex, parentColumnPath: null, rowIndex: section.rows.length });
+              } : undefined}
+              onDrop={rowDrag ? (event) => {
+                event.preventDefault();
+                onDropRow({ sectionIndex, parentColumnPath: null, rowIndex: section.rows.length });
+              } : undefined}
+              className={`rounded-[22px] border border-black/10 transition ${selected ? "ring-4 ring-[#739655]/35" : ""}`}
               style={{
                 background,
                 color: section.props.tone === "dark" ? "white" : undefined,
@@ -793,6 +941,36 @@ function EditorCanvas({
           <span>Privacy · Terms</span>
         </footer>
       ) : null}
+      {selectionMenu ? (
+        <div
+          className="fixed z-[170] w-[218px] rounded-[14px] border border-[#bda98b] bg-[#fffaf2] p-2 text-ink shadow-2xl"
+          style={{ left: selectionMenu.x, top: selectionMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerMove={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          role="menu"
+          aria-label="Select an item under the pointer"
+        >
+          <div className="flex items-center justify-between gap-2 px-2 pb-1.5 pt-1">
+            <span className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Select underneath</span>
+            <button type="button" onClick={() => { setSelectionMenu(null); setHoverSelection(null); }} className="grid h-6 w-6 place-items-center rounded-full text-sm text-ink/45 hover:bg-black/5" aria-label="Close selection menu">×</button>
+          </div>
+          <div className="grid gap-1">
+            {selectionStackAt(selectionMenu.location).map((item, index) => (
+              <button
+                key={`${item.kind}-${index}`}
+                type="button"
+                role="menuitem"
+                onClick={() => selectAt(item)}
+                className={`rounded-[9px] px-2.5 py-2 text-left text-xs capitalize transition hover:bg-[#e7f0dc] ${sameSelection(selection, item) ? "bg-[#edf5e7] font-bold text-[#466333]" : "font-semibold"}`}
+              >
+                {selectionLabel(document, item)}
+              </button>
+            ))}
+          </div>
+          <p className="px-2 pb-1 pt-2 text-[9px] leading-4 text-ink/45">Tip: Option/Alt-click cycles through this list.</p>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -802,6 +980,16 @@ type FunnelListElement = Extract<FunnelPageElement, { type: "list" }>;
 type FunnelCountdownElement = Extract<FunnelPageElement, { type: "countdown" }>;
 type FunnelWorkbookGalleryElement = Extract<FunnelPageElement, { type: "workbook_gallery" }>;
 type FunnelProgressStepsElement = Extract<FunnelPageElement, { type: "progress_steps" }>;
+
+function SelectionBreadcrumbs({ document, selection, onSelect }: { document: FunnelPageDocument; selection: Selection; onSelect: (selection: Selection) => void }) {
+  const items = [...selectionStackAt(selection)].reverse();
+  return <nav aria-label="Selected page hierarchy" className="mb-4 flex flex-wrap items-center gap-1 rounded-[12px] border border-[#dfcfb7] bg-white/65 p-2">
+    {items.map((item, index) => <Fragment key={`${item.kind}-${index}`}>
+      {index > 0 ? <span className="text-[10px] text-ink/30" aria-hidden="true">›</span> : null}
+      <button type="button" onClick={() => onSelect(item)} className={`rounded-[7px] px-2 py-1 text-[10px] capitalize transition hover:bg-[#e7f0dc] ${sameSelection(selection, item) ? "bg-[#edf5e7] font-bold text-[#466333]" : "font-semibold text-ink/55"}`}>{selectionLabel(document, item)}</button>
+    </Fragment>)}
+  </nav>;
+}
 
 function InspectorGroup({ title, children, open = false }: { title: string; children: ReactNode; open?: boolean }) {
   const [expanded, setExpanded] = useState(open);
@@ -1191,6 +1379,7 @@ export function FunnelPageStudio({
   const hasUnsavedChanges = currentDocumentSnapshot !== savedDocumentSnapshot;
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
   const allowNavigationRef = useRef(false);
+  const rowDragRef = useRef<FunnelRowDrag | null>(null);
   const historyGuardIdRef = useRef(`funnel-page-editor-${stepId}`);
   const backHref = `/admin/funnels/${encodeURIComponent(funnelSlug)}?step=${encodeURIComponent(stepId)}${page ? `&page=${encodeURIComponent(page.id)}` : ""}`;
   const previewHref = `/admin/funnels/${encodeURIComponent(funnelSlug)}/preview/${encodeURIComponent(stepId)}${page ? `?page=${encodeURIComponent(page.id)}` : ""}`;
@@ -1334,6 +1523,7 @@ export function FunnelPageStudio({
     event.stopPropagation();
     event.dataTransfer.effectAllowed = drag.kind === "new" ? "copy" : "move";
     event.dataTransfer.setData("text/plain", drag.kind === "new" ? `new:funnel-row:${drag.columnCount}` : "move:funnel-row");
+    rowDragRef.current = drag;
     setRowDrag(drag);
     setRowDropTarget(null);
     endElementDrag();
@@ -1342,6 +1532,7 @@ export function FunnelPageStudio({
   }
 
   function endRowDrag() {
+    rowDragRef.current = null;
     setRowDrag(null);
     setRowDropTarget(null);
   }
@@ -1351,7 +1542,7 @@ export function FunnelPageStudio({
   }
 
   function dropRow(target: FunnelRowDropTarget) {
-    const drag = rowDrag;
+    const drag = rowDragRef.current ?? rowDrag;
     if (!drag) return;
     mutate((draft) => {
       if (drag.kind === "existing"
@@ -1826,7 +2017,7 @@ export function FunnelPageStudio({
           {!rightSidebarCollapsed ? <span className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Inspector</span> : null}
           <button type="button" onClick={() => setRightSidebarCollapsed((collapsed) => !collapsed)} aria-label={rightSidebarCollapsed ? "Expand inspector sidebar" : "Collapse inspector sidebar"} title={rightSidebarCollapsed ? "Expand inspector sidebar" : "Collapse inspector sidebar"} className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#d8c5a8] bg-white text-lg font-bold text-ink/55 shadow-sm hover:border-[#739655] hover:text-[#4d6a39]">{rightSidebarCollapsed ? "‹" : "›"}</button>
         </div>
-        {!rightSidebarCollapsed ? inspectorContent : null}
+        {!rightSidebarCollapsed ? <><SelectionBreadcrumbs document={document} selection={selection} onSelect={setSelection} />{inspectorContent}</> : null}
       </aside>
     </div>
     {mediaTarget ? <AssetLibrary assets={assets} funnelId={funnelId} stepId={stepId} onClose={() => setMediaTarget(null)} onUploaded={(asset) => mutate((draft) => { draft.assets = [...(draft.assets ?? []), asset]; assignMedia(draft, asset); setMediaTarget(null); })} onChoose={(asset) => mutate((draft) => { assignMedia(draft, asset); setMediaTarget(null); })} /> : null}
