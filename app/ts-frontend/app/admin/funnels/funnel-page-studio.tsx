@@ -1806,14 +1806,14 @@ export function FunnelPageStudio({
           <p className="text-[11px] leading-4 text-ink/45">Drag a row into a section or inside any existing column, then drag elements into its columns.</p>
           <section>
             <h3 className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Layout</h3>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {([1, 2, 3, 4] as FunnelRowColumnCount[]).map((columnCount) => <button type="button" draggable key={columnCount} onClick={() => appendRow(columnCount)} onDragStart={(event) => startRowDrag(event, { kind: "new", columnCount })} onDragEnd={endRowDrag} className="min-h-14 cursor-grab rounded-[12px] border border-[#b7cda3] bg-[#edf5e7] px-2 text-xs font-semibold text-[#4d6a39] hover:border-[#739655] active:cursor-grabbing">{columnCount}-column row</button>)}
+            <div className="mt-2 grid gap-2">
+              {([1, 2, 3, 4] as FunnelRowColumnCount[]).map((columnCount) => <button type="button" draggable key={columnCount} onClick={() => appendRow(columnCount)} onDragStart={(event) => startRowDrag(event, { kind: "new", columnCount })} onDragEnd={endRowDrag} className="min-h-12 cursor-grab rounded-[12px] border border-[#b7cda3] bg-[#edf5e7] px-3 text-left text-xs font-semibold text-[#4d6a39] hover:border-[#739655] active:cursor-grabbing">{columnCount}-column row</button>)}
             </div>
           </section>
           {funnelElementGroups.map((group) => <section key={group.label}>
             <h3 className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">{group.label}</h3>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {group.elements.map((type) => <button type="button" draggable key={type} onClick={() => addElement(type)} onDragStart={(event) => startElementDrag(event, { kind: "new", elementType: type })} onDragEnd={endElementDrag} className="min-h-14 cursor-grab rounded-[12px] border border-[#d8c5a8] bg-white px-2 text-xs font-semibold capitalize hover:border-[#739655] active:cursor-grabbing">{type.replaceAll("_", " ")}</button>)}
+            <div className="mt-2 grid gap-2">
+              {group.elements.map((type) => <button type="button" draggable key={type} onClick={() => addElement(type)} onDragStart={(event) => startElementDrag(event, { kind: "new", elementType: type })} onDragEnd={endElementDrag} className="min-h-12 cursor-grab rounded-[12px] border border-[#d8c5a8] bg-white px-3 text-left text-xs font-semibold capitalize hover:border-[#739655] active:cursor-grabbing">{type.replaceAll("_", " ")}</button>)}
             </div>
           </section>)}
         </div> : null}
