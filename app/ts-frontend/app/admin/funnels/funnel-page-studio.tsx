@@ -69,6 +69,9 @@ type FunnelRowDrag =
   | { kind: "existing"; source: FunnelRowLocation };
 type FunnelColumnLocation = { sectionIndex: number; rowPath: number[]; columnIndex: number };
 type FunnelColumnDropTarget = FunnelColumnLocation;
+type FunnelCanvasDragOwner =
+  | { kind: "row"; source: FunnelRowLocation }
+  | { kind: "column"; source: FunnelColumnLocation };
 
 const funnelElementGroups: Array<{
   label: string;
@@ -681,7 +684,7 @@ function EditorCanvas({
   const sectionGap = styles?.layout?.sectionGap ?? 22;
   const paddingY = styles?.layout?.sectionPaddingY ?? 38;
   const columnGap = styles?.layout?.columnGap ?? 22;
-  const activeSelection = hoverSelection ?? selection;
+  const activeSelection = selection.kind === "page" ? hoverSelection ?? selection : selection;
   const dragging = Boolean(elementDrag || blockDrag || rowDrag || columnDrag);
 
   function clearHoverTimer() {
@@ -704,6 +707,10 @@ function EditorCanvas({
 
   function trackPointer(event: ReactPointerEvent<HTMLElement>, location: Selection) {
     event.stopPropagation();
+    if (event.buttons !== 0) {
+      clearHoverTimer();
+      return;
+    }
     if (dragging || selectionMenu) return;
     setHoverSelection((current) => sameSelection(current, location) ? current : location);
     const previous = hoverPointRef.current;
@@ -722,6 +729,41 @@ function EditorCanvas({
       setSelectionMenu({ x, y, location });
       hoverTimerRef.current = null;
     }, 3000);
+  }
+
+  function canvasDragOwner(sectionIndex: number, rowPath: number[], columnIndex?: number): FunnelCanvasDragOwner | null {
+    const candidate = selection.kind === "row" || selection.kind === "column" || selection.kind === "element"
+      ? selection
+      : hoverSelection;
+    if (!candidate || candidate.kind === "page" || candidate.kind === "section" || candidate.sectionIndex !== sectionIndex) return null;
+    if (candidate.kind === "row" && indexPathStartsWith(rowPath, candidate.rowPath)) {
+      return { kind: "row", source: { sectionIndex, rowPath: candidate.rowPath } };
+    }
+    if (candidate.kind !== "column") return null;
+    const directColumn = columnIndex !== undefined
+      && sameIndexPath(rowPath, candidate.rowPath)
+      && columnIndex === candidate.columnIndex;
+    const nestedInsideColumn = indexPathStartsWith(rowPath, [...candidate.rowPath, candidate.columnIndex]);
+    return directColumn || nestedInsideColumn ? { kind: "column", source: candidate } : null;
+  }
+
+  function startCanvasRowDrag(event: DragEvent<HTMLElement>, source: FunnelRowLocation) {
+    const owner = canvasDragOwner(source.sectionIndex, source.rowPath);
+    if (owner?.kind === "column") onStartColumnDrag(event, owner.source);
+    else onStartRowDrag(event, { kind: "existing", source: owner?.source ?? source });
+  }
+
+  function startCanvasColumnDrag(event: DragEvent<HTMLElement>, source: FunnelColumnLocation) {
+    const owner = canvasDragOwner(source.sectionIndex, source.rowPath, source.columnIndex);
+    if (owner?.kind === "row") onStartRowDrag(event, { kind: "existing", source: owner.source });
+    else onStartColumnDrag(event, owner?.source ?? source);
+  }
+
+  function startCanvasElementDrag(event: DragEvent<HTMLElement>, source: FunnelElementLocation) {
+    const owner = canvasDragOwner(source.sectionIndex, source.rowPath, source.columnIndex);
+    if (owner?.kind === "row") onStartRowDrag(event, { kind: "existing", source: owner.source });
+    else if (owner?.kind === "column") onStartColumnDrag(event, owner.source);
+    else onStartElementDrag(event, { kind: "existing", source });
   }
 
   useEffect(() => () => {
@@ -766,7 +808,7 @@ function EditorCanvas({
             className={`group/row relative cursor-grab rounded-[10px] transition active:cursor-grabbing ${depth > 0 ? "my-2" : ""} ${rowDragged ? "opacity-35" : ""} ${rowActive ? "outline outline-2 outline-[#5f873f] outline-offset-4" : ""}`}
             onClick={(event) => { event.stopPropagation(); selectAt(rowSelection, event.altKey); }}
             onPointerMove={(event) => trackPointer(event, rowSelection)}
-            onDragStart={(event) => onStartRowDrag(event, { kind: "existing", source: rowLocation })}
+            onDragStart={(event) => startCanvasRowDrag(event, rowLocation)}
             onDragEnd={onEndRowDrag}
           >
             <div className={`grid ${viewport === "mobile" ? "grid-cols-1" : "grid-cols-12"}`} style={{ gap: columnGap }}>
@@ -787,8 +829,24 @@ function EditorCanvas({
                   draggable
                   onClick={(event) => { event.stopPropagation(); selectAt(columnSelection, event.altKey); }}
                   onPointerMove={(event) => trackPointer(event, columnSelection)}
-                  onDragStart={(event) => onStartColumnDrag(event, columnLocation)}
+                  onDragStart={(event) => startCanvasColumnDrag(event, columnLocation)}
                   onDragEnd={onEndColumnDrag}
+                  onDragEnter={rowDrag && canDropInsideColumn ? (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onRowDropTarget({ sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 });
+                  } : undefined}
+                  onDragOver={rowDrag && canDropInsideColumn ? (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    event.dataTransfer.dropEffect = rowDrag.kind === "new" ? "copy" : "move";
+                    onRowDropTarget({ sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 });
+                  } : undefined}
+                  onDrop={rowDrag && canDropInsideColumn ? (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onDropRow({ sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 });
+                  } : undefined}
                   className={`group/column relative grid min-w-0 cursor-grab content-start gap-4 rounded-[8px] transition active:cursor-grabbing ${columnDragged ? "opacity-35" : ""} ${columnActive ? "outline outline-2 outline-[#8a674d] outline-offset-2" : ""}`}
                   style={viewport === "mobile" ? undefined : { gridColumn: column.offset !== undefined ? `${column.offset + 1} / span ${column.span}` : `span ${column.span}` }}
                 >
@@ -809,7 +867,7 @@ function EditorCanvas({
                     const dragged = elementDrag?.kind === "existing" && sameElementLocation(elementDrag.source, location);
                     return <div key={element.id} className="min-w-0">
                       {elementDrag ? <FunnelElementDropZone target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} /> : null}
-                      <div draggable onClickCapture={(event) => { if (!event.altKey) return; event.preventDefault(); event.stopPropagation(); selectAt(location, true); }} onPointerMove={(event) => trackPointer(event, location)} onDragStart={(event) => onStartElementDrag(event, { kind: "existing", source: location })} onDragEnd={onEndElementDrag} className={`group/drag relative transition ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
+                      <div draggable onClickCapture={(event) => { if (!event.altKey) return; event.preventDefault(); event.stopPropagation(); selectAt(location, true); }} onPointerMove={(event) => trackPointer(event, location)} onDragStart={(event) => startCanvasElementDrag(event, location)} onDragEnd={onEndElementDrag} className={`group/drag relative transition ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
                         <PreviewElement element={element} palette={palette} selected={sameSelection(activeSelection, location)} onSelect={() => selectAt(location)} />
                       </div>
                     </div>;
@@ -820,25 +878,7 @@ function EditorCanvas({
                   })() : null}
                   {column.elements.length === 0 && !column.rows?.length && !elementDrag && !rowDrag ? <button type="button" onClick={(event) => { event.stopPropagation(); selectAt(columnSelection, event.altKey); }} className="min-h-24 rounded-[14px] border border-dashed border-ink/20 text-sm text-ink/40">Empty column</button> : null}
                   {column.rows?.length || (rowDrag && canDropInsideColumn) ? (
-                    <div
-                      className={`rounded-[10px] ${rowDrag && canDropInsideColumn ? "border border-dashed border-[#739655]/45 bg-white/20 p-2" : ""}`}
-                      onDragEnter={rowDrag && canDropInsideColumn ? (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onRowDropTarget({ sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 });
-                      } : undefined}
-                      onDragOver={rowDrag && canDropInsideColumn ? (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        event.dataTransfer.dropEffect = rowDrag.kind === "new" ? "copy" : "move";
-                        onRowDropTarget({ sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 });
-                      } : undefined}
-                      onDrop={rowDrag && canDropInsideColumn ? (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onDropRow({ sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 });
-                      } : undefined}
-                    >
+                    <div className={`rounded-[10px] ${rowDrag && canDropInsideColumn ? "border border-dashed border-[#739655]/45 bg-white/20 p-2" : ""}`}>
                       {renderRows(column.rows ?? [], sectionIndex, columnPath, depth + 1)}
                     </div>
                   ) : null}
