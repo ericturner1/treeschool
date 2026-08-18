@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   createFunnelPageRow,
   emptyFunnelPageDocument,
+  funnelDocumentHasForwardAction,
+  getFunnelDocumentTitle,
   removeFunnelPageColumn,
   resizeFunnelPageRow,
   type FunnelPageElement,
@@ -81,5 +83,31 @@ describe("funnel page layout rows", () => {
       "text_middle",
       "text_right",
     ]);
+  });
+
+  test("preserves nested rows when resizing or removing columns", () => {
+    const row = createFunnelPageRow(3);
+    const nested = createFunnelPageRow(2);
+    row.columns[2]!.rows = [nested];
+
+    const resized = resizeFunnelPageRow(row, 2);
+    expect(resized.columns[1]!.rows?.[0]?.id).toBe(nested.id);
+
+    const removed = removeFunnelPageColumn(row, 2);
+    expect(removed.columns[1]!.rows?.[0]?.id).toBe(nested.id);
+  });
+
+  test("finds headings and forward actions inside nested rows", () => {
+    const document = emptyFunnelPageDocument("Outer heading");
+    document.sections[0]!.rows[0]!.columns[0]!.elements = [];
+    const nested = createFunnelPageRow(1);
+    nested.columns[0]!.elements = [
+      { id: "nested_heading", type: "heading", props: { text: "Nested heading", level: "h1", align: "left" } },
+      { id: "nested_button", type: "button", props: { label: "Continue", variant: "primary", align: "left", action: { type: "next_step" } } },
+    ];
+    document.sections[0]!.rows[0]!.columns[0]!.rows = [nested];
+
+    expect(getFunnelDocumentTitle(document)).toBe("Nested heading");
+    expect(funnelDocumentHasForwardAction(document)).toBe(true);
   });
 });

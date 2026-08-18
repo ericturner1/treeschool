@@ -1,6 +1,6 @@
 import { getFirstGradeMarketingCoverPath } from "../first-grade-curriculum/catalog";
 import type { NativeWorkbookCatalogItem } from "../native-workbooks/server";
-import type { FunnelPageDocument, FunnelPageElement } from "./page-document";
+import type { FunnelPageDocument, FunnelPageElement, FunnelPageRow } from "./page-document";
 
 function comparablePath(value: string | null | undefined) {
   if (!value) return null;
@@ -34,8 +34,8 @@ export function upgradeCatalogWorkbookImages(
   let upgradedCount = 0;
   const content = structuredClone(document);
 
-  for (const section of content.sections) {
-    for (const row of section.rows) {
+  function upgradeRows(rows: FunnelPageRow[]) {
+    for (const row of rows) {
       for (const column of row.columns) {
         column.elements = column.elements.map((element) => {
           if (element.type !== "image") return element;
@@ -57,8 +57,13 @@ export function upgradeCatalogWorkbookImages(
             }
           };
         });
+        upgradeRows(column.rows ?? []);
       }
     }
+  }
+
+  for (const section of content.sections) {
+    upgradeRows(section.rows);
   }
 
   return { content, upgradedCount };

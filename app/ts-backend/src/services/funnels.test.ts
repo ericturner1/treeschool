@@ -112,6 +112,37 @@ describe("funnel administration normalization", () => {
     }
   });
 
+  test("preserves rows nested inside funnel columns", () => {
+    const content = funnelPageContentSchema.parse({
+      schemaVersion: 2,
+      kind: "funnel_page",
+      theme: "sage",
+      sections: [{
+        id: "section_nested",
+        props: { tone: "default", width: "standard", background: null },
+        rows: [{
+          id: "row_parent",
+          columns: [{
+            id: "column_parent",
+            span: 12,
+            elements: [],
+            rows: [{
+              id: "row_child",
+              columns: [{
+                id: "column_child",
+                span: 12,
+                elements: [{ id: "nested_text", type: "text", props: { text: "Nested content", style: "body", align: "left" } }]
+              }]
+            }]
+          }]
+        }]
+      }]
+    });
+
+    expect(content.sections[0]?.rows[0]?.columns[0]?.rows?.[0]?.id).toBe("row_child");
+    expect(content.sections[0]?.rows[0]?.columns[0]?.rows?.[0]?.columns[0]?.elements[0]?.id).toBe("nested_text");
+  });
+
   test("preserves editor styles and immutable media snapshots", () => {
     const asset = {
       assetId: "75bc53a9-c880-4c5f-a5cc-a4aa2194b962",

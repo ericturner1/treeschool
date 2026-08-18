@@ -477,6 +477,48 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
   })
 ]);
 
+type FunnelPageRowContent = {
+  id: string;
+  columns: FunnelPageColumnContent[];
+};
+
+type FunnelPageColumnContent = {
+  id: string;
+  span: number;
+  offset?: number;
+  elements: Array<z.infer<typeof funnelPageElementSchema>>;
+  rows?: FunnelPageRowContent[];
+};
+
+type FunnelPageRowInput = {
+  id: string;
+  columns: FunnelPageColumnInput[];
+};
+
+type FunnelPageColumnInput = {
+  id: string;
+  span?: number;
+  offset?: number;
+  elements: Array<z.input<typeof funnelPageElementSchema>>;
+  rows?: FunnelPageRowInput[];
+};
+
+const funnelPageRowSchema: z.ZodType<FunnelPageRowContent, z.ZodTypeDef, FunnelPageRowInput> = z.lazy(() => z.object({
+  id: z.string().trim().min(1).max(160),
+  columns: z.array(funnelPageColumnSchema).min(1).max(4)
+}));
+
+const funnelPageColumnSchema: z.ZodType<FunnelPageColumnContent, z.ZodTypeDef, FunnelPageColumnInput> = z.lazy(() => z.object({
+  id: z.string().trim().min(1).max(160),
+  span: z.number().int().min(1).max(12).default(12),
+  offset: z.number().int().min(0).max(11).optional(),
+  elements: z.array(funnelPageElementSchema).max(100),
+  rows: z.array(funnelPageRowSchema).max(30).optional()
+}).refine(
+  ({ offset = 0, span }) => offset + span <= 12,
+  { message: "Column offset and width must fit within the 12-column row." }
+));
+
 const funnelPageDocumentSchema = z.object({
   schemaVersion: z.literal(2),
   kind: z.literal("funnel_page"),
@@ -524,18 +566,7 @@ const funnelPageDocumentSchema = z.object({
       borderRadius: z.number().int().min(0).max(200).optional(),
       borderStyle: z.enum(["solid", "dashed", "dotted"]).optional()
     }),
-    rows: z.array(z.object({
-      id: z.string().trim().min(1).max(160),
-      columns: z.array(z.object({
-        id: z.string().trim().min(1).max(160),
-        span: z.number().int().min(1).max(12).default(12),
-        offset: z.number().int().min(0).max(11).optional(),
-        elements: z.array(funnelPageElementSchema).max(100)
-      }).refine(
-        ({ offset = 0, span }) => offset + span <= 12,
-        { message: "Column offset and width must fit within the 12-column row." }
-      )).min(1).max(4)
-    })).min(1).max(30)
+    rows: z.array(funnelPageRowSchema).min(1).max(30)
   })).min(1).max(40)
 });
 
@@ -1342,52 +1373,54 @@ function assertValidActiveDownsellFlow(steps: Array<typeof funnelSteps.$inferSel
 function normalizePageDocumentActions(
   content: FunnelPageDocumentContent
 ): FunnelPageDocumentContent {
+  const normalizeRows = (rows: FunnelPageRowContent[]): FunnelPageRowContent[] => rows.map((row) => ({
+    ...row,
+    columns: row.columns.map((column) => ({
+      ...column,
+      ...(column.rows ? { rows: normalizeRows(column.rows) } : {}),
+      elements: column.elements.map((element) => {
+        if (element.type !== "button" && element.type !== "lead_capture") {
+          return element;
+        }
+        const action = element.props.action;
+        if (action.type === "url") {
+          return {
+            ...element,
+            props: {
+              ...element.props,
+              action: {
+                ...action,
+                target: normalizeFunnelPath(action.target, "Button destination") ?? ""
+              }
+            }
+          } as typeof element;
+        }
+        if (
+          (action.type === "checkout"
+            || action.type === "accept_offer"
+            || action.type === "decline_offer")
+          && action.target
+        ) {
+          return {
+            ...element,
+            props: {
+              ...element.props,
+              action: {
+                ...action,
+                target: normalizeFunnelPath(action.target, "Action destination")
+              }
+            }
+          } as typeof element;
+        }
+        return element;
+      })
+    }))
+  }));
   return funnelPageDocumentSchema.parse({
     ...content,
     sections: content.sections.map((section) => ({
       ...section,
-      rows: section.rows.map((row) => ({
-        ...row,
-        columns: row.columns.map((column) => ({
-          ...column,
-          elements: column.elements.map((element) => {
-            if (element.type !== "button" && element.type !== "lead_capture") {
-              return element;
-            }
-            const action = element.props.action;
-            if (action.type === "url") {
-              return {
-                ...element,
-                props: {
-                  ...element.props,
-                  action: {
-                    ...action,
-                    target: normalizeFunnelPath(action.target, "Button destination") ?? ""
-                  }
-                }
-              };
-            }
-            if (
-              (action.type === "checkout"
-                || action.type === "accept_offer"
-                || action.type === "decline_offer")
-              && action.target
-            ) {
-              return {
-                ...element,
-                props: {
-                  ...element.props,
-                  action: {
-                    ...action,
-                    target: normalizeFunnelPath(action.target, "Action destination")
-                  }
-                }
-              };
-            }
-            return element;
-          })
-        }))
-      }))
+      rows: normalizeRows(section.rows)
     }))
   });
 }
@@ -1395,12 +1428,13 @@ function normalizePageDocumentActions(
 function pageDocumentHasForwardAction(
   content: FunnelPageDocumentContent
 ) {
-  return content.sections.some((section) => section.rows.some((row) =>
+  const rowsHaveForwardAction = (rows: FunnelPageRowContent[]): boolean => rows.some((row) =>
     row.columns.some((column) => column.elements.some((element) =>
       (element.type === "button" || element.type === "lead_capture")
         && element.props.action.type !== "none"
-    ))
-  ));
+    ) || rowsHaveForwardAction(column.rows ?? []))
+  );
+  return content.sections.some((section) => rowsHaveForwardAction(section.rows));
 }
 
 function presentManagedPage(input: {

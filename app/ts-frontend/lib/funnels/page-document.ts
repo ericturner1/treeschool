@@ -248,6 +248,7 @@ export type FunnelPageColumn = {
   span: number;
   offset?: number;
   elements: FunnelPageElement[];
+  rows?: FunnelPageRow[];
 };
 
 export type FunnelPageRow = {
@@ -312,6 +313,7 @@ export function resizeFunnelPageRow(
   const columns = row.columns.map((column) => ({
     ...column,
     elements: [...column.elements],
+    ...(column.rows ? { rows: [...column.rows] } : {}),
   }));
 
   if (columns.length > columnCount) {
@@ -321,6 +323,8 @@ export function resizeFunnelPageRow(
       destination.elements.push(
         ...removed.flatMap((column) => column.elements),
       );
+      const removedRows = removed.flatMap((column) => column.rows ?? []);
+      if (removedRows.length > 0) destination.rows = [...(destination.rows ?? []), ...removedRows];
     }
   } else {
     while (columns.length < columnCount) {
@@ -348,6 +352,7 @@ export function removeFunnelPageColumn(
   const columns = row.columns.map((column) => ({
     ...column,
     elements: [...column.elements],
+    ...(column.rows ? { rows: [...column.rows] } : {}),
   }));
   const [removed] = columns.splice(columnIndex, 1);
   const destinationIndex = Math.min(columnIndex, columns.length - 1);
@@ -355,6 +360,10 @@ export function removeFunnelPageColumn(
   if (removed && destination) {
     if (columnIndex < row.columns.length - 1) destination.elements.unshift(...removed.elements);
     else destination.elements.push(...removed.elements);
+    if (removed.rows?.length) {
+      if (columnIndex < row.columns.length - 1) destination.rows = [...removed.rows, ...(destination.rows ?? [])];
+      else destination.rows = [...(destination.rows ?? []), ...removed.rows];
+    }
   }
   const span = 12 / columns.length;
   for (const column of columns) {
@@ -416,38 +425,55 @@ export function isFunnelPageDocument(value: unknown): value is FunnelPageDocumen
 }
 
 export function funnelDocumentHasForwardAction(document: FunnelPageDocument) {
-  return document.sections.some((section) => section.rows.some((row) =>
-    row.columns.some((column) => column.elements.some((element) => {
+  return document.sections.some((section) => rowsHaveForwardAction(section.rows));
+}
+
+function rowsHaveForwardAction(rows: FunnelPageRow[]): boolean {
+  return rows.some((row) => row.columns.some((column) =>
+    column.elements.some((element) => {
       if (element.type !== "button" && element.type !== "lead_capture") return false;
       return element.props.action.type !== "none";
-    }))
+    }) || rowsHaveForwardAction(column.rows ?? [])
   ));
+}
+
+function findInFunnelRows(
+  rows: FunnelPageRow[],
+  find: (column: FunnelPageColumn) => string | null,
+): string {
+  for (const row of rows) {
+    for (const column of row.columns) {
+      const value = find(column);
+      if (value) return value;
+      const nested = findInFunnelRows(column.rows ?? [], find);
+      if (nested) return nested;
+    }
+  }
+  return "";
 }
 
 export function getFunnelDocumentTitle(document: FunnelPageDocument) {
   for (const section of document.sections) {
-    for (const row of section.rows) {
-      for (const column of row.columns) {
-        const heading = column.elements.find((element) =>
-          element.type === "heading" && element.props.level === "h1"
-        );
-        if (heading?.type === "heading") return heading.props.text;
-      }
-    }
+    const title = findInFunnelRows(section.rows, (column) => {
+      const heading = column.elements.find((element) =>
+        element.type === "heading" && element.props.level === "h1"
+      );
+      return heading?.type === "heading" ? heading.props.text : null;
+    });
+    if (title) return title;
   }
   return "";
 }
 
 export function getFunnelDocumentDescription(document: FunnelPageDocument) {
   for (const section of document.sections) {
-    for (const row of section.rows) {
-      for (const column of row.columns) {
-        const text = column.elements.find((element) =>
-          element.type === "text" && (element.props.style === "lead" || element.props.style === "body")
-        );
-        if (text?.type === "text") return text.props.text;
-      }
-    }
+    const description = findInFunnelRows(section.rows, (column) => {
+      const text = column.elements.find((element) =>
+        element.type === "text" && (element.props.style === "lead" || element.props.style === "body")
+      );
+      return text?.type === "text" ? text.props.text : null;
+    });
+    if (description) return description;
   }
   return "";
 }

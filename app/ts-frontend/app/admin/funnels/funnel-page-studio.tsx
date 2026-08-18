@@ -52,9 +52,9 @@ import { CurriculumCheckoutOptions } from "../../first-grade-homeschool-curricul
 type Selection =
   | { kind: "page" }
   | { kind: "section"; sectionIndex: number }
-  | { kind: "row"; sectionIndex: number; rowIndex: number }
-  | { kind: "column"; sectionIndex: number; rowIndex: number; columnIndex: number }
-  | { kind: "element"; sectionIndex: number; rowIndex: number; columnIndex: number; elementIndex: number };
+  | { kind: "row"; sectionIndex: number; rowPath: number[] }
+  | { kind: "column"; sectionIndex: number; rowPath: number[]; columnIndex: number }
+  | { kind: "element"; sectionIndex: number; rowPath: number[]; columnIndex: number; elementIndex: number };
 
 type FunnelElementLocation = Extract<Selection, { kind: "element" }>;
 type FunnelElementDropTarget = Omit<FunnelElementLocation, "kind">;
@@ -62,11 +62,12 @@ type FunnelElementDrag =
   | { kind: "existing"; source: FunnelElementLocation }
   | { kind: "new"; elementType: FunnelPageElement["type"] };
 type FunnelBlockKind = "hero" | "split" | "offer" | "blank";
-type FunnelRowDropTarget = { sectionIndex: number; rowIndex: number };
+type FunnelRowLocation = { sectionIndex: number; rowPath: number[] };
+type FunnelRowDropTarget = { sectionIndex: number; parentColumnPath: number[] | null; rowIndex: number };
 type FunnelRowDrag =
   | { kind: "new"; columnCount: FunnelRowColumnCount }
-  | { kind: "existing"; source: FunnelRowDropTarget };
-type FunnelColumnLocation = { sectionIndex: number; rowIndex: number; columnIndex: number };
+  | { kind: "existing"; source: FunnelRowLocation };
+type FunnelColumnLocation = { sectionIndex: number; rowPath: number[]; columnIndex: number };
 type FunnelColumnDropTarget = FunnelColumnLocation;
 
 const funnelElementGroups: Array<{
@@ -342,27 +343,128 @@ function PreviewElement({ element, palette, onSelect, selected }: { element: Fun
   return <hr onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} border-ink/15`} />;
 }
 
+function sameIndexPath(left: number[], right: number[]) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function indexPathStartsWith(path: number[], prefix: number[]) {
+  return prefix.length <= path.length && prefix.every((value, index) => value === path[index]);
+}
+
+function rowsAtParentColumn(
+  document: FunnelPageDocument,
+  sectionIndex: number,
+  parentColumnPath: number[] | null,
+  create = false,
+) {
+  let rows = document.sections[sectionIndex]?.rows;
+  if (!rows) return null;
+  if (!parentColumnPath) return rows;
+  for (let index = 0; index < parentColumnPath.length; index += 2) {
+    const row = rows[parentColumnPath[index]!];
+    const column = row?.columns[parentColumnPath[index + 1]!];
+    if (!column) return null;
+    if (!column.rows) {
+      if (!create) return null;
+      column.rows = [];
+    }
+    rows = column.rows;
+  }
+  return rows;
+}
+
+function rowAtPath(document: FunnelPageDocument, sectionIndex: number, rowPath: number[]) {
+  const rowIndex = rowPath.at(-1);
+  if (rowIndex === undefined) return null;
+  const rows = rowsAtParentColumn(document, sectionIndex, rowPath.length > 1 ? rowPath.slice(0, -1) : null);
+  return rows?.[rowIndex] ?? null;
+}
+
+function columnAtPath(document: FunnelPageDocument, location: FunnelColumnLocation) {
+  return rowAtPath(document, location.sectionIndex, location.rowPath)?.columns[location.columnIndex] ?? null;
+}
+
+function replaceRowAtPath(document: FunnelPageDocument, sectionIndex: number, rowPath: number[], row: FunnelPageRow) {
+  const rowIndex = rowPath.at(-1);
+  if (rowIndex === undefined) return false;
+  const rows = rowsAtParentColumn(document, sectionIndex, rowPath.length > 1 ? rowPath.slice(0, -1) : null);
+  if (!rows?.[rowIndex]) return false;
+  rows[rowIndex] = row;
+  return true;
+}
+
+function findRowPath(document: FunnelPageDocument, sectionIndex: number, rowId: string) {
+  const visit = (rows: FunnelPageRow[], parentColumnPath: number[] | null): number[] | null => {
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+      const row = rows[rowIndex]!;
+      const rowPath = [...(parentColumnPath ?? []), rowIndex];
+      if (row.id === rowId) return rowPath;
+      for (let columnIndex = 0; columnIndex < row.columns.length; columnIndex += 1) {
+        const nested = row.columns[columnIndex]!.rows;
+        if (!nested) continue;
+        const found = visit(nested, [...rowPath, columnIndex]);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  return visit(document.sections[sectionIndex]?.rows ?? [], null);
+}
+
+function findRowsParentColumnPath(document: FunnelPageDocument, sectionIndex: number, targetRows: FunnelPageRow[]) {
+  const sectionRows = document.sections[sectionIndex]?.rows;
+  if (!sectionRows) return undefined;
+  if (sectionRows === targetRows) return null;
+  const visit = (rows: FunnelPageRow[], parentColumnPath: number[] | null): number[] | null | undefined => {
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+      const row = rows[rowIndex]!;
+      const rowPath = [...(parentColumnPath ?? []), rowIndex];
+      for (let columnIndex = 0; columnIndex < row.columns.length; columnIndex += 1) {
+        const nested = row.columns[columnIndex]!.rows;
+        if (!nested) continue;
+        const columnPath = [...rowPath, columnIndex];
+        if (nested === targetRows) return columnPath;
+        const found = visit(nested, columnPath);
+        if (found !== undefined) return found;
+      }
+    }
+    return undefined;
+  };
+  return visit(sectionRows, null);
+}
+
+function balanceRowColumns(row: FunnelPageRow) {
+  const span = 12 / row.columns.length;
+  for (const column of row.columns) {
+    column.span = span;
+    delete column.offset;
+  }
+}
+
 function sameElementLocation(left: FunnelElementLocation, right: FunnelElementLocation) {
   return left.sectionIndex === right.sectionIndex
-    && left.rowIndex === right.rowIndex
+    && sameIndexPath(left.rowPath, right.rowPath)
     && left.columnIndex === right.columnIndex
     && left.elementIndex === right.elementIndex;
 }
 
 function sameDropTarget(left: FunnelElementDropTarget | null, right: FunnelElementDropTarget) {
   return left?.sectionIndex === right.sectionIndex
-    && left.rowIndex === right.rowIndex
+    && sameIndexPath(left.rowPath, right.rowPath)
     && left.columnIndex === right.columnIndex
     && left.elementIndex === right.elementIndex;
 }
 
 function sameRowDropTarget(left: FunnelRowDropTarget | null, right: FunnelRowDropTarget) {
-  return left?.sectionIndex === right.sectionIndex && left.rowIndex === right.rowIndex;
+  return left?.sectionIndex === right.sectionIndex
+    && left.rowIndex === right.rowIndex
+    && ((left.parentColumnPath === null && right.parentColumnPath === null)
+      || (left.parentColumnPath !== null && right.parentColumnPath !== null && sameIndexPath(left.parentColumnPath, right.parentColumnPath)));
 }
 
 function sameColumnDropTarget(left: FunnelColumnDropTarget | null, right: FunnelColumnDropTarget) {
   return left?.sectionIndex === right.sectionIndex
-    && left.rowIndex === right.rowIndex
+    && sameIndexPath(left.rowPath, right.rowPath)
     && left.columnIndex === right.columnIndex;
 }
 
@@ -380,12 +482,14 @@ function FunnelElementDropZone({
   onDrop: (target: FunnelElementDropTarget) => void;
 }) {
   return <div
-    className={`my-1 h-4 rounded-full border-2 border-dashed transition ${active ? "border-[#4f7538] bg-[#dcebcf]" : "border-[#739655]/30 bg-white/25"}`}
+    className={`my-1 grid place-items-center rounded-full border-2 border-dashed text-[10px] font-bold transition-all ${active ? "h-9 border-[#4f7538] bg-[#dcebcf] text-[#3f6130]" : "h-4 border-[#739655]/30 bg-white/25 text-transparent"}`}
     onDragEnter={(event) => { event.preventDefault(); event.stopPropagation(); onTarget(target); }}
     onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = copy ? "copy" : "move"; onTarget(target); }}
     onDrop={(event) => { event.preventDefault(); event.stopPropagation(); onDrop(target); }}
     aria-hidden="true"
-  />;
+  >
+    {active ? (copy ? "Add element here" : "Move element here") : null}
+  </div>;
 }
 
 function FunnelSectionDropZone({
@@ -428,7 +532,7 @@ function FunnelRowDropZone({
     onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = copy ? "copy" : "move"; onTarget(target); }}
     onDrop={(event) => { event.preventDefault(); event.stopPropagation(); onDrop(target); }}
   >
-    Drop row here
+    {copy ? "Add row here" : "Move row here"}
   </div>;
 }
 
@@ -451,7 +555,9 @@ function FunnelColumnDropZone({
     onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "move"; onTarget(target); }}
     onDrop={(event) => { event.preventDefault(); event.stopPropagation(); onDrop(target); }}
     aria-hidden="true"
-  />;
+  >
+    {active ? <span className="pointer-events-none absolute left-1/2 top-1/2 z-[70] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-[#8a674d] bg-[#fff7ec] px-2 py-1 text-[9px] font-bold text-[#704d34] shadow-md">Move column here</span> : null}
+  </div>;
 }
 
 function EditorCanvas({
@@ -529,6 +635,110 @@ function EditorCanvas({
   const sectionGap = styles?.layout?.sectionGap ?? 22;
   const paddingY = styles?.layout?.sectionPaddingY ?? 38;
   const columnGap = styles?.layout?.columnGap ?? 22;
+  const renderRows = (
+    rows: FunnelPageRow[],
+    sectionIndex: number,
+    parentColumnPath: number[] | null,
+    depth = 0,
+  ): ReactNode => {
+    const canDropRowsHere = !(rowDrag?.kind === "existing"
+      && rowDrag.source.sectionIndex === sectionIndex
+      && parentColumnPath !== null
+      && indexPathStartsWith(parentColumnPath, rowDrag.source.rowPath));
+    return <>
+      {rows.map((row, rowIndex) => {
+        const rowPath = [...(parentColumnPath ?? []), rowIndex];
+        const rowLocation: FunnelRowLocation = { sectionIndex, rowPath };
+        const rowTarget: FunnelRowDropTarget = { sectionIndex, parentColumnPath, rowIndex };
+        const rowDragged = rowDrag?.kind === "existing"
+          && rowDrag.source.sectionIndex === sectionIndex
+          && sameIndexPath(rowDrag.source.rowPath, rowPath);
+        const canDropColumnsHere = !(columnDrag
+          && columnDrag.sectionIndex === sectionIndex
+          && indexPathStartsWith(rowPath, [...columnDrag.rowPath, columnDrag.columnIndex]));
+        const rowSelected = selection.kind === "row" && selection.sectionIndex === sectionIndex && sameIndexPath(selection.rowPath, rowPath);
+        return <Fragment key={row.id}>
+          {rowDrag && canDropRowsHere ? <FunnelRowDropZone target={rowTarget} active={sameRowDropTarget(rowDropTarget, rowTarget)} copy={rowDrag.kind === "new"} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
+          <div
+            className={`group/row relative rounded-[10px] transition ${depth > 0 ? "my-2" : ""} ${rowDragged ? "opacity-35" : ""} ${rowSelected ? "outline outline-2 outline-[#5f873f] outline-offset-4" : "hover:outline hover:outline-2 hover:outline-[#739655]/35 hover:outline-offset-4"}`}
+            onClick={(event) => { event.stopPropagation(); onSelect({ kind: "row", sectionIndex, rowPath }); }}
+          >
+            <div className={`grid ${viewport === "mobile" ? "grid-cols-1" : "grid-cols-12"}`} style={{ gap: columnGap }}>
+              {row.columns.map((column, columnIndex) => {
+                const columnLocation: FunnelColumnLocation = { sectionIndex, rowPath, columnIndex };
+                const columnPath = [...rowPath, columnIndex];
+                const canDropInsideColumn = !(rowDrag?.kind === "existing"
+                  && rowDrag.source.sectionIndex === sectionIndex
+                  && indexPathStartsWith(columnPath, rowDrag.source.rowPath));
+                const columnDragged = columnDrag?.sectionIndex === sectionIndex
+                  && sameIndexPath(columnDrag.rowPath, rowPath)
+                  && columnDrag.columnIndex === columnIndex;
+                const columnSelected = selection.kind === "column" && selection.sectionIndex === sectionIndex && sameIndexPath(selection.rowPath, rowPath) && selection.columnIndex === columnIndex;
+                return <div
+                  key={column.id}
+                  onClick={(event) => { event.stopPropagation(); onSelect({ kind: "column", ...columnLocation }); }}
+                  className={`group/column relative grid min-w-0 content-start gap-4 rounded-[8px] transition ${columnDragged ? "opacity-35" : ""} ${columnSelected ? "outline outline-2 outline-[#8a674d] outline-offset-2" : "hover:outline hover:outline-1 hover:outline-[#8a674d]/40 hover:outline-offset-2"}`}
+                  style={viewport === "mobile" ? undefined : { gridColumn: column.offset !== undefined ? `${column.offset + 1} / span ${column.span}` : `span ${column.span}` }}
+                >
+                  {columnDrag && canDropColumnsHere ? <FunnelColumnDropZone target={columnLocation} side="start" active={sameColumnDropTarget(columnDropTarget, columnLocation)} onTarget={onColumnDropTarget} onDrop={onDropColumn} /> : null}
+                  {columnDrag && canDropColumnsHere && columnIndex === row.columns.length - 1 ? <FunnelColumnDropZone target={{ sectionIndex, rowPath, columnIndex: row.columns.length }} side="end" active={sameColumnDropTarget(columnDropTarget, { sectionIndex, rowPath, columnIndex: row.columns.length })} onTarget={onColumnDropTarget} onDrop={onDropColumn} /> : null}
+                  <button
+                    type="button"
+                    draggable
+                    onClick={(event) => { event.stopPropagation(); onSelect({ kind: "column", ...columnLocation }); }}
+                    onDragStart={(event) => onStartColumnDrag(event, columnLocation)}
+                    onDragEnd={onEndColumnDrag}
+                    className={`absolute -left-1 -top-3 z-40 cursor-grab rounded-full border border-[#cbb99e] bg-white px-2 py-1 text-[9px] font-bold text-ink/55 shadow-sm transition active:cursor-grabbing ${columnSelected ? "opacity-100" : "opacity-0 group-hover/column:opacity-100 focus:opacity-100"}`}
+                    aria-label={`Select or drag column ${columnIndex + 1}`}
+                    title="Drag to move this column"
+                  >
+                    Column {columnIndex + 1} · {column.span}/12{column.offset !== undefined ? ` · offset ${column.offset}` : ""}
+                  </button>
+                  {column.elements.map((element, elementIndex) => {
+                    const location: FunnelElementLocation = { kind: "element", sectionIndex, rowPath, columnIndex, elementIndex };
+                    const target: FunnelElementDropTarget = { sectionIndex, rowPath, columnIndex, elementIndex };
+                    const dragged = elementDrag?.kind === "existing" && sameElementLocation(elementDrag.source, location);
+                    return <div key={element.id} className="min-w-0">
+                      {elementDrag ? <FunnelElementDropZone target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} /> : null}
+                      <div draggable onDragStart={(event) => onStartElementDrag(event, { kind: "existing", source: location })} onDragEnd={onEndElementDrag} className={`group/drag relative transition ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
+                        <PreviewElement element={element} palette={palette} selected={selection.kind === "element" && sameElementLocation(selection, location)} onSelect={() => onSelect(location)} />
+                      </div>
+                    </div>;
+                  })}
+                  {elementDrag ? (() => {
+                    const target = { sectionIndex, rowPath, columnIndex, elementIndex: column.elements.length };
+                    return <FunnelElementDropZone target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} />;
+                  })() : null}
+                  {column.elements.length === 0 && !column.rows?.length && !elementDrag && !rowDrag ? <button type="button" onClick={(event) => { event.stopPropagation(); onSelect({ kind: "column", ...columnLocation }); }} className="min-h-24 rounded-[14px] border border-dashed border-ink/20 text-sm text-ink/40">Empty column</button> : null}
+                  {column.rows?.length || (rowDrag && canDropInsideColumn) ? (
+                    <div className={`rounded-[10px] ${rowDrag && canDropInsideColumn ? "border border-dashed border-[#739655]/45 bg-white/20 p-2" : ""}`}>
+                      {renderRows(column.rows ?? [], sectionIndex, columnPath, depth + 1)}
+                    </div>
+                  ) : null}
+                </div>;
+              })}
+            </div>
+            <button
+              type="button"
+              draggable
+              onClick={(event) => { event.stopPropagation(); onSelect({ kind: "row", sectionIndex, rowPath }); }}
+              onDragStart={(event) => onStartRowDrag(event, { kind: "existing", source: rowLocation })}
+              onDragEnd={onEndRowDrag}
+              className={`absolute -right-2 -top-3 z-50 cursor-grab rounded-full border border-[#9eb489] bg-[#f4f9ef] px-2 py-1 text-[10px] font-bold text-[#4d6a39] shadow-sm transition active:cursor-grabbing ${rowSelected ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus:opacity-100"}`}
+              aria-label={`Select or drag row ${rowIndex + 1}`}
+              title="Drag to move this row"
+            >
+              Row {rowIndex + 1} · {row.columns.length} {row.columns.length === 1 ? "column" : "columns"}
+            </button>
+          </div>
+        </Fragment>;
+      })}
+      {rowDrag && canDropRowsHere ? (() => {
+        const target = { sectionIndex, parentColumnPath, rowIndex: rows.length };
+        return <FunnelRowDropZone target={target} active={sameRowDropTarget(rowDropTarget, target)} copy={rowDrag.kind === "new"} onTarget={onRowDropTarget} onDrop={onDropRow} />;
+      })() : null}
+    </>;
+  };
   return (
     <div className={`mx-auto min-h-full overflow-hidden bg-white shadow-2xl transition-all ${viewport === "mobile" ? "w-[390px]" : "w-full max-w-[1320px]"}`} style={{ background: pageBg, color: styles?.typography?.bodyColor, fontFamily: styles?.typography?.bodyFontFamily, fontSize: styles?.typography?.baseFontSize }} onClick={() => onSelect({ kind: "page" })}>
       {document.siteChrome?.showHeader ? (
@@ -568,84 +778,7 @@ function EditorCanvas({
               }}
             >
               <div className="mx-auto" style={{ maxWidth: section.props.width === "narrow" ? Math.min(width, 820) : section.props.width === "wide" ? Math.max(width, 1280) : width }}>
-                {section.rows.map((row, rowIndex) => {
-                  const rowSelected = selection.kind === "row" && selection.sectionIndex === sectionIndex && selection.rowIndex === rowIndex;
-                  return <Fragment key={row.id}>
-                    {rowDrag ? <FunnelRowDropZone target={{ sectionIndex, rowIndex }} active={sameRowDropTarget(rowDropTarget, { sectionIndex, rowIndex })} copy={rowDrag.kind === "new"} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
-                    <div
-                      className={`group/row relative rounded-[10px] transition ${rowSelected ? "outline outline-2 outline-[#5f873f] outline-offset-4" : "hover:outline hover:outline-2 hover:outline-[#739655]/35 hover:outline-offset-4"}`}
-                      onClick={(event) => { event.stopPropagation(); onSelect({ kind: "row", sectionIndex, rowIndex }); }}
-                    >
-                      <div className={`grid ${viewport === "mobile" ? "grid-cols-1" : "grid-cols-12"}`} style={{ gap: columnGap }}>
-                        {row.columns.map((column, columnIndex) => {
-                          const columnSelected = selection.kind === "column" && selection.sectionIndex === sectionIndex && selection.rowIndex === rowIndex && selection.columnIndex === columnIndex;
-                          return <div
-                            key={column.id}
-                            onClick={(event) => { event.stopPropagation(); onSelect({ kind: "column", sectionIndex, rowIndex, columnIndex }); }}
-                            className={`group/column relative grid min-w-0 content-start gap-4 rounded-[8px] transition ${columnSelected ? "outline outline-2 outline-[#8a674d] outline-offset-2" : "hover:outline hover:outline-1 hover:outline-[#8a674d]/40 hover:outline-offset-2"}`}
-                            style={viewport === "mobile" ? undefined : { gridColumn: column.offset !== undefined ? `${column.offset + 1} / span ${column.span}` : `span ${column.span}` }}
-                          >
-                            {columnDrag ? <FunnelColumnDropZone target={{ sectionIndex, rowIndex, columnIndex }} side="start" active={sameColumnDropTarget(columnDropTarget, { sectionIndex, rowIndex, columnIndex })} onTarget={onColumnDropTarget} onDrop={onDropColumn} /> : null}
-                            {columnDrag && columnIndex === row.columns.length - 1 ? <FunnelColumnDropZone target={{ sectionIndex, rowIndex, columnIndex: row.columns.length }} side="end" active={sameColumnDropTarget(columnDropTarget, { sectionIndex, rowIndex, columnIndex: row.columns.length })} onTarget={onColumnDropTarget} onDrop={onDropColumn} /> : null}
-                            <button
-                              type="button"
-                              draggable
-                              onClick={(event) => { event.stopPropagation(); onSelect({ kind: "column", sectionIndex, rowIndex, columnIndex }); }}
-                              onDragStart={(event) => onStartColumnDrag(event, { sectionIndex, rowIndex, columnIndex })}
-                              onDragEnd={onEndColumnDrag}
-                              className={`absolute -left-1 -top-3 z-40 cursor-grab rounded-full border border-[#cbb99e] bg-white px-2 py-1 text-[9px] font-bold text-ink/55 shadow-sm transition active:cursor-grabbing ${columnSelected ? "opacity-100" : "opacity-0 group-hover/column:opacity-100 focus:opacity-100"}`}
-                              aria-label={`Select or drag column ${columnIndex + 1}`}
-                              title="Drag to move this column"
-                            >
-                              ⠿ Column {columnIndex + 1} · {column.span}/12{column.offset !== undefined ? ` · offset ${column.offset}` : ""}
-                            </button>
-                            {column.elements.map((element, elementIndex) => {
-                              const location: FunnelElementLocation = { kind: "element", sectionIndex, rowIndex, columnIndex, elementIndex };
-                              const target: FunnelElementDropTarget = { sectionIndex, rowIndex, columnIndex, elementIndex };
-                              const dragged = elementDrag?.kind === "existing" && sameElementLocation(elementDrag.source, location);
-                              return <div key={element.id} className="min-w-0">
-                                {elementDrag ? <FunnelElementDropZone target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} /> : null}
-                                <div className={`group/drag relative transition ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
-                                  <button
-                                    type="button"
-                                    draggable
-                                    onClick={(event) => { event.stopPropagation(); onSelect(location); }}
-                                    onDragStart={(event) => onStartElementDrag(event, { kind: "existing", source: location })}
-                                    onDragEnd={onEndElementDrag}
-                                    className={`absolute right-2 top-2 z-40 grid h-8 w-8 cursor-grab place-items-center rounded-[9px] border border-[#b9a78c] bg-white text-base leading-none text-ink/55 shadow-md active:cursor-grabbing ${selection.kind === "element" && sameElementLocation(selection, location) ? "opacity-100" : "opacity-0 group-hover/drag:opacity-100 focus:opacity-100"}`}
-                                    aria-label={`Drag ${element.type.replaceAll("_", " ")}`}
-                                    title="Drag to move this element"
-                                  >
-                                    ⠿
-                                  </button>
-                                  <PreviewElement element={element} palette={palette} selected={selection.kind === "element" && sameElementLocation(selection, location)} onSelect={() => onSelect(location)} />
-                                </div>
-                              </div>;
-                            })}
-                            {elementDrag ? (() => {
-                              const target = { sectionIndex, rowIndex, columnIndex, elementIndex: column.elements.length };
-                              return <FunnelElementDropZone target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} />;
-                            })() : null}
-                            {column.elements.length === 0 && !elementDrag ? <button type="button" onClick={(event) => { event.stopPropagation(); onSelect({ kind: "column", sectionIndex, rowIndex, columnIndex }); }} className="min-h-24 rounded-[14px] border border-dashed border-ink/20 text-sm text-ink/40">Empty column</button> : null}
-                          </div>;
-                        })}
-                      </div>
-                      <button
-                        type="button"
-                        draggable
-                        onClick={(event) => { event.stopPropagation(); onSelect({ kind: "row", sectionIndex, rowIndex }); }}
-                        onDragStart={(event) => onStartRowDrag(event, { kind: "existing", source: { sectionIndex, rowIndex } })}
-                        onDragEnd={onEndRowDrag}
-                        className={`absolute -right-2 -top-3 z-50 cursor-grab rounded-full border border-[#9eb489] bg-[#f4f9ef] px-2 py-1 text-[10px] font-bold text-[#4d6a39] shadow-sm transition active:cursor-grabbing ${rowSelected ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus:opacity-100"}`}
-                        aria-label={`Select or drag row ${rowIndex + 1}`}
-                        title="Drag to move this row"
-                      >
-                        ⠿ Row {rowIndex + 1} · {row.columns.length} {row.columns.length === 1 ? "column" : "columns"}
-                      </button>
-                    </div>
-                  </Fragment>;
-                })}
-                {rowDrag ? <FunnelRowDropZone target={{ sectionIndex, rowIndex: section.rows.length }} active={sameRowDropTarget(rowDropTarget, { sectionIndex, rowIndex: section.rows.length })} copy={rowDrag.kind === "new"} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
+                {renderRows(section.rows, sectionIndex, null)}
               </div>
             </section>
             </Fragment>
@@ -1116,23 +1249,23 @@ export function FunnelPageStudio({
 
   function selectedElement() {
     if (selection.kind !== "element") return null;
-    return document.sections[selection.sectionIndex]?.rows[selection.rowIndex]?.columns[selection.columnIndex]?.elements[selection.elementIndex] ?? null;
+    return columnAtPath(document, selection)?.elements[selection.elementIndex] ?? null;
   }
 
   function selectedRow() {
     if (selection.kind !== "row") return null;
-    return document.sections[selection.sectionIndex]?.rows[selection.rowIndex] ?? null;
+    return rowAtPath(document, selection.sectionIndex, selection.rowPath);
   }
 
   function selectedColumn() {
     if (selection.kind !== "column") return null;
-    return document.sections[selection.sectionIndex]?.rows[selection.rowIndex]?.columns[selection.columnIndex] ?? null;
+    return columnAtPath(document, selection);
   }
 
   function assignMedia(draft: FunnelPageDocument, asset: FunnelMediaSnapshot) {
     if (!mediaTarget) return;
     if (mediaTarget.kind === "workbook_gallery" && selection.kind === "element") {
-      const element = draft.sections[selection.sectionIndex]?.rows[selection.rowIndex]?.columns[selection.columnIndex]?.elements[selection.elementIndex];
+      const element = columnAtPath(draft, selection)?.elements[selection.elementIndex];
       if (element?.type !== "workbook_gallery") return;
       if (mediaTarget.slot === "cover") {
         element.props.cover = { ...asset, alt: element.props.cover.alt || asset.alt };
@@ -1146,7 +1279,7 @@ export function FunnelPageStudio({
     }
     if (mediaTarget.kind !== "selection") return;
     if (selection.kind === "element") {
-      const element = draft.sections[selection.sectionIndex]?.rows[selection.rowIndex]?.columns[selection.columnIndex]?.elements[selection.elementIndex];
+      const element = columnAtPath(draft, selection)?.elements[selection.elementIndex];
       if (element?.type === "image") element.props.media = asset;
     } else if (selection.kind === "section") {
       draft.sections[selection.sectionIndex]!.props.background = asset;
@@ -1154,19 +1287,19 @@ export function FunnelPageStudio({
   }
 
   function destinationColumn(): Omit<FunnelElementDropTarget, "elementIndex"> {
-    if (selection.kind === "element" || selection.kind === "column") return { sectionIndex: selection.sectionIndex, rowIndex: selection.rowIndex, columnIndex: selection.columnIndex };
-    if (selection.kind === "row") return { sectionIndex: selection.sectionIndex, rowIndex: selection.rowIndex, columnIndex: 0 };
+    if (selection.kind === "element" || selection.kind === "column") return { sectionIndex: selection.sectionIndex, rowPath: selection.rowPath, columnIndex: selection.columnIndex };
+    if (selection.kind === "row") return { sectionIndex: selection.sectionIndex, rowPath: selection.rowPath, columnIndex: 0 };
     const sectionIndex = selection.kind === "section" ? selection.sectionIndex : Math.max(0, document.sections.length - 1);
     const section = document.sections[sectionIndex];
     const rowIndex = Math.max(0, (section?.rows.length ?? 1) - 1);
     const columnIndex = 0;
-    return { sectionIndex, rowIndex, columnIndex };
+    return { sectionIndex, rowPath: [rowIndex], columnIndex };
   }
 
   function addElement(type: FunnelPageElement["type"]) {
     const target = destinationColumn();
     mutate((draft) => {
-      const elements = draft.sections[target.sectionIndex]?.rows[target.rowIndex]?.columns[target.columnIndex]?.elements;
+      const elements = columnAtPath(draft, target)?.elements;
       if (!elements) return;
       elements.push(createElement(type));
       setSelection({ kind: "element", ...target, elementIndex: elements.length - 1 });
@@ -1193,7 +1326,7 @@ export function FunnelPageStudio({
       const section = draft.sections[sectionIndex];
       if (!section) return;
       section.rows.push(createFunnelPageRow(columnCount));
-      setSelection({ kind: "row", sectionIndex, rowIndex: section.rows.length - 1 });
+      setSelection({ kind: "row", sectionIndex, rowPath: [section.rows.length - 1] });
     });
   }
 
@@ -1221,81 +1354,99 @@ export function FunnelPageStudio({
     const drag = rowDrag;
     if (!drag) return;
     mutate((draft) => {
-      const targetRows = draft.sections[target.sectionIndex]?.rows;
+      if (drag.kind === "existing"
+        && drag.source.sectionIndex === target.sectionIndex
+        && target.parentColumnPath !== null
+        && indexPathStartsWith(target.parentColumnPath, drag.source.rowPath)) return;
+      const targetRows = rowsAtParentColumn(draft, target.sectionIndex, target.parentColumnPath, true);
       if (!targetRows) return;
       if (drag.kind === "new") {
         const destinationIndex = Math.min(Math.max(target.rowIndex, 0), targetRows.length);
         targetRows.splice(destinationIndex, 0, createFunnelPageRow(drag.columnCount));
-        setSelection({ kind: "row", sectionIndex: target.sectionIndex, rowIndex: destinationIndex });
+        const destinationParentPath = findRowsParentColumnPath(draft, target.sectionIndex, targetRows);
+        if (destinationParentPath !== undefined) setSelection({ kind: "row", sectionIndex: target.sectionIndex, rowPath: [...(destinationParentPath ?? []), destinationIndex] });
         return;
       }
-      const sourceRows = draft.sections[drag.source.sectionIndex]?.rows;
+      const sourceParentColumnPath = drag.source.rowPath.length > 1 ? drag.source.rowPath.slice(0, -1) : null;
+      const sourceRows = rowsAtParentColumn(draft, drag.source.sectionIndex, sourceParentColumnPath);
+      const sourceIndex = drag.source.rowPath.at(-1);
+      if (sourceIndex === undefined) return;
       if (!sourceRows) return;
-      if (sourceRows !== targetRows && sourceRows.length <= 1) return;
-      const destinationIndex = moveItemAtInsertionPoint(sourceRows, drag.source.rowIndex, targetRows, target.rowIndex);
+      if (sourceRows !== targetRows && sourceParentColumnPath === null && sourceRows.length <= 1) return;
+      const destinationIndex = moveItemAtInsertionPoint(sourceRows, sourceIndex, targetRows, target.rowIndex);
       if (destinationIndex === null) return;
-      setSelection({ kind: "row", sectionIndex: target.sectionIndex, rowIndex: destinationIndex });
+      const destinationParentPath = findRowsParentColumnPath(draft, target.sectionIndex, targetRows);
+      if (destinationParentPath !== undefined) setSelection({ kind: "row", sectionIndex: target.sectionIndex, rowPath: [...(destinationParentPath ?? []), destinationIndex] });
     });
     endRowDrag();
   }
 
-  function removeRow(sectionIndex: number, rowIndex: number) {
+  function removeRow(sectionIndex: number, rowPath: number[]) {
     mutate((draft) => {
-      const section = draft.sections[sectionIndex];
-      if (!section || section.rows.length <= 1) return;
-      section.rows.splice(rowIndex, 1);
-      setSelection({ kind: "row", sectionIndex, rowIndex: Math.min(rowIndex, section.rows.length - 1) });
+      const parentColumnPath = rowPath.length > 1 ? rowPath.slice(0, -1) : null;
+      const rows = rowsAtParentColumn(draft, sectionIndex, parentColumnPath);
+      const rowIndex = rowPath.at(-1);
+      if (!rows || rowIndex === undefined || (parentColumnPath === null && rows.length <= 1)) return;
+      rows.splice(rowIndex, 1);
+      if (rows.length > 0) {
+        setSelection({ kind: "row", sectionIndex, rowPath: [...(parentColumnPath ?? []), Math.min(rowIndex, rows.length - 1)] });
+      } else if (parentColumnPath) {
+        setSelection({ kind: "column", sectionIndex, rowPath: parentColumnPath.slice(0, -1), columnIndex: parentColumnPath.at(-1)! });
+      }
     });
   }
 
-  function moveRow(sectionIndex: number, rowIndex: number, direction: -1 | 1) {
+  function moveRow(sectionIndex: number, rowPath: number[], direction: -1 | 1) {
     mutate((draft) => {
-      const rows = draft.sections[sectionIndex]?.rows;
+      const parentColumnPath = rowPath.length > 1 ? rowPath.slice(0, -1) : null;
+      const rows = rowsAtParentColumn(draft, sectionIndex, parentColumnPath);
+      const rowIndex = rowPath.at(-1);
+      if (rowIndex === undefined) return;
       const destinationIndex = rowIndex + direction;
       if (!rows || destinationIndex < 0 || destinationIndex >= rows.length) return;
       const [row] = rows.splice(rowIndex, 1);
       if (!row) return;
       rows.splice(destinationIndex, 0, row);
-      setSelection({ kind: "row", sectionIndex, rowIndex: destinationIndex });
+      setSelection({ kind: "row", sectionIndex, rowPath: [...(parentColumnPath ?? []), destinationIndex] });
     });
   }
 
-  function setRowColumnCount(sectionIndex: number, rowIndex: number, columnCount: FunnelRowColumnCount) {
+  function setRowColumnCount(sectionIndex: number, rowPath: number[], columnCount: FunnelRowColumnCount) {
     mutate((draft) => {
-      const row = draft.sections[sectionIndex]?.rows[rowIndex];
+      const row = rowAtPath(draft, sectionIndex, rowPath);
       if (!row) return;
-      draft.sections[sectionIndex]!.rows[rowIndex] = resizeFunnelPageRow(row, columnCount);
-      setSelection({ kind: "row", sectionIndex, rowIndex });
+      replaceRowAtPath(draft, sectionIndex, rowPath, resizeFunnelPageRow(row, columnCount));
+      setSelection({ kind: "row", sectionIndex, rowPath });
     });
   }
 
-  function updateColumn(sectionIndex: number, rowIndex: number, columnIndex: number, recipe: (column: FunnelPageColumn) => void) {
+  function updateColumn(sectionIndex: number, rowPath: number[], columnIndex: number, recipe: (column: FunnelPageColumn) => void) {
     mutate((draft) => {
-      const column = draft.sections[sectionIndex]?.rows[rowIndex]?.columns[columnIndex];
+      const column = columnAtPath(draft, { sectionIndex, rowPath, columnIndex });
       if (!column) return;
       recipe(column);
     });
   }
 
-  function moveColumn(sectionIndex: number, rowIndex: number, columnIndex: number, direction: -1 | 1) {
+  function moveColumn(sectionIndex: number, rowPath: number[], columnIndex: number, direction: -1 | 1) {
     mutate((draft) => {
-      const columns = draft.sections[sectionIndex]?.rows[rowIndex]?.columns;
+      const columns = rowAtPath(draft, sectionIndex, rowPath)?.columns;
       const destinationIndex = columnIndex + direction;
       if (!columns || destinationIndex < 0 || destinationIndex >= columns.length) return;
       const [column] = columns.splice(columnIndex, 1);
       if (!column) return;
       columns.splice(destinationIndex, 0, column);
-      setSelection({ kind: "column", sectionIndex, rowIndex, columnIndex: destinationIndex });
+      setSelection({ kind: "column", sectionIndex, rowPath, columnIndex: destinationIndex });
     });
   }
 
-  function removeColumn(sectionIndex: number, rowIndex: number, columnIndex: number) {
+  function removeColumn(sectionIndex: number, rowPath: number[], columnIndex: number) {
     mutate((draft) => {
-      const row = draft.sections[sectionIndex]?.rows[rowIndex];
+      const row = rowAtPath(draft, sectionIndex, rowPath);
       if (!row || row.columns.length <= 1) return;
       const next = removeFunnelPageColumn(row, columnIndex);
-      draft.sections[sectionIndex]!.rows[rowIndex] = next;
-      setSelection({ kind: "column", sectionIndex, rowIndex, columnIndex: Math.min(columnIndex, next.columns.length - 1) });
+      replaceRowAtPath(draft, sectionIndex, rowPath, next);
+      setSelection({ kind: "column", sectionIndex, rowPath, columnIndex: Math.min(columnIndex, next.columns.length - 1) });
     });
   }
 
@@ -1323,18 +1474,20 @@ export function FunnelPageStudio({
     const source = columnDrag;
     if (!source) return;
     mutate((draft) => {
-      const sourceRow = draft.sections[source.sectionIndex]?.rows[source.rowIndex];
-      const targetRow = draft.sections[target.sectionIndex]?.rows[target.rowIndex];
+      if (source.sectionIndex === target.sectionIndex && indexPathStartsWith(target.rowPath, [...source.rowPath, source.columnIndex])) return;
+      const sourceRow = rowAtPath(draft, source.sectionIndex, source.rowPath);
+      const targetRow = rowAtPath(draft, target.sectionIndex, target.rowPath);
       if (!sourceRow || !targetRow) return;
       const sameRow = sourceRow === targetRow;
       if (!sameRow && (sourceRow.columns.length <= 1 || targetRow.columns.length >= 4)) return;
       const destinationIndex = moveItemAtInsertionPoint(sourceRow.columns, source.columnIndex, targetRow.columns, target.columnIndex);
       if (destinationIndex === null) return;
       if (!sameRow) {
-        draft.sections[source.sectionIndex]!.rows[source.rowIndex] = resizeFunnelPageRow(sourceRow, sourceRow.columns.length as FunnelRowColumnCount);
-        draft.sections[target.sectionIndex]!.rows[target.rowIndex] = resizeFunnelPageRow(targetRow, targetRow.columns.length as FunnelRowColumnCount);
+        balanceRowColumns(sourceRow);
+        balanceRowColumns(targetRow);
       }
-      setSelection({ kind: "column", sectionIndex: target.sectionIndex, rowIndex: target.rowIndex, columnIndex: destinationIndex });
+      const destinationRowPath = findRowPath(draft, target.sectionIndex, targetRow.id);
+      if (destinationRowPath) setSelection({ kind: "column", sectionIndex: target.sectionIndex, rowPath: destinationRowPath, columnIndex: destinationIndex });
     });
     endColumnDrag();
   }
@@ -1396,7 +1549,7 @@ export function FunnelPageStudio({
     if (
       drag.kind === "existing"
       && drag.source.sectionIndex === target.sectionIndex
-      && drag.source.rowIndex === target.rowIndex
+      && sameIndexPath(drag.source.rowPath, target.rowPath)
       && drag.source.columnIndex === target.columnIndex
       && (target.elementIndex === drag.source.elementIndex || target.elementIndex === drag.source.elementIndex + 1)
     ) {
@@ -1404,7 +1557,7 @@ export function FunnelPageStudio({
       return;
     }
     mutate((draft) => {
-      const targetElements = draft.sections[target.sectionIndex]?.rows[target.rowIndex]?.columns[target.columnIndex]?.elements;
+      const targetElements = columnAtPath(draft, target)?.elements;
       if (!targetElements) return;
       if (drag.kind === "new") {
         const destinationIndex = Math.min(Math.max(target.elementIndex, 0), targetElements.length);
@@ -1412,7 +1565,7 @@ export function FunnelPageStudio({
         setSelection({ kind: "element", ...target, elementIndex: destinationIndex });
         return;
       }
-      const sourceElements = draft.sections[drag.source.sectionIndex]?.rows[drag.source.rowIndex]?.columns[drag.source.columnIndex]?.elements;
+      const sourceElements = columnAtPath(draft, drag.source)?.elements;
       if (!sourceElements) return;
       const destinationIndex = moveItemAtInsertionPoint(
         sourceElements,
@@ -1580,36 +1733,40 @@ export function FunnelPageStudio({
         buttonPalette={buttonPalette}
         chooseMedia={() => setMediaTarget({ kind: "selection" })}
         chooseGalleryMedia={(slot) => setMediaTarget({ kind: "workbook_gallery", slot })}
-        update={(next) => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements[selection.elementIndex] = next; })}
-        move={(direction) => mutate((draft) => { const items = draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements; const nextIndex = selection.elementIndex + direction; if (nextIndex < 0 || nextIndex >= items.length) return; const [item] = items.splice(selection.elementIndex, 1); if (item) items.splice(nextIndex, 0, item); setSelection({ ...selection, elementIndex: nextIndex }); })}
-        remove={() => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements.splice(selection.elementIndex, 1); setSelection({ kind: "column", sectionIndex: selection.sectionIndex, rowIndex: selection.rowIndex, columnIndex: selection.columnIndex }); })}
+        update={(next) => mutate((draft) => { const column = columnAtPath(draft, selection); if (column) column.elements[selection.elementIndex] = next; })}
+        move={(direction) => mutate((draft) => { const items = columnAtPath(draft, selection)?.elements; if (!items) return; const nextIndex = selection.elementIndex + direction; if (nextIndex < 0 || nextIndex >= items.length) return; const [item] = items.splice(selection.elementIndex, 1); if (item) items.splice(nextIndex, 0, item); setSelection({ ...selection, elementIndex: nextIndex }); })}
+        remove={() => mutate((draft) => { const column = columnAtPath(draft, selection); if (!column) return; column.elements.splice(selection.elementIndex, 1); setSelection({ kind: "column", sectionIndex: selection.sectionIndex, rowPath: selection.rowPath, columnIndex: selection.columnIndex }); })}
       />;
     }
     if (selection.kind === "column" && currentColumn) {
-      const row = document.sections[selection.sectionIndex]?.rows[selection.rowIndex];
+      const row = rowAtPath(document, selection.sectionIndex, selection.rowPath);
+      const rowIndex = selection.rowPath.at(-1) ?? 0;
       return <ColumnInspector
         column={currentColumn}
         sectionIndex={selection.sectionIndex}
-        rowIndex={selection.rowIndex}
+        rowIndex={rowIndex}
         columnIndex={selection.columnIndex}
         columnCount={row?.columns.length ?? 1}
-        update={(recipe) => updateColumn(selection.sectionIndex, selection.rowIndex, selection.columnIndex, recipe)}
-        selectRow={() => setSelection({ kind: "row", sectionIndex: selection.sectionIndex, rowIndex: selection.rowIndex })}
-        move={(direction) => moveColumn(selection.sectionIndex, selection.rowIndex, selection.columnIndex, direction)}
-        remove={() => removeColumn(selection.sectionIndex, selection.rowIndex, selection.columnIndex)}
+        update={(recipe) => updateColumn(selection.sectionIndex, selection.rowPath, selection.columnIndex, recipe)}
+        selectRow={() => setSelection({ kind: "row", sectionIndex: selection.sectionIndex, rowPath: selection.rowPath })}
+        move={(direction) => moveColumn(selection.sectionIndex, selection.rowPath, selection.columnIndex, direction)}
+        remove={() => removeColumn(selection.sectionIndex, selection.rowPath, selection.columnIndex)}
       />;
     }
     if (selection.kind === "row" && currentRow) {
-      const section = document.sections[selection.sectionIndex];
+      const parentColumnPath = selection.rowPath.length > 1 ? selection.rowPath.slice(0, -1) : null;
+      const siblingRows = rowsAtParentColumn(document, selection.sectionIndex, parentColumnPath) ?? [];
+      const rowIndex = selection.rowPath.at(-1) ?? 0;
       return <RowInspector
         row={currentRow}
         sectionIndex={selection.sectionIndex}
-        rowIndex={selection.rowIndex}
-        rowCount={section?.rows.length ?? 1}
-        updateColumnCount={(columnCount) => setRowColumnCount(selection.sectionIndex, selection.rowIndex, columnCount)}
-        selectColumn={(columnIndex) => setSelection({ kind: "column", sectionIndex: selection.sectionIndex, rowIndex: selection.rowIndex, columnIndex })}
-        move={(direction) => moveRow(selection.sectionIndex, selection.rowIndex, direction)}
-        remove={() => removeRow(selection.sectionIndex, selection.rowIndex)}
+        rowIndex={rowIndex}
+        rowCount={siblingRows.length}
+        nested={parentColumnPath !== null}
+        updateColumnCount={(columnCount) => setRowColumnCount(selection.sectionIndex, selection.rowPath, columnCount)}
+        selectColumn={(columnIndex) => setSelection({ kind: "column", sectionIndex: selection.sectionIndex, rowPath: selection.rowPath, columnIndex })}
+        move={(direction) => moveRow(selection.sectionIndex, selection.rowPath, direction)}
+        remove={() => removeRow(selection.sectionIndex, selection.rowPath)}
       />;
     }
     if (selection.kind === "section") {
@@ -1646,21 +1803,21 @@ export function FunnelPageStudio({
           <button type="button" onClick={() => setLeftSidebarCollapsed((collapsed) => !collapsed)} aria-label={leftSidebarCollapsed ? "Expand element sidebar" : "Collapse element sidebar"} title={leftSidebarCollapsed ? "Expand element sidebar" : "Collapse element sidebar"} className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#d8c5a8] bg-white text-lg font-bold text-ink/55 shadow-sm hover:border-[#739655] hover:text-[#4d6a39]">{leftSidebarCollapsed ? "›" : "‹"}</button>
         </div>
         {!leftSidebarCollapsed && panel === "elements" ? <div className="mt-4 grid gap-5">
-          <p className="text-[11px] leading-4 text-ink/45">Drag a row into an existing section, then drag elements into its columns.</p>
+          <p className="text-[11px] leading-4 text-ink/45">Drag a row into a section or inside any existing column, then drag elements into its columns.</p>
           <section>
             <h3 className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Layout</h3>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              {([1, 2, 3, 4] as FunnelRowColumnCount[]).map((columnCount) => <button type="button" draggable key={columnCount} onClick={() => appendRow(columnCount)} onDragStart={(event) => startRowDrag(event, { kind: "new", columnCount })} onDragEnd={endRowDrag} className="min-h-14 cursor-grab rounded-[12px] border border-[#b7cda3] bg-[#edf5e7] px-2 text-xs font-semibold text-[#4d6a39] hover:border-[#739655] active:cursor-grabbing">⠿ {columnCount}-column row</button>)}
+              {([1, 2, 3, 4] as FunnelRowColumnCount[]).map((columnCount) => <button type="button" draggable key={columnCount} onClick={() => appendRow(columnCount)} onDragStart={(event) => startRowDrag(event, { kind: "new", columnCount })} onDragEnd={endRowDrag} className="min-h-14 cursor-grab rounded-[12px] border border-[#b7cda3] bg-[#edf5e7] px-2 text-xs font-semibold text-[#4d6a39] hover:border-[#739655] active:cursor-grabbing">{columnCount}-column row</button>)}
             </div>
           </section>
           {funnelElementGroups.map((group) => <section key={group.label}>
             <h3 className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">{group.label}</h3>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              {group.elements.map((type) => <button type="button" draggable key={type} onClick={() => addElement(type)} onDragStart={(event) => startElementDrag(event, { kind: "new", elementType: type })} onDragEnd={endElementDrag} className="min-h-14 cursor-grab rounded-[12px] border border-[#d8c5a8] bg-white px-2 text-xs font-semibold capitalize hover:border-[#739655] active:cursor-grabbing">⠿ {type.replaceAll("_", " ")}</button>)}
+              {group.elements.map((type) => <button type="button" draggable key={type} onClick={() => addElement(type)} onDragStart={(event) => startElementDrag(event, { kind: "new", elementType: type })} onDragEnd={endElementDrag} className="min-h-14 cursor-grab rounded-[12px] border border-[#d8c5a8] bg-white px-2 text-xs font-semibold capitalize hover:border-[#739655] active:cursor-grabbing">{type.replaceAll("_", " ")}</button>)}
             </div>
           </section>)}
         </div> : null}
-        {!leftSidebarCollapsed && panel === "blocks" ? <div className="mt-4"><p className="mb-2 text-[11px] leading-4 text-ink/45">Drag a block between sections on the page, or click to append it.</p><div className="grid gap-2">{(["hero", "split", "offer", "blank"] as FunnelBlockKind[]).map((kind) => <button type="button" draggable key={kind} onClick={() => appendBlock(kind)} onDragStart={(event) => startBlockDrag(event, kind)} onDragEnd={endBlockDrag} className="min-h-14 cursor-grab rounded-[12px] border border-[#d8c5a8] bg-white px-3 text-left text-sm font-semibold capitalize hover:border-[#739655] active:cursor-grabbing">⠿ {kind} section</button>)}</div></div> : null}
+        {!leftSidebarCollapsed && panel === "blocks" ? <div className="mt-4"><p className="mb-2 text-[11px] leading-4 text-ink/45">Drag a block between sections on the page, or click to append it.</p><div className="grid gap-2">{(["hero", "split", "offer", "blank"] as FunnelBlockKind[]).map((kind) => <button type="button" draggable key={kind} onClick={() => appendBlock(kind)} onDragStart={(event) => startBlockDrag(event, kind)} onDragEnd={endBlockDrag} className="min-h-14 cursor-grab rounded-[12px] border border-[#d8c5a8] bg-white px-3 text-left text-sm font-semibold capitalize hover:border-[#739655] active:cursor-grabbing">{kind} section</button>)}</div></div> : null}
         {!leftSidebarCollapsed && panel === "styles" ? <div className="mt-4 grid gap-4"><InspectorGroup title="Site header & footer" open><p className="text-[11px] leading-5 text-ink/50">Funnel pages have no site chrome unless you enable it here.</p><label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show site header</span><input type="checkbox" checked={document.siteChrome?.showHeader === true} onChange={(event) => mutate((draft) => { draft.siteChrome = { showHeader: event.target.checked, showFooter: draft.siteChrome?.showFooter === true }; })} className="h-4 w-4 accent-[#76a456]" /></label><label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show site footer</span><input type="checkbox" checked={document.siteChrome?.showFooter === true} onChange={(event) => mutate((draft) => { draft.siteChrome = { showHeader: draft.siteChrome?.showHeader === true, showFooter: event.target.checked }; })} className="h-4 w-4 accent-[#76a456]" /></label></InspectorGroup><label className="grid gap-1 text-xs font-semibold">Theme<select className={INPUT} value={document.theme} onChange={(event) => mutate((draft) => { draft.theme = event.target.value as FunnelPageDocument["theme"]; })}>{Object.keys(themes).map((theme) => <option key={theme} value={theme}>{theme[0]!.toUpperCase()}{theme.slice(1)}</option>)}</select></label><ColorControl label="Page background" value={document.styles?.colors?.pageBackground ?? baseTheme.page} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, pageBackground: value } }; })} /><ColorControl label="Surface" value={document.styles?.colors?.surface ?? baseTheme.surface} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, surface: value } }; })} /><ColorControl label="Primary" value={document.styles?.colors?.primary ?? baseTheme.primary} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, primary: value } }; })} /><NumberControl label="Content width" value={document.styles?.layout?.contentWidth ?? 1120} min={640} max={1600} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, layout: { ...draft.styles?.layout, contentWidth: value } }; })} /><NumberControl label="Section spacing" value={document.styles?.layout?.sectionGap ?? 22} min={0} max={160} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, layout: { ...draft.styles?.layout, sectionGap: value } }; })} /></div> : null}
       </aside>
       <section className="min-w-0 overflow-auto bg-[#d9d4cc] p-5"><EditorCanvas document={document} selection={selection} onSelect={setSelection} viewport={viewport} elementDrag={elementDrag} dropTarget={elementDropTarget} onStartElementDrag={startElementDrag} onDropTarget={updateElementDropTarget} onDropElement={dropElement} onEndElementDrag={endElementDrag} blockDrag={blockDrag} sectionDropTarget={sectionDropTarget} onSectionDropTarget={updateSectionDropTarget} onDropBlock={dropBlock} rowDrag={rowDrag} rowDropTarget={rowDropTarget} onRowDropTarget={updateRowDropTarget} onDropRow={dropRow} onStartRowDrag={startRowDrag} onEndRowDrag={endRowDrag} columnDrag={columnDrag} columnDropTarget={columnDropTarget} onStartColumnDrag={startColumnDrag} onColumnDropTarget={updateColumnDropTarget} onDropColumn={dropColumn} onEndColumnDrag={endColumnDrag} orderFormPreview={orderFormPreview} /></section>
@@ -1695,6 +1852,7 @@ function RowInspector({
   sectionIndex,
   rowIndex,
   rowCount,
+  nested,
   updateColumnCount,
   selectColumn,
   move,
@@ -1704,6 +1862,7 @@ function RowInspector({
   sectionIndex: number;
   rowIndex: number;
   rowCount: number;
+  nested: boolean;
   updateColumnCount: (columnCount: FunnelRowColumnCount) => void;
   selectColumn: (columnIndex: number) => void;
   move: (direction: -1 | 1) => void;
@@ -1711,13 +1870,13 @@ function RowInspector({
 }) {
   return <div className="grid gap-4">
     <div className="flex items-center justify-between gap-3">
-      <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Section {sectionIndex + 1} → Row {rowIndex + 1}</p><h3 className="mt-1 text-lg font-semibold">Row layout</h3></div>
-      <div className="flex gap-1"><button type="button" disabled={rowIndex === 0} onClick={() => move(-1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">↑</button><button type="button" disabled={rowIndex === rowCount - 1} onClick={() => move(1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">↓</button><button type="button" disabled={rowCount <= 1} onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738] disabled:opacity-30">×</button></div>
+      <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Section {sectionIndex + 1} → {nested ? "Nested row" : "Row"} {rowIndex + 1}</p><h3 className="mt-1 text-lg font-semibold">Row layout</h3></div>
+      <div className="flex gap-1"><button type="button" disabled={rowIndex === 0} onClick={() => move(-1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">↑</button><button type="button" disabled={rowIndex === rowCount - 1} onClick={() => move(1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">↓</button><button type="button" disabled={!nested && rowCount <= 1} onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738] disabled:opacity-30">×</button></div>
     </div>
     <label className="grid gap-1.5 text-xs font-semibold">Number of columns<select className={INPUT} value={row.columns.length} onChange={(event) => updateColumnCount(Number(event.target.value) as FunnelRowColumnCount)}>{([1, 2, 3, 4] as const).map((count) => <option key={count} value={count}>{count} {count === 1 ? "column" : "columns"}</option>)}</select></label>
     <p className="text-[10px] leading-4 text-ink/50">Changing the count creates an even grid. If you reduce it, Treeschool moves content from removed columns into the last remaining column instead of deleting it.</p>
     <InspectorGroup title="Columns" open>
-      {row.columns.map((column, columnIndex) => <button key={column.id} type="button" onClick={() => selectColumn(columnIndex)} className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-left text-xs transition hover:border-[#8a674d] hover:bg-[#fffaf2]"><span className="font-semibold">Column {columnIndex + 1}</span><span className="text-[10px] text-ink/45">{column.span}/12{column.offset !== undefined ? ` · offset ${column.offset}` : " · auto"} · {column.elements.length} {column.elements.length === 1 ? "element" : "elements"}</span></button>)}
+      {row.columns.map((column, columnIndex) => <button key={column.id} type="button" onClick={() => selectColumn(columnIndex)} className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-left text-xs transition hover:border-[#8a674d] hover:bg-[#fffaf2]"><span className="font-semibold">Column {columnIndex + 1}</span><span className="text-[10px] text-ink/45">{column.span}/12{column.offset !== undefined ? ` · offset ${column.offset}` : " · auto"} · {column.elements.length} {column.elements.length === 1 ? "element" : "elements"}{column.rows?.length ? ` · ${column.rows.length} nested ${column.rows.length === 1 ? "row" : "rows"}` : ""}</span></button>)}
     </InspectorGroup>
   </div>;
 }

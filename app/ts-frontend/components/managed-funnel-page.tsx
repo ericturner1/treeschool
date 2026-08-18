@@ -1,9 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type {
   FunnelAction,
   FunnelPageElement,
+  FunnelPageRow,
   FunnelPageSection,
   FunnelPageStyles
 } from "../lib/funnels/page-document";
@@ -443,6 +444,44 @@ export async function ManagedFunnelPageView({
     const query = new URLSearchParams({ target, attribution: JSON.stringify(attribution) });
     return `/api/funnels/click?${query}`;
   };
+  const renderRows = (rows: FunnelPageRow[], nested = false): ReactNode => (
+    <div className="grid gap-8" style={{ gap: styles?.layout?.columnGap }}>
+      {rows.map((row) => (
+        <div key={row.id} className={`grid grid-cols-1 gap-7 lg:grid-cols-12 ${nested ? "lg:items-start" : "lg:items-center"}`}>
+          {row.columns.map((column) => (
+            <div
+              key={column.id}
+              className="grid gap-5 lg:[grid-column:var(--funnel-grid-column)]"
+              style={{
+                "--funnel-grid-column": column.offset !== undefined
+                  ? `${column.offset + 1} / span ${column.span}`
+                  : `span ${column.span} / span ${column.span}`
+              } as CSSProperties}
+            >
+              {column.elements.map((element) => (
+                <div key={element.id} className={visibilityClass(element)} style={funnelElementSpacingStyle(element)}>
+                  <PageElement
+                    element={element}
+                    theme={theme}
+                    nextHref={step.stepType === "order_form" ? null : page.nextHref}
+                    attribution={attribution}
+                    trackedHref={trackedHref}
+                    styles={styles}
+                    countdownStorageScope={`${page.preview ? "preview" : "live"}:${page.id}:${page.latestRevisionNumber}`}
+                    stepId={step.id}
+                    stepType={step.stepType}
+                    sourceCheckoutSessionId={sourceCheckoutSessionId}
+                    preview={page.preview}
+                  />
+                </div>
+              ))}
+              {column.rows?.length ? <div className="mt-2">{renderRows(column.rows, true)}</div> : null}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <main
@@ -540,41 +579,7 @@ export async function ManagedFunnelPageView({
                 style={style}
                 className={`mx-auto w-full rounded-[30px] border bg-cover bg-center p-6 sm:p-10 lg:p-12 ${widthClass(section.props.width)} ${sectionClasses(section, theme)}`}
               >
-                <div className="grid gap-8" style={{ gap: styles?.layout?.columnGap }}>
-                  {section.rows.map((row) => (
-                    <div key={row.id} className="grid grid-cols-1 gap-7 lg:grid-cols-12 lg:items-center">
-                      {row.columns.map((column) => (
-                        <div
-                          key={column.id}
-                          className="grid gap-5 lg:[grid-column:var(--funnel-grid-column)]"
-                          style={{
-                            "--funnel-grid-column": column.offset !== undefined
-                              ? `${column.offset + 1} / span ${column.span}`
-                              : `span ${column.span} / span ${column.span}`
-                          } as CSSProperties}
-                        >
-                          {column.elements.map((element) => (
-                            <div key={element.id} className={visibilityClass(element)} style={funnelElementSpacingStyle(element)}>
-                              <PageElement
-                                element={element}
-                                theme={theme}
-                                nextHref={step.stepType === "order_form" ? null : page.nextHref}
-                                attribution={attribution}
-                                trackedHref={trackedHref}
-                                styles={styles}
-                                countdownStorageScope={`${page.preview ? "preview" : "live"}:${page.id}:${page.latestRevisionNumber}`}
-                                stepId={step.id}
-                                stepType={step.stepType}
-                                sourceCheckoutSessionId={sourceCheckoutSessionId}
-                                preview={page.preview}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
+                {renderRows(section.rows)}
               </section>
             );
           })}
