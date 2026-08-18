@@ -305,6 +305,65 @@ export function createFunnelPageRow(
   };
 }
 
+export function resizeFunnelPageRow(
+  row: FunnelPageRow,
+  columnCount: FunnelRowColumnCount,
+): FunnelPageRow {
+  const columns = row.columns.map((column) => ({
+    ...column,
+    elements: [...column.elements],
+  }));
+
+  if (columns.length > columnCount) {
+    const removed = columns.splice(columnCount);
+    const destination = columns[columns.length - 1];
+    if (destination) {
+      destination.elements.push(
+        ...removed.flatMap((column) => column.elements),
+      );
+    }
+  } else {
+    while (columns.length < columnCount) {
+      columns.push({
+        id: createFunnelDocumentId("column"),
+        span: 12 / columnCount,
+        elements: [],
+      });
+    }
+  }
+
+  for (const column of columns) {
+    column.span = 12 / columnCount;
+    delete column.offset;
+  }
+
+  return { ...row, columns };
+}
+
+export function removeFunnelPageColumn(
+  row: FunnelPageRow,
+  columnIndex: number,
+): FunnelPageRow {
+  if (row.columns.length <= 1 || !row.columns[columnIndex]) return row;
+  const columns = row.columns.map((column) => ({
+    ...column,
+    elements: [...column.elements],
+  }));
+  const [removed] = columns.splice(columnIndex, 1);
+  const destinationIndex = Math.min(columnIndex, columns.length - 1);
+  const destination = columns[destinationIndex];
+  if (removed && destination) {
+    if (columnIndex < row.columns.length - 1) destination.elements.unshift(...removed.elements);
+    else destination.elements.push(...removed.elements);
+  }
+  const span = 12 / columns.length;
+  for (const column of columns) {
+    column.span = span;
+    delete column.offset;
+  }
+  return { ...row, columns };
+}
+
 export function emptyFunnelPageDocument(headline: string, subheadline = ""): FunnelPageDocument {
   return {
     schemaVersion: 2,

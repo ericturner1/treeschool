@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { createFunnelPageRow, emptyFunnelPageDocument } from "./page-document";
+import {
+  createFunnelPageRow,
+  emptyFunnelPageDocument,
+  removeFunnelPageColumn,
+  resizeFunnelPageRow,
+  type FunnelPageElement,
+} from "./page-document";
 
 describe("funnel page layout rows", () => {
   test("creates balanced one-to-four-column rows", () => {
@@ -24,5 +30,56 @@ describe("funnel page layout rows", () => {
       showHeader: false,
       showFooter: false,
     });
+  });
+
+  test("resizes rows without discarding content", () => {
+    const row = createFunnelPageRow(4);
+    row.columns.forEach((column, index) => {
+      column.elements.push({
+        id: `text_${index}`,
+        type: "text",
+        props: { text: String(index), style: "body", align: "left" },
+      } satisfies FunnelPageElement);
+    });
+
+    const resized = resizeFunnelPageRow(row, 2);
+
+    expect(resized.columns).toHaveLength(2);
+    expect(resized.columns.map((column) => column.span)).toEqual([6, 6]);
+    expect(resized.columns.flatMap((column) => column.elements).map((element) => element.id)).toEqual([
+      "text_0",
+      "text_1",
+      "text_2",
+      "text_3",
+    ]);
+  });
+
+  test("removes a selected column without discarding its elements", () => {
+    const row = createFunnelPageRow(3);
+    row.columns[0]!.elements.push({
+      id: "text_left",
+      type: "text",
+      props: { text: "Left", style: "body", align: "left" },
+    });
+    row.columns[1]!.elements.push({
+      id: "text_middle",
+      type: "text",
+      props: { text: "Keep me", style: "body", align: "left" },
+    });
+    row.columns[2]!.elements.push({
+      id: "text_right",
+      type: "text",
+      props: { text: "Right", style: "body", align: "left" },
+    });
+
+    const resized = removeFunnelPageColumn(row, 1);
+
+    expect(resized.columns).toHaveLength(2);
+    expect(resized.columns.map((column) => column.span)).toEqual([6, 6]);
+    expect(resized.columns.flatMap((column) => column.elements).map((element) => element.id)).toEqual([
+      "text_left",
+      "text_middle",
+      "text_right",
+    ]);
   });
 });

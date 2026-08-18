@@ -9,15 +9,19 @@ import type {
   FunnelAction,
   FunnelListMarker,
   FunnelMediaSnapshot,
+  FunnelPageColumn,
   FunnelPageDocument,
   FunnelPageElement,
+  FunnelPageRow,
   FunnelPageSection,
   FunnelRowColumnCount
 } from "../../../lib/funnels/page-document";
 import {
   createFunnelDocumentId,
   createFunnelPageRow,
-  emptyFunnelPageDocument
+  emptyFunnelPageDocument,
+  removeFunnelPageColumn,
+  resizeFunnelPageRow
 } from "../../../lib/funnels/page-document";
 import {
   FUNNEL_BUTTON_FONT_OPTIONS,
@@ -48,6 +52,8 @@ import { CurriculumCheckoutOptions } from "../../first-grade-homeschool-curricul
 type Selection =
   | { kind: "page" }
   | { kind: "section"; sectionIndex: number }
+  | { kind: "row"; sectionIndex: number; rowIndex: number }
+  | { kind: "column"; sectionIndex: number; rowIndex: number; columnIndex: number }
   | { kind: "element"; sectionIndex: number; rowIndex: number; columnIndex: number; elementIndex: number };
 
 type FunnelElementLocation = Extract<Selection, { kind: "element" }>;
@@ -513,47 +519,68 @@ function EditorCanvas({
               }}
             >
               <div className="mx-auto" style={{ maxWidth: section.props.width === "narrow" ? Math.min(width, 820) : section.props.width === "wide" ? Math.max(width, 1280) : width }}>
-                {section.rows.map((row, rowIndex) => <Fragment key={row.id}>
-                  {rowDrag ? <FunnelRowDropZone target={{ sectionIndex, rowIndex }} active={sameRowDropTarget(rowDropTarget, { sectionIndex, rowIndex })} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
-                  <div className="group/row relative">
-                  <div className={`grid ${viewport === "mobile" ? "grid-cols-1" : "grid-cols-12"}`} style={{ gap: columnGap }}>
-                  {row.columns.map((column, columnIndex) => <div key={column.id} className="grid content-start gap-4" style={viewport === "mobile" ? undefined : { gridColumn: column.offset !== undefined ? `${column.offset + 1} / span ${column.span}` : `span ${column.span}` }}>
-                    {column.elements.map((element, elementIndex) => {
-                      const location: FunnelElementLocation = { kind: "element", sectionIndex, rowIndex, columnIndex, elementIndex };
-                      const target: FunnelElementDropTarget = { sectionIndex, rowIndex, columnIndex, elementIndex };
-                      const dragged = elementDrag?.kind === "existing" && sameElementLocation(elementDrag.source, location);
-                      return <div key={element.id} className="min-w-0">
-                        {elementDrag ? <FunnelElementDropZone target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} /> : null}
-                        <div className={`group/drag relative transition ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
-                          <button
-                            type="button"
-                            draggable
-                            onClick={(event) => { event.stopPropagation(); onSelect(location); }}
-                            onDragStart={(event) => onStartElementDrag(event, { kind: "existing", source: location })}
-                            onDragEnd={onEndElementDrag}
-                            className={`absolute right-2 top-2 z-40 grid h-8 w-8 cursor-grab place-items-center rounded-[9px] border border-[#b9a78c] bg-white text-base leading-none text-ink/55 shadow-md active:cursor-grabbing ${selection.kind === "element" && sameElementLocation(selection, location) ? "opacity-100" : "opacity-0 group-hover/drag:opacity-100 focus:opacity-100"}`}
-                            aria-label={`Drag ${element.type.replaceAll("_", " ")}`}
-                            title="Drag to move this element"
+                {section.rows.map((row, rowIndex) => {
+                  const rowSelected = selection.kind === "row" && selection.sectionIndex === sectionIndex && selection.rowIndex === rowIndex;
+                  return <Fragment key={row.id}>
+                    {rowDrag ? <FunnelRowDropZone target={{ sectionIndex, rowIndex }} active={sameRowDropTarget(rowDropTarget, { sectionIndex, rowIndex })} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
+                    <div
+                      className={`group/row relative rounded-[10px] transition ${rowSelected ? "outline outline-2 outline-[#5f873f] outline-offset-4" : "hover:outline hover:outline-2 hover:outline-[#739655]/35 hover:outline-offset-4"}`}
+                      onClick={(event) => { event.stopPropagation(); onSelect({ kind: "row", sectionIndex, rowIndex }); }}
+                    >
+                      <div className={`grid ${viewport === "mobile" ? "grid-cols-1" : "grid-cols-12"}`} style={{ gap: columnGap }}>
+                        {row.columns.map((column, columnIndex) => {
+                          const columnSelected = selection.kind === "column" && selection.sectionIndex === sectionIndex && selection.rowIndex === rowIndex && selection.columnIndex === columnIndex;
+                          return <div
+                            key={column.id}
+                            onClick={(event) => { event.stopPropagation(); onSelect({ kind: "column", sectionIndex, rowIndex, columnIndex }); }}
+                            className={`group/column relative grid min-w-0 content-start gap-4 rounded-[8px] transition ${columnSelected ? "outline outline-2 outline-[#8a674d] outline-offset-2" : "hover:outline hover:outline-1 hover:outline-[#8a674d]/40 hover:outline-offset-2"}`}
+                            style={viewport === "mobile" ? undefined : { gridColumn: column.offset !== undefined ? `${column.offset + 1} / span ${column.span}` : `span ${column.span}` }}
                           >
-                            ⠿
-                          </button>
-                          <PreviewElement element={element} palette={palette} selected={selection.kind === "element" && sameElementLocation(selection, location)} onSelect={() => onSelect(location)} />
-                        </div>
-                      </div>;
-                    })}
-                    {elementDrag ? (() => {
-                      const target = { sectionIndex, rowIndex, columnIndex, elementIndex: column.elements.length };
-                      return <FunnelElementDropZone target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} />;
-                    })() : null}
-                    {column.elements.length === 0 && !elementDrag ? <button type="button" onClick={(event) => { event.stopPropagation(); onSelect({ kind: "section", sectionIndex }); }} className="min-h-24 rounded-[14px] border border-dashed border-ink/20 text-sm text-ink/40">Empty column</button> : null}
-                  </div>)}
-                  </div>
-                  <div className="pointer-events-none absolute -right-2 -top-3 z-30 flex items-center gap-1 opacity-0 transition group-hover/row:opacity-100">
-                    <span className="rounded-full border border-[#cbb99e] bg-white px-2 py-1 text-[10px] font-bold text-ink/55 shadow-sm">{row.columns.length} col</span>
-                    <button type="button" disabled={section.rows.length <= 1} onClick={(event) => { event.stopPropagation(); onRemoveRow(sectionIndex, rowIndex); }} className="pointer-events-auto rounded-full border border-[#d7b8ad] bg-white px-2 py-1 text-[10px] font-bold text-[#8c4536] shadow-sm disabled:hidden">Remove</button>
-                  </div>
-                  </div>
-                </Fragment>)}
+                            <button
+                              type="button"
+                              onClick={(event) => { event.stopPropagation(); onSelect({ kind: "column", sectionIndex, rowIndex, columnIndex }); }}
+                              className={`absolute -left-1 -top-3 z-40 rounded-full border border-[#cbb99e] bg-white px-2 py-1 text-[9px] font-bold text-ink/55 shadow-sm transition ${columnSelected ? "opacity-100" : "opacity-0 group-hover/column:opacity-100 focus:opacity-100"}`}
+                            >
+                              Column {columnIndex + 1} · {column.span}/12{column.offset !== undefined ? ` · offset ${column.offset}` : ""}
+                            </button>
+                            {column.elements.map((element, elementIndex) => {
+                              const location: FunnelElementLocation = { kind: "element", sectionIndex, rowIndex, columnIndex, elementIndex };
+                              const target: FunnelElementDropTarget = { sectionIndex, rowIndex, columnIndex, elementIndex };
+                              const dragged = elementDrag?.kind === "existing" && sameElementLocation(elementDrag.source, location);
+                              return <div key={element.id} className="min-w-0">
+                                {elementDrag ? <FunnelElementDropZone target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} /> : null}
+                                <div className={`group/drag relative transition ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
+                                  <button
+                                    type="button"
+                                    draggable
+                                    onClick={(event) => { event.stopPropagation(); onSelect(location); }}
+                                    onDragStart={(event) => onStartElementDrag(event, { kind: "existing", source: location })}
+                                    onDragEnd={onEndElementDrag}
+                                    className={`absolute right-2 top-2 z-40 grid h-8 w-8 cursor-grab place-items-center rounded-[9px] border border-[#b9a78c] bg-white text-base leading-none text-ink/55 shadow-md active:cursor-grabbing ${selection.kind === "element" && sameElementLocation(selection, location) ? "opacity-100" : "opacity-0 group-hover/drag:opacity-100 focus:opacity-100"}`}
+                                    aria-label={`Drag ${element.type.replaceAll("_", " ")}`}
+                                    title="Drag to move this element"
+                                  >
+                                    ⠿
+                                  </button>
+                                  <PreviewElement element={element} palette={palette} selected={selection.kind === "element" && sameElementLocation(selection, location)} onSelect={() => onSelect(location)} />
+                                </div>
+                              </div>;
+                            })}
+                            {elementDrag ? (() => {
+                              const target = { sectionIndex, rowIndex, columnIndex, elementIndex: column.elements.length };
+                              return <FunnelElementDropZone target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} />;
+                            })() : null}
+                            {column.elements.length === 0 && !elementDrag ? <button type="button" onClick={(event) => { event.stopPropagation(); onSelect({ kind: "column", sectionIndex, rowIndex, columnIndex }); }} className="min-h-24 rounded-[14px] border border-dashed border-ink/20 text-sm text-ink/40">Empty column</button> : null}
+                          </div>;
+                        })}
+                      </div>
+                      <div className={`absolute -right-2 -top-3 z-50 flex items-center gap-1 transition ${rowSelected ? "opacity-100" : "opacity-0 group-hover/row:opacity-100"}`}>
+                        <button type="button" onClick={(event) => { event.stopPropagation(); onSelect({ kind: "row", sectionIndex, rowIndex }); }} className="rounded-full border border-[#9eb489] bg-[#f4f9ef] px-2 py-1 text-[10px] font-bold text-[#4d6a39] shadow-sm">Row {rowIndex + 1} · {row.columns.length} {row.columns.length === 1 ? "column" : "columns"}</button>
+                        <button type="button" disabled={section.rows.length <= 1} onClick={(event) => { event.stopPropagation(); onRemoveRow(sectionIndex, rowIndex); }} className="rounded-full border border-[#d7b8ad] bg-white px-2 py-1 text-[10px] font-bold text-[#8c4536] shadow-sm disabled:hidden">Remove</button>
+                      </div>
+                    </div>
+                  </Fragment>;
+                })}
                 {rowDrag ? <FunnelRowDropZone target={{ sectionIndex, rowIndex: section.rows.length }} active={sameRowDropTarget(rowDropTarget, { sectionIndex, rowIndex: section.rows.length })} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
               </div>
             </section>
@@ -1026,6 +1053,16 @@ export function FunnelPageStudio({
     return document.sections[selection.sectionIndex]?.rows[selection.rowIndex]?.columns[selection.columnIndex]?.elements[selection.elementIndex] ?? null;
   }
 
+  function selectedRow() {
+    if (selection.kind !== "row") return null;
+    return document.sections[selection.sectionIndex]?.rows[selection.rowIndex] ?? null;
+  }
+
+  function selectedColumn() {
+    if (selection.kind !== "column") return null;
+    return document.sections[selection.sectionIndex]?.rows[selection.rowIndex]?.columns[selection.columnIndex] ?? null;
+  }
+
   function assignMedia(draft: FunnelPageDocument, asset: FunnelMediaSnapshot) {
     if (!mediaTarget) return;
     if (mediaTarget.kind === "workbook_gallery" && selection.kind === "element") {
@@ -1050,8 +1087,9 @@ export function FunnelPageStudio({
     }
   }
 
-  function destinationColumn() {
-    if (selection.kind === "element") return selection;
+  function destinationColumn(): Omit<FunnelElementDropTarget, "elementIndex"> {
+    if (selection.kind === "element" || selection.kind === "column") return { sectionIndex: selection.sectionIndex, rowIndex: selection.rowIndex, columnIndex: selection.columnIndex };
+    if (selection.kind === "row") return { sectionIndex: selection.sectionIndex, rowIndex: selection.rowIndex, columnIndex: 0 };
     const sectionIndex = selection.kind === "section" ? selection.sectionIndex : Math.max(0, document.sections.length - 1);
     const section = document.sections[sectionIndex];
     const rowIndex = Math.max(0, (section?.rows.length ?? 1) - 1);
@@ -1077,7 +1115,7 @@ export function FunnelPageStudio({
   }
 
   function destinationSectionIndex() {
-    if (selection.kind === "section" || selection.kind === "element") {
+    if (selection.kind !== "page") {
       return selection.sectionIndex;
     }
     return Math.max(0, document.sections.length - 1);
@@ -1089,7 +1127,7 @@ export function FunnelPageStudio({
       const section = draft.sections[sectionIndex];
       if (!section) return;
       section.rows.push(createFunnelPageRow(columnCount));
-      setSelection({ kind: "section", sectionIndex });
+      setSelection({ kind: "row", sectionIndex, rowIndex: section.rows.length - 1 });
     });
   }
 
@@ -1120,7 +1158,7 @@ export function FunnelPageStudio({
       if (!rows) return;
       const destinationIndex = Math.min(Math.max(target.rowIndex, 0), rows.length);
       rows.splice(destinationIndex, 0, createFunnelPageRow(columnCount));
-      setSelection({ kind: "section", sectionIndex: target.sectionIndex });
+      setSelection({ kind: "row", sectionIndex: target.sectionIndex, rowIndex: destinationIndex });
     });
     endRowDrag();
   }
@@ -1130,7 +1168,58 @@ export function FunnelPageStudio({
       const section = draft.sections[sectionIndex];
       if (!section || section.rows.length <= 1) return;
       section.rows.splice(rowIndex, 1);
-      setSelection({ kind: "section", sectionIndex });
+      setSelection({ kind: "row", sectionIndex, rowIndex: Math.min(rowIndex, section.rows.length - 1) });
+    });
+  }
+
+  function moveRow(sectionIndex: number, rowIndex: number, direction: -1 | 1) {
+    mutate((draft) => {
+      const rows = draft.sections[sectionIndex]?.rows;
+      const destinationIndex = rowIndex + direction;
+      if (!rows || destinationIndex < 0 || destinationIndex >= rows.length) return;
+      const [row] = rows.splice(rowIndex, 1);
+      if (!row) return;
+      rows.splice(destinationIndex, 0, row);
+      setSelection({ kind: "row", sectionIndex, rowIndex: destinationIndex });
+    });
+  }
+
+  function setRowColumnCount(sectionIndex: number, rowIndex: number, columnCount: FunnelRowColumnCount) {
+    mutate((draft) => {
+      const row = draft.sections[sectionIndex]?.rows[rowIndex];
+      if (!row) return;
+      draft.sections[sectionIndex]!.rows[rowIndex] = resizeFunnelPageRow(row, columnCount);
+      setSelection({ kind: "row", sectionIndex, rowIndex });
+    });
+  }
+
+  function updateColumn(sectionIndex: number, rowIndex: number, columnIndex: number, recipe: (column: FunnelPageColumn) => void) {
+    mutate((draft) => {
+      const column = draft.sections[sectionIndex]?.rows[rowIndex]?.columns[columnIndex];
+      if (!column) return;
+      recipe(column);
+    });
+  }
+
+  function moveColumn(sectionIndex: number, rowIndex: number, columnIndex: number, direction: -1 | 1) {
+    mutate((draft) => {
+      const columns = draft.sections[sectionIndex]?.rows[rowIndex]?.columns;
+      const destinationIndex = columnIndex + direction;
+      if (!columns || destinationIndex < 0 || destinationIndex >= columns.length) return;
+      const [column] = columns.splice(columnIndex, 1);
+      if (!column) return;
+      columns.splice(destinationIndex, 0, column);
+      setSelection({ kind: "column", sectionIndex, rowIndex, columnIndex: destinationIndex });
+    });
+  }
+
+  function removeColumn(sectionIndex: number, rowIndex: number, columnIndex: number) {
+    mutate((draft) => {
+      const row = draft.sections[sectionIndex]?.rows[rowIndex];
+      if (!row || row.columns.length <= 1) return;
+      const next = removeFunnelPageColumn(row, columnIndex);
+      draft.sections[sectionIndex]!.rows[rowIndex] = next;
+      setSelection({ kind: "column", sectionIndex, rowIndex, columnIndex: Math.min(columnIndex, next.columns.length - 1) });
     });
   }
 
@@ -1291,6 +1380,8 @@ export function FunnelPageStudio({
   }
 
   const currentElement = selectedElement();
+  const currentRow = selectedRow();
+  const currentColumn = selectedColumn();
   const baseTheme = themes[document.theme];
   const buttonPalette: FunnelButtonPalette = {
     primary: document.styles?.colors?.primary ?? baseTheme.primary,
@@ -1363,6 +1454,59 @@ export function FunnelPageStudio({
       )}
     </section>
   ) : null;
+  const pageInspector = <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Page</p><h3 className="mt-1 text-lg font-semibold">Page settings</h3><p className="mt-3 text-sm leading-6 text-ink/55">Select a section, row, column, or element on the canvas to edit it. Page-wide styles are available from the left panel.</p><button type="button" onClick={() => { setPanel("styles"); setLeftSidebarCollapsed(false); }} className="mt-4 w-full rounded-[12px] border border-[#d8c5a8] bg-white px-4 py-3 text-sm font-semibold">Open page styles</button><div className="mt-5 border-t border-[#eadfce] pt-5"><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Search appearance</p><div className="mt-3 grid gap-4"><label className="grid gap-1.5 text-xs font-semibold">SEO title<input className={INPUT} value={seo.title} maxLength={140} onChange={(event) => setSeo((current) => ({ ...current, title: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.title.length}/140 characters</span></label><label className="grid gap-1.5 text-xs font-semibold">Meta description<textarea className={`${INPUT} min-h-28 resize-y`} value={seo.description} maxLength={320} onChange={(event) => setSeo((current) => ({ ...current, description: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.description.length}/320 characters</span></label><label className="flex items-start gap-3 rounded-[12px] border border-[#dfcfb7] bg-white px-3 py-3 text-xs font-semibold"><input type="checkbox" checked={seo.noIndex} onChange={(event) => setSeo((current) => ({ ...current, noIndex: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-[#76a456]" /><span>Hide this page from search engines<span className="mt-1 block font-normal leading-5 text-ink/50">Adds a no-index directive while keeping the page available by its funnel URL.</span></span></label></div></div></div>;
+  const inspectorContent = (() => {
+    if (selection.kind === "element" && currentElement) {
+      return <ElementInspector
+        element={currentElement}
+        buttonPalette={buttonPalette}
+        chooseMedia={() => setMediaTarget({ kind: "selection" })}
+        chooseGalleryMedia={(slot) => setMediaTarget({ kind: "workbook_gallery", slot })}
+        update={(next) => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements[selection.elementIndex] = next; })}
+        move={(direction) => mutate((draft) => { const items = draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements; const nextIndex = selection.elementIndex + direction; if (nextIndex < 0 || nextIndex >= items.length) return; const [item] = items.splice(selection.elementIndex, 1); if (item) items.splice(nextIndex, 0, item); setSelection({ ...selection, elementIndex: nextIndex }); })}
+        remove={() => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements.splice(selection.elementIndex, 1); setSelection({ kind: "column", sectionIndex: selection.sectionIndex, rowIndex: selection.rowIndex, columnIndex: selection.columnIndex }); })}
+      />;
+    }
+    if (selection.kind === "column" && currentColumn) {
+      const row = document.sections[selection.sectionIndex]?.rows[selection.rowIndex];
+      return <ColumnInspector
+        column={currentColumn}
+        sectionIndex={selection.sectionIndex}
+        rowIndex={selection.rowIndex}
+        columnIndex={selection.columnIndex}
+        columnCount={row?.columns.length ?? 1}
+        update={(recipe) => updateColumn(selection.sectionIndex, selection.rowIndex, selection.columnIndex, recipe)}
+        selectRow={() => setSelection({ kind: "row", sectionIndex: selection.sectionIndex, rowIndex: selection.rowIndex })}
+        move={(direction) => moveColumn(selection.sectionIndex, selection.rowIndex, selection.columnIndex, direction)}
+        remove={() => removeColumn(selection.sectionIndex, selection.rowIndex, selection.columnIndex)}
+      />;
+    }
+    if (selection.kind === "row" && currentRow) {
+      const section = document.sections[selection.sectionIndex];
+      return <RowInspector
+        row={currentRow}
+        sectionIndex={selection.sectionIndex}
+        rowIndex={selection.rowIndex}
+        rowCount={section?.rows.length ?? 1}
+        updateColumnCount={(columnCount) => setRowColumnCount(selection.sectionIndex, selection.rowIndex, columnCount)}
+        selectColumn={(columnIndex) => setSelection({ kind: "column", sectionIndex: selection.sectionIndex, rowIndex: selection.rowIndex, columnIndex })}
+        move={(direction) => moveRow(selection.sectionIndex, selection.rowIndex, direction)}
+        remove={() => removeRow(selection.sectionIndex, selection.rowIndex)}
+      />;
+    }
+    if (selection.kind === "section") {
+      const section = document.sections[selection.sectionIndex];
+      if (!section) return pageInspector;
+      return <SectionInspector
+        section={section}
+        chooseMedia={() => setMediaTarget({ kind: "selection" })}
+        update={(recipe) => mutate((draft) => recipe(draft.sections[selection.sectionIndex]!))}
+        move={(direction) => mutate((draft) => { const nextIndex = selection.sectionIndex + direction; if (nextIndex < 0 || nextIndex >= draft.sections.length) return; const [item] = draft.sections.splice(selection.sectionIndex, 1); if (item) draft.sections.splice(nextIndex, 0, item); setSelection({ kind: "section", sectionIndex: nextIndex }); })}
+        remove={() => mutate((draft) => { if (draft.sections.length <= 1) return; draft.sections.splice(selection.sectionIndex, 1); setSelection({ kind: "page" }); })}
+      />;
+    }
+    return pageInspector;
+  })();
   return <main className="flex min-h-screen flex-col bg-[#eee8dd] text-ink">
     <header className="flex min-h-16 flex-wrap items-center gap-3 border-b border-[#d6c6af] bg-[#fffaf2] px-4 py-2 shadow-sm">
       <a href={backHref} className="inline-flex h-10 items-center rounded-[11px] border border-[#d8c5a8] bg-white px-3 text-sm font-semibold">← Funnel</a>
@@ -1407,7 +1551,7 @@ export function FunnelPageStudio({
           {!rightSidebarCollapsed ? <span className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Inspector</span> : null}
           <button type="button" onClick={() => setRightSidebarCollapsed((collapsed) => !collapsed)} aria-label={rightSidebarCollapsed ? "Expand inspector sidebar" : "Collapse inspector sidebar"} title={rightSidebarCollapsed ? "Expand inspector sidebar" : "Collapse inspector sidebar"} className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-[#d8c5a8] bg-white text-lg font-bold text-ink/55 shadow-sm hover:border-[#739655] hover:text-[#4d6a39]">{rightSidebarCollapsed ? "‹" : "›"}</button>
         </div>
-        {!rightSidebarCollapsed ? currentElement && selection.kind === "element" ? <ElementInspector element={currentElement} buttonPalette={buttonPalette} chooseMedia={() => setMediaTarget({ kind: "selection" })} chooseGalleryMedia={(slot) => setMediaTarget({ kind: "workbook_gallery", slot })} update={(next) => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements[selection.elementIndex] = next; })} move={(direction) => mutate((draft) => { const items = draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements; const nextIndex = selection.elementIndex + direction; if (nextIndex < 0 || nextIndex >= items.length) return; const [item] = items.splice(selection.elementIndex, 1); if (item) items.splice(nextIndex, 0, item); setSelection({ ...selection, elementIndex: nextIndex }); })} remove={() => mutate((draft) => { draft.sections[selection.sectionIndex]!.rows[selection.rowIndex]!.columns[selection.columnIndex]!.elements.splice(selection.elementIndex, 1); setSelection({ kind: "section", sectionIndex: selection.sectionIndex }); })} /> : selection.kind === "section" ? <SectionInspector section={document.sections[selection.sectionIndex]!} chooseMedia={() => setMediaTarget({ kind: "selection" })} update={(recipe) => mutate((draft) => recipe(draft.sections[selection.sectionIndex]!))} move={(direction) => mutate((draft) => { const nextIndex = selection.sectionIndex + direction; if (nextIndex < 0 || nextIndex >= draft.sections.length) return; const [item] = draft.sections.splice(selection.sectionIndex, 1); if (item) draft.sections.splice(nextIndex, 0, item); setSelection({ kind: "section", sectionIndex: nextIndex }); })} remove={() => mutate((draft) => { if (draft.sections.length <= 1) return; draft.sections.splice(selection.sectionIndex, 1); setSelection({ kind: "page" }); })} /> : <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Page</p><h3 className="mt-1 text-lg font-semibold">Page settings</h3><p className="mt-3 text-sm leading-6 text-ink/55">Select an element on the canvas to edit its content. Page-wide styles are available from the left panel.</p><button type="button" onClick={() => { setPanel("styles"); setLeftSidebarCollapsed(false); }} className="mt-4 w-full rounded-[12px] border border-[#d8c5a8] bg-white px-4 py-3 text-sm font-semibold">Open page styles</button><div className="mt-5 border-t border-[#eadfce] pt-5"><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Search appearance</p><div className="mt-3 grid gap-4"><label className="grid gap-1.5 text-xs font-semibold">SEO title<input className={INPUT} value={seo.title} maxLength={140} onChange={(event) => setSeo((current) => ({ ...current, title: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.title.length}/140 characters</span></label><label className="grid gap-1.5 text-xs font-semibold">Meta description<textarea className={`${INPUT} min-h-28 resize-y`} value={seo.description} maxLength={320} onChange={(event) => setSeo((current) => ({ ...current, description: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.description.length}/320 characters</span></label><label className="flex items-start gap-3 rounded-[12px] border border-[#dfcfb7] bg-white px-3 py-3 text-xs font-semibold"><input type="checkbox" checked={seo.noIndex} onChange={(event) => setSeo((current) => ({ ...current, noIndex: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-[#76a456]" /><span>Hide this page from search engines<span className="mt-1 block font-normal leading-5 text-ink/50">Adds a no-index directive while keeping the page available by its funnel URL.</span></span></label></div></div></div> : null}
+        {!rightSidebarCollapsed ? inspectorContent : null}
       </aside>
     </div>
     {mediaTarget ? <AssetLibrary assets={assets} funnelId={funnelId} stepId={stepId} onClose={() => setMediaTarget(null)} onUploaded={(asset) => mutate((draft) => { draft.assets = [...(draft.assets ?? []), asset]; assignMedia(draft, asset); setMediaTarget(null); })} onChoose={(asset) => mutate((draft) => { assignMedia(draft, asset); setMediaTarget(null); })} /> : null}
@@ -1428,6 +1572,76 @@ export function FunnelPageStudio({
 
 function ColorControl({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="grid gap-1 text-xs font-semibold">{label}<span className="flex items-center gap-2"><input type="color" value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-12 rounded border" /><input className={INPUT} value={value} onChange={(event) => onChange(event.target.value)} /></span></label>; }
 function NumberControl({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) { return <label className="grid gap-1 text-xs font-semibold">{label}<input type="number" className={INPUT} value={value} min={min} max={max} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
+function RowInspector({
+  row,
+  sectionIndex,
+  rowIndex,
+  rowCount,
+  updateColumnCount,
+  selectColumn,
+  move,
+  remove
+}: {
+  row: FunnelPageRow;
+  sectionIndex: number;
+  rowIndex: number;
+  rowCount: number;
+  updateColumnCount: (columnCount: FunnelRowColumnCount) => void;
+  selectColumn: (columnIndex: number) => void;
+  move: (direction: -1 | 1) => void;
+  remove: () => void;
+}) {
+  return <div className="grid gap-4">
+    <div className="flex items-center justify-between gap-3">
+      <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Section {sectionIndex + 1} → Row {rowIndex + 1}</p><h3 className="mt-1 text-lg font-semibold">Row layout</h3></div>
+      <div className="flex gap-1"><button type="button" disabled={rowIndex === 0} onClick={() => move(-1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">↑</button><button type="button" disabled={rowIndex === rowCount - 1} onClick={() => move(1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">↓</button><button type="button" disabled={rowCount <= 1} onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738] disabled:opacity-30">×</button></div>
+    </div>
+    <label className="grid gap-1.5 text-xs font-semibold">Number of columns<select className={INPUT} value={row.columns.length} onChange={(event) => updateColumnCount(Number(event.target.value) as FunnelRowColumnCount)}>{([1, 2, 3, 4] as const).map((count) => <option key={count} value={count}>{count} {count === 1 ? "column" : "columns"}</option>)}</select></label>
+    <p className="text-[10px] leading-4 text-ink/50">Changing the count creates an even grid. If you reduce it, Treeschool moves content from removed columns into the last remaining column instead of deleting it.</p>
+    <InspectorGroup title="Columns" open>
+      {row.columns.map((column, columnIndex) => <button key={column.id} type="button" onClick={() => selectColumn(columnIndex)} className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-left text-xs transition hover:border-[#8a674d] hover:bg-[#fffaf2]"><span className="font-semibold">Column {columnIndex + 1}</span><span className="text-[10px] text-ink/45">{column.span}/12{column.offset !== undefined ? ` · offset ${column.offset}` : " · auto"} · {column.elements.length} {column.elements.length === 1 ? "element" : "elements"}</span></button>)}
+    </InspectorGroup>
+  </div>;
+}
+
+function ColumnInspector({
+  column,
+  sectionIndex,
+  rowIndex,
+  columnIndex,
+  columnCount,
+  update,
+  selectRow,
+  move,
+  remove
+}: {
+  column: FunnelPageColumn;
+  sectionIndex: number;
+  rowIndex: number;
+  columnIndex: number;
+  columnCount: number;
+  update: (recipe: (column: FunnelPageColumn) => void) => void;
+  selectRow: () => void;
+  move: (direction: -1 | 1) => void;
+  remove: () => void;
+}) {
+  const positioned = column.offset !== undefined;
+  const maxOffset = Math.max(0, 12 - column.span);
+  return <div className="grid gap-4">
+    <div className="flex items-center justify-between gap-3">
+      <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Section {sectionIndex + 1} → Row {rowIndex + 1}</p><h3 className="mt-1 text-lg font-semibold">Column {columnIndex + 1}</h3></div>
+      <div className="flex gap-1"><button type="button" disabled={columnIndex === 0} onClick={() => move(-1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">←</button><button type="button" disabled={columnIndex === columnCount - 1} onClick={() => move(1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">→</button><button type="button" disabled={columnCount <= 1} onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738] disabled:opacity-30">×</button></div>
+    </div>
+    <button type="button" onClick={selectRow} className="justify-self-start text-xs font-semibold text-[#74573e] underline underline-offset-4">Select parent row</button>
+    <InspectorGroup title="Grid position" open>
+      <NumberControl label="Width · grid columns" value={column.span} min={1} max={12} onChange={(span) => update((draft) => { draft.span = Math.max(1, Math.min(12, span)); if (draft.offset !== undefined) draft.offset = Math.min(draft.offset, 12 - draft.span); })} />
+      <label className="grid gap-1.5 text-xs font-semibold">Placement<select className={INPUT} value={positioned ? "positioned" : "auto"} onChange={(event) => update((draft) => { if (event.target.value === "auto") delete draft.offset; else draft.offset = Math.min(draft.offset ?? 0, 12 - draft.span); })}><option value="auto">Flow after previous column</option><option value="positioned">Set grid offset manually</option></select></label>
+      {positioned ? <NumberControl label="Offset from left" value={column.offset ?? 0} min={0} max={maxOffset} onChange={(offset) => update((draft) => { draft.offset = Math.max(0, Math.min(12 - draft.span, offset)); })} /> : null}
+      <p className="text-[10px] leading-4 text-ink/50">The page uses a twelve-column grid. Width controls how many tracks this column occupies; offset pins its starting position from the left.</p>
+    </InspectorGroup>
+    <div className="rounded-[12px] border border-[#dfcfb7] bg-white/65 px-3 py-3 text-xs text-ink/55"><strong className="text-ink">{column.elements.length}</strong> {column.elements.length === 1 ? "element" : "elements"} in this column. Drag elements on the canvas to move them between columns.</div>
+  </div>;
+}
 function SectionInspector({
   section,
   defaultBackgroundColor = "#fffdf8",
