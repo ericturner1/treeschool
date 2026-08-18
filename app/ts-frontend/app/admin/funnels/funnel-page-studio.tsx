@@ -63,6 +63,11 @@ type FunnelElementDrag =
   | { kind: "new"; elementType: FunnelPageElement["type"] };
 type FunnelBlockKind = "hero" | "split" | "offer" | "blank";
 type FunnelRowDropTarget = { sectionIndex: number; rowIndex: number };
+type FunnelRowDrag =
+  | { kind: "new"; columnCount: FunnelRowColumnCount }
+  | { kind: "existing"; source: FunnelRowDropTarget };
+type FunnelColumnLocation = { sectionIndex: number; rowIndex: number; columnIndex: number };
+type FunnelColumnDropTarget = FunnelColumnLocation;
 
 const funnelElementGroups: Array<{
   label: string;
@@ -355,6 +360,12 @@ function sameRowDropTarget(left: FunnelRowDropTarget | null, right: FunnelRowDro
   return left?.sectionIndex === right.sectionIndex && left.rowIndex === right.rowIndex;
 }
 
+function sameColumnDropTarget(left: FunnelColumnDropTarget | null, right: FunnelColumnDropTarget) {
+  return left?.sectionIndex === right.sectionIndex
+    && left.rowIndex === right.rowIndex
+    && left.columnIndex === right.columnIndex;
+}
+
 function FunnelElementDropZone({
   target,
   active,
@@ -401,22 +412,46 @@ function FunnelSectionDropZone({
 function FunnelRowDropZone({
   target,
   active,
+  copy,
   onTarget,
   onDrop
 }: {
   target: FunnelRowDropTarget;
   active: boolean;
+  copy: boolean;
   onTarget: (target: FunnelRowDropTarget) => void;
   onDrop: (target: FunnelRowDropTarget) => void;
 }) {
   return <div
     className={`my-2 grid h-10 place-items-center rounded-[12px] border-2 border-dashed text-[11px] font-bold transition ${active ? "border-[#4f7538] bg-[#dcebcf] text-[#3f6130]" : "border-[#739655]/35 bg-white/30 text-[#567b40]/55"}`}
     onDragEnter={(event) => { event.preventDefault(); event.stopPropagation(); onTarget(target); }}
-    onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "copy"; onTarget(target); }}
+    onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = copy ? "copy" : "move"; onTarget(target); }}
     onDrop={(event) => { event.preventDefault(); event.stopPropagation(); onDrop(target); }}
   >
     Drop row here
   </div>;
+}
+
+function FunnelColumnDropZone({
+  target,
+  side,
+  active,
+  onTarget,
+  onDrop
+}: {
+  target: FunnelColumnDropTarget;
+  side: "start" | "end";
+  active: boolean;
+  onTarget: (target: FunnelColumnDropTarget) => void;
+  onDrop: (target: FunnelColumnDropTarget) => void;
+}) {
+  return <div
+    className={`absolute inset-y-0 z-[60] w-4 rounded-full border-2 border-dashed transition ${side === "start" ? "-left-2" : "-right-2"} ${active ? "border-[#8a674d] bg-[#f4e7d5]" : "border-[#8a674d]/35 bg-white/45"}`}
+    onDragEnter={(event) => { event.preventDefault(); event.stopPropagation(); onTarget(target); }}
+    onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "move"; onTarget(target); }}
+    onDrop={(event) => { event.preventDefault(); event.stopPropagation(); onDrop(target); }}
+    aria-hidden="true"
+  />;
 }
 
 function EditorCanvas({
@@ -438,7 +473,14 @@ function EditorCanvas({
   rowDropTarget,
   onRowDropTarget,
   onDropRow,
-  onRemoveRow,
+  onStartRowDrag,
+  onEndRowDrag,
+  columnDrag,
+  columnDropTarget,
+  onStartColumnDrag,
+  onColumnDropTarget,
+  onDropColumn,
+  onEndColumnDrag,
   orderFormPreview = null
 }: {
   document: FunnelPageDocument;
@@ -455,11 +497,18 @@ function EditorCanvas({
   sectionDropTarget: number | null;
   onSectionDropTarget: (target: number) => void;
   onDropBlock: (target: number) => void;
-  rowDrag: FunnelRowColumnCount | null;
+  rowDrag: FunnelRowDrag | null;
   rowDropTarget: FunnelRowDropTarget | null;
   onRowDropTarget: (target: FunnelRowDropTarget) => void;
   onDropRow: (target: FunnelRowDropTarget) => void;
-  onRemoveRow: (sectionIndex: number, rowIndex: number) => void;
+  onStartRowDrag: (event: DragEvent<HTMLElement>, drag: FunnelRowDrag) => void;
+  onEndRowDrag: () => void;
+  columnDrag: FunnelColumnLocation | null;
+  columnDropTarget: FunnelColumnDropTarget | null;
+  onStartColumnDrag: (event: DragEvent<HTMLElement>, source: FunnelColumnLocation) => void;
+  onColumnDropTarget: (target: FunnelColumnDropTarget) => void;
+  onDropColumn: (target: FunnelColumnDropTarget) => void;
+  onEndColumnDrag: () => void;
   orderFormPreview?: ReactNode;
 }) {
   const baseTheme = themes[document.theme];
@@ -522,7 +571,7 @@ function EditorCanvas({
                 {section.rows.map((row, rowIndex) => {
                   const rowSelected = selection.kind === "row" && selection.sectionIndex === sectionIndex && selection.rowIndex === rowIndex;
                   return <Fragment key={row.id}>
-                    {rowDrag ? <FunnelRowDropZone target={{ sectionIndex, rowIndex }} active={sameRowDropTarget(rowDropTarget, { sectionIndex, rowIndex })} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
+                    {rowDrag ? <FunnelRowDropZone target={{ sectionIndex, rowIndex }} active={sameRowDropTarget(rowDropTarget, { sectionIndex, rowIndex })} copy={rowDrag.kind === "new"} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
                     <div
                       className={`group/row relative rounded-[10px] transition ${rowSelected ? "outline outline-2 outline-[#5f873f] outline-offset-4" : "hover:outline hover:outline-2 hover:outline-[#739655]/35 hover:outline-offset-4"}`}
                       onClick={(event) => { event.stopPropagation(); onSelect({ kind: "row", sectionIndex, rowIndex }); }}
@@ -536,12 +585,19 @@ function EditorCanvas({
                             className={`group/column relative grid min-w-0 content-start gap-4 rounded-[8px] transition ${columnSelected ? "outline outline-2 outline-[#8a674d] outline-offset-2" : "hover:outline hover:outline-1 hover:outline-[#8a674d]/40 hover:outline-offset-2"}`}
                             style={viewport === "mobile" ? undefined : { gridColumn: column.offset !== undefined ? `${column.offset + 1} / span ${column.span}` : `span ${column.span}` }}
                           >
+                            {columnDrag ? <FunnelColumnDropZone target={{ sectionIndex, rowIndex, columnIndex }} side="start" active={sameColumnDropTarget(columnDropTarget, { sectionIndex, rowIndex, columnIndex })} onTarget={onColumnDropTarget} onDrop={onDropColumn} /> : null}
+                            {columnDrag && columnIndex === row.columns.length - 1 ? <FunnelColumnDropZone target={{ sectionIndex, rowIndex, columnIndex: row.columns.length }} side="end" active={sameColumnDropTarget(columnDropTarget, { sectionIndex, rowIndex, columnIndex: row.columns.length })} onTarget={onColumnDropTarget} onDrop={onDropColumn} /> : null}
                             <button
                               type="button"
+                              draggable
                               onClick={(event) => { event.stopPropagation(); onSelect({ kind: "column", sectionIndex, rowIndex, columnIndex }); }}
-                              className={`absolute -left-1 -top-3 z-40 rounded-full border border-[#cbb99e] bg-white px-2 py-1 text-[9px] font-bold text-ink/55 shadow-sm transition ${columnSelected ? "opacity-100" : "opacity-0 group-hover/column:opacity-100 focus:opacity-100"}`}
+                              onDragStart={(event) => onStartColumnDrag(event, { sectionIndex, rowIndex, columnIndex })}
+                              onDragEnd={onEndColumnDrag}
+                              className={`absolute -left-1 -top-3 z-40 cursor-grab rounded-full border border-[#cbb99e] bg-white px-2 py-1 text-[9px] font-bold text-ink/55 shadow-sm transition active:cursor-grabbing ${columnSelected ? "opacity-100" : "opacity-0 group-hover/column:opacity-100 focus:opacity-100"}`}
+                              aria-label={`Select or drag column ${columnIndex + 1}`}
+                              title="Drag to move this column"
                             >
-                              Column {columnIndex + 1} · {column.span}/12{column.offset !== undefined ? ` · offset ${column.offset}` : ""}
+                              ⠿ Column {columnIndex + 1} · {column.span}/12{column.offset !== undefined ? ` · offset ${column.offset}` : ""}
                             </button>
                             {column.elements.map((element, elementIndex) => {
                               const location: FunnelElementLocation = { kind: "element", sectionIndex, rowIndex, columnIndex, elementIndex };
@@ -574,14 +630,22 @@ function EditorCanvas({
                           </div>;
                         })}
                       </div>
-                      <div className={`absolute -right-2 -top-3 z-50 flex items-center gap-1 transition ${rowSelected ? "opacity-100" : "opacity-0 group-hover/row:opacity-100"}`}>
-                        <button type="button" onClick={(event) => { event.stopPropagation(); onSelect({ kind: "row", sectionIndex, rowIndex }); }} className="rounded-full border border-[#9eb489] bg-[#f4f9ef] px-2 py-1 text-[10px] font-bold text-[#4d6a39] shadow-sm">Row {rowIndex + 1} · {row.columns.length} {row.columns.length === 1 ? "column" : "columns"}</button>
-                        <button type="button" disabled={section.rows.length <= 1} onClick={(event) => { event.stopPropagation(); onRemoveRow(sectionIndex, rowIndex); }} className="rounded-full border border-[#d7b8ad] bg-white px-2 py-1 text-[10px] font-bold text-[#8c4536] shadow-sm disabled:hidden">Remove</button>
-                      </div>
+                      <button
+                        type="button"
+                        draggable
+                        onClick={(event) => { event.stopPropagation(); onSelect({ kind: "row", sectionIndex, rowIndex }); }}
+                        onDragStart={(event) => onStartRowDrag(event, { kind: "existing", source: { sectionIndex, rowIndex } })}
+                        onDragEnd={onEndRowDrag}
+                        className={`absolute -right-2 -top-3 z-50 cursor-grab rounded-full border border-[#9eb489] bg-[#f4f9ef] px-2 py-1 text-[10px] font-bold text-[#4d6a39] shadow-sm transition active:cursor-grabbing ${rowSelected ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus:opacity-100"}`}
+                        aria-label={`Select or drag row ${rowIndex + 1}`}
+                        title="Drag to move this row"
+                      >
+                        ⠿ Row {rowIndex + 1} · {row.columns.length} {row.columns.length === 1 ? "column" : "columns"}
+                      </button>
                     </div>
                   </Fragment>;
                 })}
-                {rowDrag ? <FunnelRowDropZone target={{ sectionIndex, rowIndex: section.rows.length }} active={sameRowDropTarget(rowDropTarget, { sectionIndex, rowIndex: section.rows.length })} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
+                {rowDrag ? <FunnelRowDropZone target={{ sectionIndex, rowIndex: section.rows.length }} active={sameRowDropTarget(rowDropTarget, { sectionIndex, rowIndex: section.rows.length })} copy={rowDrag.kind === "new"} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
               </div>
             </section>
             </Fragment>
@@ -975,8 +1039,10 @@ export function FunnelPageStudio({
   const [elementDropTarget, setElementDropTarget] = useState<FunnelElementDropTarget | null>(null);
   const [blockDrag, setBlockDrag] = useState<FunnelBlockKind | null>(null);
   const [sectionDropTarget, setSectionDropTarget] = useState<number | null>(null);
-  const [rowDrag, setRowDrag] = useState<FunnelRowColumnCount | null>(null);
+  const [rowDrag, setRowDrag] = useState<FunnelRowDrag | null>(null);
   const [rowDropTarget, setRowDropTarget] = useState<FunnelRowDropTarget | null>(null);
+  const [columnDrag, setColumnDrag] = useState<FunnelColumnLocation | null>(null);
+  const [columnDropTarget, setColumnDropTarget] = useState<FunnelColumnDropTarget | null>(null);
   const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
   const [panel, setPanel] = useState<"elements" | "blocks" | "styles">("elements");
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
@@ -1131,14 +1197,15 @@ export function FunnelPageStudio({
     });
   }
 
-  function startRowDrag(event: DragEvent<HTMLElement>, columnCount: FunnelRowColumnCount) {
+  function startRowDrag(event: DragEvent<HTMLElement>, drag: FunnelRowDrag) {
     event.stopPropagation();
-    event.dataTransfer.effectAllowed = "copy";
-    event.dataTransfer.setData("text/plain", `new:funnel-row:${columnCount}`);
-    setRowDrag(columnCount);
+    event.dataTransfer.effectAllowed = drag.kind === "new" ? "copy" : "move";
+    event.dataTransfer.setData("text/plain", drag.kind === "new" ? `new:funnel-row:${drag.columnCount}` : "move:funnel-row");
+    setRowDrag(drag);
     setRowDropTarget(null);
     endElementDrag();
     endBlockDrag();
+    endColumnDrag();
   }
 
   function endRowDrag() {
@@ -1151,13 +1218,22 @@ export function FunnelPageStudio({
   }
 
   function dropRow(target: FunnelRowDropTarget) {
-    const columnCount = rowDrag;
-    if (!columnCount) return;
+    const drag = rowDrag;
+    if (!drag) return;
     mutate((draft) => {
-      const rows = draft.sections[target.sectionIndex]?.rows;
-      if (!rows) return;
-      const destinationIndex = Math.min(Math.max(target.rowIndex, 0), rows.length);
-      rows.splice(destinationIndex, 0, createFunnelPageRow(columnCount));
+      const targetRows = draft.sections[target.sectionIndex]?.rows;
+      if (!targetRows) return;
+      if (drag.kind === "new") {
+        const destinationIndex = Math.min(Math.max(target.rowIndex, 0), targetRows.length);
+        targetRows.splice(destinationIndex, 0, createFunnelPageRow(drag.columnCount));
+        setSelection({ kind: "row", sectionIndex: target.sectionIndex, rowIndex: destinationIndex });
+        return;
+      }
+      const sourceRows = draft.sections[drag.source.sectionIndex]?.rows;
+      if (!sourceRows) return;
+      if (sourceRows !== targetRows && sourceRows.length <= 1) return;
+      const destinationIndex = moveItemAtInsertionPoint(sourceRows, drag.source.rowIndex, targetRows, target.rowIndex);
+      if (destinationIndex === null) return;
       setSelection({ kind: "row", sectionIndex: target.sectionIndex, rowIndex: destinationIndex });
     });
     endRowDrag();
@@ -1223,6 +1299,46 @@ export function FunnelPageStudio({
     });
   }
 
+  function startColumnDrag(event: DragEvent<HTMLElement>, source: FunnelColumnLocation) {
+    event.stopPropagation();
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", "move:funnel-column");
+    setColumnDrag(source);
+    setColumnDropTarget(null);
+    endElementDrag();
+    endBlockDrag();
+    endRowDrag();
+  }
+
+  function endColumnDrag() {
+    setColumnDrag(null);
+    setColumnDropTarget(null);
+  }
+
+  function updateColumnDropTarget(target: FunnelColumnDropTarget) {
+    setColumnDropTarget((current) => sameColumnDropTarget(current, target) ? current : target);
+  }
+
+  function dropColumn(target: FunnelColumnDropTarget) {
+    const source = columnDrag;
+    if (!source) return;
+    mutate((draft) => {
+      const sourceRow = draft.sections[source.sectionIndex]?.rows[source.rowIndex];
+      const targetRow = draft.sections[target.sectionIndex]?.rows[target.rowIndex];
+      if (!sourceRow || !targetRow) return;
+      const sameRow = sourceRow === targetRow;
+      if (!sameRow && (sourceRow.columns.length <= 1 || targetRow.columns.length >= 4)) return;
+      const destinationIndex = moveItemAtInsertionPoint(sourceRow.columns, source.columnIndex, targetRow.columns, target.columnIndex);
+      if (destinationIndex === null) return;
+      if (!sameRow) {
+        draft.sections[source.sectionIndex]!.rows[source.rowIndex] = resizeFunnelPageRow(sourceRow, sourceRow.columns.length as FunnelRowColumnCount);
+        draft.sections[target.sectionIndex]!.rows[target.rowIndex] = resizeFunnelPageRow(targetRow, targetRow.columns.length as FunnelRowColumnCount);
+      }
+      setSelection({ kind: "column", sectionIndex: target.sectionIndex, rowIndex: target.rowIndex, columnIndex: destinationIndex });
+    });
+    endColumnDrag();
+  }
+
   function startBlockDrag(event: DragEvent<HTMLElement>, kind: FunnelBlockKind) {
     event.stopPropagation();
     event.dataTransfer.effectAllowed = "copy";
@@ -1231,6 +1347,7 @@ export function FunnelPageStudio({
     setSectionDropTarget(null);
     endElementDrag();
     endRowDrag();
+    endColumnDrag();
   }
 
   function endBlockDrag() {
@@ -1261,6 +1378,7 @@ export function FunnelPageStudio({
     setElementDropTarget(null);
     endBlockDrag();
     endRowDrag();
+    endColumnDrag();
   }
 
   function endElementDrag() {
@@ -1532,7 +1650,7 @@ export function FunnelPageStudio({
           <section>
             <h3 className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Layout</h3>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              {([1, 2, 3, 4] as FunnelRowColumnCount[]).map((columnCount) => <button type="button" draggable key={columnCount} onClick={() => appendRow(columnCount)} onDragStart={(event) => startRowDrag(event, columnCount)} onDragEnd={endRowDrag} className="min-h-14 cursor-grab rounded-[12px] border border-[#b7cda3] bg-[#edf5e7] px-2 text-xs font-semibold text-[#4d6a39] hover:border-[#739655] active:cursor-grabbing">⠿ {columnCount}-column row</button>)}
+              {([1, 2, 3, 4] as FunnelRowColumnCount[]).map((columnCount) => <button type="button" draggable key={columnCount} onClick={() => appendRow(columnCount)} onDragStart={(event) => startRowDrag(event, { kind: "new", columnCount })} onDragEnd={endRowDrag} className="min-h-14 cursor-grab rounded-[12px] border border-[#b7cda3] bg-[#edf5e7] px-2 text-xs font-semibold text-[#4d6a39] hover:border-[#739655] active:cursor-grabbing">⠿ {columnCount}-column row</button>)}
             </div>
           </section>
           {funnelElementGroups.map((group) => <section key={group.label}>
@@ -1545,7 +1663,7 @@ export function FunnelPageStudio({
         {!leftSidebarCollapsed && panel === "blocks" ? <div className="mt-4"><p className="mb-2 text-[11px] leading-4 text-ink/45">Drag a block between sections on the page, or click to append it.</p><div className="grid gap-2">{(["hero", "split", "offer", "blank"] as FunnelBlockKind[]).map((kind) => <button type="button" draggable key={kind} onClick={() => appendBlock(kind)} onDragStart={(event) => startBlockDrag(event, kind)} onDragEnd={endBlockDrag} className="min-h-14 cursor-grab rounded-[12px] border border-[#d8c5a8] bg-white px-3 text-left text-sm font-semibold capitalize hover:border-[#739655] active:cursor-grabbing">⠿ {kind} section</button>)}</div></div> : null}
         {!leftSidebarCollapsed && panel === "styles" ? <div className="mt-4 grid gap-4"><InspectorGroup title="Site header & footer" open><p className="text-[11px] leading-5 text-ink/50">Funnel pages have no site chrome unless you enable it here.</p><label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show site header</span><input type="checkbox" checked={document.siteChrome?.showHeader === true} onChange={(event) => mutate((draft) => { draft.siteChrome = { showHeader: event.target.checked, showFooter: draft.siteChrome?.showFooter === true }; })} className="h-4 w-4 accent-[#76a456]" /></label><label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show site footer</span><input type="checkbox" checked={document.siteChrome?.showFooter === true} onChange={(event) => mutate((draft) => { draft.siteChrome = { showHeader: draft.siteChrome?.showHeader === true, showFooter: event.target.checked }; })} className="h-4 w-4 accent-[#76a456]" /></label></InspectorGroup><label className="grid gap-1 text-xs font-semibold">Theme<select className={INPUT} value={document.theme} onChange={(event) => mutate((draft) => { draft.theme = event.target.value as FunnelPageDocument["theme"]; })}>{Object.keys(themes).map((theme) => <option key={theme} value={theme}>{theme[0]!.toUpperCase()}{theme.slice(1)}</option>)}</select></label><ColorControl label="Page background" value={document.styles?.colors?.pageBackground ?? baseTheme.page} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, pageBackground: value } }; })} /><ColorControl label="Surface" value={document.styles?.colors?.surface ?? baseTheme.surface} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, surface: value } }; })} /><ColorControl label="Primary" value={document.styles?.colors?.primary ?? baseTheme.primary} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, primary: value } }; })} /><NumberControl label="Content width" value={document.styles?.layout?.contentWidth ?? 1120} min={640} max={1600} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, layout: { ...draft.styles?.layout, contentWidth: value } }; })} /><NumberControl label="Section spacing" value={document.styles?.layout?.sectionGap ?? 22} min={0} max={160} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, layout: { ...draft.styles?.layout, sectionGap: value } }; })} /></div> : null}
       </aside>
-      <section className="min-w-0 overflow-auto bg-[#d9d4cc] p-5"><EditorCanvas document={document} selection={selection} onSelect={setSelection} viewport={viewport} elementDrag={elementDrag} dropTarget={elementDropTarget} onStartElementDrag={startElementDrag} onDropTarget={updateElementDropTarget} onDropElement={dropElement} onEndElementDrag={endElementDrag} blockDrag={blockDrag} sectionDropTarget={sectionDropTarget} onSectionDropTarget={updateSectionDropTarget} onDropBlock={dropBlock} rowDrag={rowDrag} rowDropTarget={rowDropTarget} onRowDropTarget={updateRowDropTarget} onDropRow={dropRow} onRemoveRow={removeRow} orderFormPreview={orderFormPreview} /></section>
+      <section className="min-w-0 overflow-auto bg-[#d9d4cc] p-5"><EditorCanvas document={document} selection={selection} onSelect={setSelection} viewport={viewport} elementDrag={elementDrag} dropTarget={elementDropTarget} onStartElementDrag={startElementDrag} onDropTarget={updateElementDropTarget} onDropElement={dropElement} onEndElementDrag={endElementDrag} blockDrag={blockDrag} sectionDropTarget={sectionDropTarget} onSectionDropTarget={updateSectionDropTarget} onDropBlock={dropBlock} rowDrag={rowDrag} rowDropTarget={rowDropTarget} onRowDropTarget={updateRowDropTarget} onDropRow={dropRow} onStartRowDrag={startRowDrag} onEndRowDrag={endRowDrag} columnDrag={columnDrag} columnDropTarget={columnDropTarget} onStartColumnDrag={startColumnDrag} onColumnDropTarget={updateColumnDropTarget} onDropColumn={dropColumn} onEndColumnDrag={endColumnDrag} orderFormPreview={orderFormPreview} /></section>
       <aside className={`overflow-auto border-l border-[#d6c6af] bg-[#fffaf2] ${rightSidebarCollapsed ? "p-2" : "p-4"}`}>
         <div className={`mb-3 flex items-center ${rightSidebarCollapsed ? "justify-center" : "justify-between"}`}>
           {!rightSidebarCollapsed ? <span className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Inspector</span> : null}
