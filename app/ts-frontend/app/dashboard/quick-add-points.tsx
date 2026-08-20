@@ -7,16 +7,8 @@ import {
   preloadPointAwardSound,
   unlockPointAwardSound
 } from "../../lib/audio/point-award-sound";
+import { COMMON_AWARD_REASONS } from "../../lib/points/reasons";
 import { showGlobalToast } from "../../lib/toast";
-
-const COMMON_REASONS = [
-  "Finished a lesson",
-  "Excellent effort",
-  "Kept trying",
-  "Helped without being asked",
-  "Great attitude",
-  "Completed schoolwork"
-] as const;
 
 function formatPoints(amount: number) {
   return new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(amount);
@@ -41,7 +33,7 @@ export function QuickAddPoints({
   const [balance, setBalance] = useState(initialBalance);
   const [amount, setAmount] = useState("1");
   const reasons = useMemo(
-    () => Array.from(new Set([...frequentReasons, ...COMMON_REASONS])).slice(0, 10),
+    () => Array.from(new Set([...frequentReasons, ...COMMON_AWARD_REASONS])).slice(0, 10),
     [frequentReasons]
   );
   const [reasonChoice, setReasonChoice] = useState(reasons[0] ?? "Finished a lesson");
@@ -178,7 +170,7 @@ export function QuickAddPoints({
                     </optgroup>
                   ) : null}
                   <optgroup label="Common reasons">
-                    {COMMON_REASONS.filter((reason) => !frequentReasons.includes(reason)).map((reason) => (
+                    {COMMON_AWARD_REASONS.filter((reason) => !frequentReasons.includes(reason)).map((reason) => (
                       <option key={reason} value={reason}>{reason}</option>
                     ))}
                   </optgroup>

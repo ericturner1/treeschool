@@ -312,12 +312,16 @@ export async function downloadPlanPackPacket(input: {
   checkoutSessionId: string;
   weeklyPlanId: string;
   format?: "week" | "days";
+  layout?: "standard" | "two-up";
+  omitFullSizePages?: boolean;
 }) {
   const params = new URLSearchParams({
     intakeId: input.intakeId,
     checkoutSessionId: input.checkoutSessionId,
     weeklyPlanId: input.weeklyPlanId,
-    ...(input.format ? { format: input.format } : {})
+    ...(input.format ? { format: input.format } : {}),
+    ...(input.layout === "two-up" ? { layout: input.layout } : {}),
+    ...(input.layout === "two-up" && input.omitFullSizePages ? { omitFullSizePages: "1" } : {}),
   });
   return requireOk(
     await backendFetch(`${getBackendUrl()}/internal/plan-pack/packet?${params.toString()}`, {

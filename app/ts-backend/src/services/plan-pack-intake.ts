@@ -1051,6 +1051,8 @@ export async function buildPlanPackWeeklyPacket(input: {
   checkoutSessionId: string;
   weeklyPlanId: string;
   format?: "week" | "days";
+  twoUp?: boolean;
+  omitFullSizePages?: boolean;
 }) {
   const intake = await getPlanPackIntake(input.intakeId);
   const parentUserId = await getIntakeParentUserId(intake);
@@ -1077,8 +1079,14 @@ export async function buildPlanPackWeeklyPacket(input: {
   }
 
   return input.format === "days"
-    ? buildWeeklyPacketDayArchive(parentUserId, input.weeklyPlanId)
-    : buildWeeklyPacket(parentUserId, input.weeklyPlanId);
+    ? buildWeeklyPacketDayArchive(parentUserId, input.weeklyPlanId, {
+        twoUp: input.twoUp,
+        omitFullSizePages: input.omitFullSizePages,
+      })
+    : buildWeeklyPacket(parentUserId, input.weeklyPlanId, {
+        twoUp: input.twoUp,
+        omitFullSizePages: input.omitFullSizePages,
+      });
 }
 
 export async function setPlanPackWeeklyPracticeCompression(input: {

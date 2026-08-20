@@ -4,7 +4,13 @@ import { redirect } from "next/navigation";
 import { LocalDateTime } from "../../../../../components/local-date-time";
 import { PointIcon } from "../../../../../components/point-icon";
 import { PointIconPicker } from "../../../../../components/point-icon-picker";
+import { PointReasonField } from "../../../../../components/point-reason-field";
 import { getStudentStreakSettings } from "../../../../../lib/accounts/server";
+import {
+  COMMON_AWARD_REASONS,
+  COMMON_REDEMPTION_REASONS,
+  frequentPointReasons,
+} from "../../../../../lib/points/reasons";
 import { getStudentPoints } from "../../../../../lib/points/server";
 import { ParentModeGuard } from "../../../parent-mode-guard";
 import { getParentStudentPageData, studentRoutePath } from "../student-page-data";
@@ -77,6 +83,8 @@ export default async function StudentPointsPage(props: Props) {
   const redirectTo = studentRoutePath(studentRouteSegment, "/points", searchParams);
   const { singularName, pluralName, iconKey, customIconUrl } = points.settings;
   const canRedeemPoints = points.summary.availableBalance >= 1;
+  const frequentAwardReasons = frequentPointReasons(points.transactions, "award");
+  const frequentRedemptionReasons = frequentPointReasons(points.transactions, "redeem");
   const historyPageCount = Math.max(1, Math.ceil(points.history.total / historyPageSize));
   const historyHref = (page: number) => {
     const query = new URLSearchParams();
@@ -156,10 +164,11 @@ export default async function StudentPointsPage(props: Props) {
                       className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544]"
                     />
                   </label>
-                  <label className="text-sm font-semibold text-ink">
-                    Reason
-                    <input name="reason" type="text" maxLength={300} required placeholder="Finished a difficult assignment" className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544]" />
-                  </label>
+                  <PointReasonField
+                    label="Reason"
+                    frequentReasons={frequentAwardReasons}
+                    commonReasons={COMMON_AWARD_REASONS}
+                  />
                 </div>
                 <div className="mt-5 [&>button]:!w-full">
                   <PointsSubmitButton
@@ -204,10 +213,12 @@ export default async function StudentPointsPage(props: Props) {
                       className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544] disabled:cursor-not-allowed disabled:border-[#d8d5cf] disabled:bg-[#e9e7e2]"
                     />
                   </label>
-                  <label className="text-sm font-semibold text-ink">
-                    Used for
-                    <input name="reason" type="text" maxLength={300} required disabled={!canRedeemPoints} placeholder="Chose tonight's dessert" className="mt-2 min-h-14 w-full rounded-[16px] border border-[#dcc8aa] bg-white px-4 text-base outline-none focus:border-[#8f6544] disabled:cursor-not-allowed disabled:border-[#d8d5cf] disabled:bg-[#e9e7e2]" />
-                  </label>
+                  <PointReasonField
+                    label="Used for"
+                    frequentReasons={frequentRedemptionReasons}
+                    commonReasons={COMMON_REDEMPTION_REASONS}
+                    disabled={!canRedeemPoints}
+                  />
                 </div>
                 <div className="mt-5 [&>button]:!w-full">
                   <PointsSubmitButton

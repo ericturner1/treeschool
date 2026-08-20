@@ -349,6 +349,38 @@ Chapter 5: Shapes and Fractions
     expect(result.learningUnits.map((unit) => unit.components[0]?.pdfPageStart)).toEqual([1, 2, 3]);
   });
 
+  test("marks traceable writing pages as full-size in the persisted page ledger", () => {
+    const result = buildLearningUnitMetadata({
+      label: "Japanese A",
+      role: "student",
+      pageCount: 2,
+      pages: [
+        { pageIndex: 0, label: null, text: "あ を みて こえに だしましょう" },
+        { pageIndex: 1, label: null, text: "もじを なぞって、じぶんで かいて みましょう" },
+      ],
+      pageNumberMapping: null,
+      sections: [{
+        title: "Hiragana あ",
+        startPage: 1,
+        endPage: 2,
+        estimatedMinutes: 30,
+        notes: "",
+        category: "concept_practice",
+        includeInPlan: true,
+        classificationConfidence: "high",
+        exclusionReason: null,
+        supportScope: null,
+        boundaryConfidence: "high",
+        boundaryEvidence: [],
+        pageSelectionAudit: createPageSelectionAudit(null, 1, 2),
+      }],
+    });
+
+    expect(result.pageLedger[0]?.compactPrintPolicy).toBe("shrink");
+    expect(result.pageLedger[1]?.compactPrintPolicy).toBe("full_size_only");
+    expect(result.pageLedger[1]?.compactPrintReason).toContain("full-size");
+  });
+
   test("does not let an AI-provided unit scope schedule obvious parent guidance", () => {
     expect(normalizeSupportScope(
       "unit",

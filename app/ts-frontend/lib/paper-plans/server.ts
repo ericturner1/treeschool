@@ -427,12 +427,14 @@ export async function downloadPaperPlanPacket(input: {
   weeklyPlanId: string;
   format?: "week" | "days";
   layout?: "standard" | "two-up";
+  omitFullSizePages?: boolean;
 }) {
   const params = new URLSearchParams({
     parentUserId: input.parentUserId,
     weeklyPlanId: input.weeklyPlanId,
     ...(input.format ? { format: input.format } : {}),
-    ...(input.layout === "two-up" ? { layout: input.layout } : {})
+    ...(input.layout === "two-up" ? { layout: input.layout } : {}),
+    ...(input.layout === "two-up" && input.omitFullSizePages ? { omitFullSizePages: "1" } : {}),
   });
   return requireOk(
     await backendFetch(`${getBackendUrl()}/internal/paper-plan/packet?${params.toString()}`, {

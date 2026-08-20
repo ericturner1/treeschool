@@ -208,6 +208,7 @@ type WeeklyPlanJobRow = {
 
 export type DocumentAnalysis = {
   structureVersion?: number;
+  compactPrintAnnotationVersion?: number;
   suggestedTitle: string;
   summary: string;
   audience: "student" | "teacher" | "answer_key" | "mixed";
@@ -242,9 +243,13 @@ export type DocumentAnalysis = {
     supportScope?: SupportScope;
     boundaryConfidence?: "low" | "medium" | "high";
     boundaryEvidence?: BoundaryEvidence[];
+    compactPrintPolicy?: CompactPrintPolicy;
+    compactPrintReason?: string | null;
     pageSelectionAudit: PageSelectionAudit;
   }>;
 };
+
+type CompactPrintPolicy = "shrink" | "full_size_only";
 
 type ContentCategory =
   | "concept_introduction"
@@ -302,6 +307,8 @@ type DocumentPageLedgerEntry = {
   roleWithinUnit: LearningUnitPageRole | null;
   classificationConfidence: "low" | "medium" | "high";
   boundaryEvidence: BoundaryEvidence[];
+  compactPrintPolicy: CompactPrintPolicy;
+  compactPrintReason: string | null;
   pageNumberConversionAudit: PageSelectionAudit;
 };
 
@@ -853,6 +860,11 @@ export function normalizeAnalysis(
           const category = normalizeContentCategory(section.category, title, role);
           const supportScope = normalizeSupportScope(section.supportScope, title, category, role);
           const includeInPlan = shouldIncludeClassifiedContent(category, supportScope);
+          const compactPrintPolicy = inferCompactPrintPolicy({
+            requestedPolicy: section.compactPrintPolicy,
+            title,
+            notes: section.notes,
+          });
           return {
             title,
             startPage,
@@ -874,6 +886,10 @@ export function normalizeAnalysis(
             boundaryEvidence: Array.isArray(section.boundaryEvidence)
               ? section.boundaryEvidence as BoundaryEvidence[]
               : [],
+            compactPrintPolicy,
+            compactPrintReason: compactPrintPolicy === "full_size_only"
+              ? String(section.compactPrintReason || "This page is designed for handwriting, tracing, drawing, or another full-size activity.").trim()
+              : null,
             pageSelectionAudit: createPageSelectionAudit(pageNumberMapping, startPage, endPage)
           };
         })
@@ -894,6 +910,8 @@ export function normalizeAnalysis(
         supportScope: null,
         boundaryConfidence: "low" as const,
         boundaryEvidence: [],
+        compactPrintPolicy: "shrink" as const,
+        compactPrintReason: null,
         pageSelectionAudit: createPageSelectionAudit(pageNumberMapping, 1, pageCount)
       }];
   const keptSections = normalizedSections.filter((section) => section.includeInPlan);
@@ -909,6 +927,7 @@ export function normalizeAnalysis(
     academicLevel: normalizeAcademicLevel(analysis.academicLevel),
     pageNumberMapping,
     pageNumberDetectionAudit: analysis.pageNumberDetectionAudit ?? pageNumberMapping?.detectionAudit ?? [],
+    compactPrintAnnotationVersion: Number(analysis.compactPrintAnnotationVersion) >= 1 ? 1 : undefined,
     structureVersion: Number(analysis.structureVersion) >= 3 ? 3 : 2,
     classificationVersion: Number(analysis.classificationVersion) >= 3 ? 3 : 2,
     classificationSummary: {
@@ -1612,6 +1631,8 @@ async function classifyStructuredSections(input: {
       index?: number;
       category?: string;
       supportScope?: string | null;
+      compactPrintPolicy?: string;
+      compactPrintReason?: string | null;
       confidence?: string;
       reason?: string;
     }>;
@@ -1619,9 +1640,10 @@ async function classifyStructuredSections(input: {
     text: `Classify these exact page ranges from curriculum material "${input.label}" with role "${input.role}". The ranges came from a PDF outline or table of contents, so do not request or invent new page boundaries.
 Categories: concept_introduction, concept_practice, worked_example, quiz, assessment, review, answer_key, supporting_content, teacher_guidance, mixed_teaching, table_of_contents, workbook_cover, publishing_page, empty_page, academic_citation, unclear.
 For supporting_content and teacher_guidance, also set supportScope to unit, global, or parent_guidance. Use unit only when the pages are explicitly tied to a particular lesson. Workbook-wide vocabulary lists, indexes, legends, and promotional references are global. Introductions, teaching tips, and how-to-use pages aimed at the parent are parent_guidance.
+Set compactPrintPolicy to full_size_only only for pages whose educational use depends on staying large, such as traceable handwriting grids, drawing/coloring/cutting activities, manipulatives, or staff-paper exercises. Use shrink for reading, instructions, ordinary questions, and reference pages. Give a short compactPrintReason for full_size_only ranges; otherwise use null.
 Keep teaching-related ranges, including lessons, practice, quizzes, assessments, answer keys, and support explicitly connected to a lesson. Filter contents, covers, publisher/legal pages, blank pages, unrelated academic citations, global reference pages, parent guidance, and unclear material. If citations are themselves being taught, use concept_introduction or supporting_content instead of academic_citation.
 Return one classification for every input index. JSON only:
-{"ranges":[{"index":0,"category":"mixed_teaching","supportScope":null,"confidence":"low|medium|high","reason":"brief evidence"}]}
+{"ranges":[{"index":0,"category":"mixed_teaching","supportScope":null,"compactPrintPolicy":"shrink|full_size_only","compactPrintReason":null,"confidence":"low|medium|high","reason":"brief evidence"}]}
 
 RANGES:
 ${JSON.stringify(input.sections.map((section, index) => ({
@@ -1652,6 +1674,18 @@ ${JSON.stringify(input.sections.map((section, index) => ({
       category: resolved.category,
       supportScope: resolved.supportScope,
       includeInPlan: resolved.includeInPlan,
+      compactPrintPolicy: inferCompactPrintPolicy({
+        requestedPolicy: classification?.compactPrintPolicy,
+        title: section.title,
+        notes: section.notes,
+        pageText: [
+          input.pages?.[section.startPage - 1]?.text,
+          input.pages?.[section.endPage - 1]?.text,
+        ].filter(Boolean).join(" "),
+      }),
+      compactPrintReason: String(classification?.compactPrintPolicy) === "full_size_only"
+        ? String(classification?.compactPrintReason || "This activity is intended for full-size printing.").trim()
+        : null,
       classificationConfidence: ["low", "medium", "high"].includes(String(classification?.confidence))
         ? classification?.confidence as "low" | "medium" | "high"
         : section.classificationConfidence ?? "low",
@@ -1937,6 +1971,33 @@ export function learningUnitBaseTitle(value: string) {
   return withoutTrailingRole.trim() || withoutWorkbookGroupPrefix.trim() || original;
 }
 
+function fullSizePrintActivityReason(...values: unknown[]) {
+  const evidence = values
+    .map((value) => String(value ?? ""))
+    .join(" ")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  if (
+    /\b(trace|tracing|traceable|handwriting|copywork|writing grid|write in (?:the )?(?:box|grid)|draw|drawing|colour|coloring|cut out|scissor|music staff|staff paper)\b/.test(evidence) ||
+    /(なぞって|なぞる|じぶんで\s*かいて|書き取り|書いてみ|マス目|ます目)/u.test(evidence)
+  ) {
+    return "This page contains a handwriting, tracing, drawing, or other activity intended for full-size printing.";
+  }
+  return null;
+}
+
+function inferCompactPrintPolicy(input: {
+  requestedPolicy?: unknown;
+  title?: unknown;
+  notes?: unknown;
+  pageText?: unknown;
+}): CompactPrintPolicy {
+  if (String(input.requestedPolicy) === "full_size_only") return "full_size_only";
+  return fullSizePrintActivityReason(input.title, input.notes, input.pageText)
+    ? "full_size_only"
+    : "shrink";
+}
+
 function splitIndependentPracticeCollection(
   section: DocumentAnalysis["sections"][number],
   pageNumberMapping: PageNumberMapping | null
@@ -2126,6 +2187,14 @@ export function buildLearningUnitMetadata(input: {
         pdfPageNumber
       );
       const isOpeningPage = section?.startPage === pdfPageNumber;
+      const inferredCompactPrintReason = fullSizePrintActivityReason(
+        section?.title,
+        section?.notes,
+        pageText,
+      );
+      const compactPrintPolicy = section?.compactPrintPolicy === "full_size_only" || inferredCompactPrintReason
+        ? "full_size_only" as const
+        : "shrink" as const;
       return {
         pdfPageNumber,
         contentPageLabel: input.pages[pageIndex]?.label ?? (
@@ -2142,6 +2211,10 @@ export function buildLearningUnitMetadata(input: {
         roleWithinUnit: learningUnitId ? learningUnitPageRole(category, pageText) : null,
         classificationConfidence: section?.classificationConfidence ?? "low",
         boundaryEvidence: isOpeningPage ? section?.boundaryEvidence ?? [] : [],
+        compactPrintPolicy,
+        compactPrintReason: compactPrintPolicy === "full_size_only"
+          ? section?.compactPrintReason ?? inferredCompactPrintReason ?? "This page is intended for full-size printing."
+          : null,
         pageNumberConversionAudit: createPageSelectionAudit(
           input.pageNumberMapping,
           pdfPageNumber,
@@ -2360,6 +2433,7 @@ export async function analyzePdf(input: {
       ...normalized,
       structureVersion: 3,
       classificationVersion: 3,
+      compactPrintAnnotationVersion: 1,
       ...unitMetadata
     };
   }
@@ -2426,6 +2500,8 @@ Return JSON only with:
       "notes": "brief prerequisites or pairing notes",
       "category": "concept_introduction|concept_practice|worked_example|quiz|assessment|review|answer_key|supporting_content|teacher_guidance|mixed_teaching|table_of_contents|workbook_cover|publishing_page|empty_page|academic_citation|unclear",
       "includeInPlan": true,
+      "compactPrintPolicy": "shrink|full_size_only",
+      "compactPrintReason": null,
       "classificationConfidence": "low|medium|high",
       "exclusionReason": null
     }
@@ -2433,6 +2509,7 @@ Return JSON only with:
 }
 For academicLevel, prioritize explicit publisher grade, age, or level statements on the cover/title/introduction and use the table of contents as supporting evidence. Do not invent a US-grade mapping for publisher levels such as A-G unless the document supplies one; use null grades when uncertain.
 Section startPage/endPage values must be 1-based physical PDF page numbers, not printed page labels. This upload contains exactly ${input.pageCount} physical PDF pages. It may be an excerpt whose table of contents references material that is not physically present; ignore every out-of-bounds contents entry and never invent a section or lesson for missing pages. First look for a table of contents, then classify only the represented ranges that exist in this PDF. If no useful contents exists, inspect every page and create contiguous classified ranges covering the entire document. Keep concept introductions, practice, worked examples, quizzes, assessments, reviews, answer keys, teacher guidance, and supporting material explicitly connected to teaching. Filter table-of-contents pages, covers, publisher/legal pages, blank pages, unrelated academic citations, and unclear content. Citations being explicitly taught are teaching content rather than academic_citation.
+For compactPrintPolicy, use full_size_only only when the page must remain large to be usable: traceable handwriting grids, drawing/coloring/cutting activities, manipulatives, or staff-paper exercises. Use shrink for reading, instructions, ordinary questions, and reference pages. Explain full-size classifications briefly in compactPrintReason; otherwise use null.
 For pageNumberMapping, use visual/OCR evidence from page-number areas, especially consistent corners. Record only page numbers visibly printed inside the content and map them to physical PDF pages. Each segment must be linear and equal length; omit the mapping when it cannot be established reliably. Record the global format/location and a detectionAudit. Keep sections contiguous, ordered, non-overlapping, and collectively describe the whole document.`;
 
   const analysis = await requestGeminiJson<Partial<DocumentAnalysis>>([
@@ -2504,6 +2581,7 @@ For pageNumberMapping, use visual/OCR evidence from page-number areas, especiall
     ...normalized,
     structureVersion: 3,
     classificationVersion: 3,
+    compactPrintAnnotationVersion: 1,
     ...unitMetadata
   };
 }
@@ -8820,6 +8898,43 @@ type WeeklyPacketItem = {
   document: typeof contentDocuments.$inferSelect;
 };
 
+function documentPageNeedsFullSize(
+  analysisJson: unknown,
+  pdfPageNumber: number,
+) {
+  if (!analysisJson || typeof analysisJson !== "object") return false;
+  const analysis = analysisJson as {
+    pageLedger?: Array<{ pdfPageNumber?: unknown; compactPrintPolicy?: unknown }>;
+    sections?: Array<{ startPage?: unknown; endPage?: unknown; compactPrintPolicy?: unknown }>;
+  };
+  const ledgerEntry = Array.isArray(analysis.pageLedger)
+    ? analysis.pageLedger.find((page) => Number(page.pdfPageNumber) === pdfPageNumber)
+    : null;
+  if (ledgerEntry?.compactPrintPolicy === "full_size_only") return true;
+  return Array.isArray(analysis.sections) && analysis.sections.some((section) =>
+    section.compactPrintPolicy === "full_size_only" &&
+    pdfPageNumber >= Number(section.startPage) &&
+    pdfPageNumber <= Number(section.endPage)
+  );
+}
+
+function fullSizeOnlyPacketPageIndices(
+  items: WeeklyPacketItem[],
+  firstPacketPageIndex: number,
+) {
+  const pageIndices: number[] = [];
+  let packetPageIndex = firstPacketPageIndex;
+  for (const { item, document } of items) {
+    for (let sourcePageIndex = item.firstPageIndex; sourcePageIndex <= item.lastPageIndex; sourcePageIndex += 1) {
+      if (documentPageNeedsFullSize(document.analysisJson, sourcePageIndex + 1)) {
+        pageIndices.push(packetPageIndex);
+      }
+      packetPageIndex += 1;
+    }
+  }
+  return pageIndices;
+}
+
 let treeschoolLogoBytesPromise: Promise<Uint8Array | null> | null = null;
 
 function loadTreeschoolLogoBytes() {
@@ -9287,8 +9402,11 @@ type TwoUpQrMarker = {
   dayNumber: number;
 };
 
-function twoUpFilename(filename: string) {
-  return filename.replace(/(\.[^.]+)$/u, "-2-up$1");
+function twoUpFilename(filename: string, omittedFullSizePages = false) {
+  return filename.replace(
+    /(\.[^.]+)$/u,
+    `${omittedFullSizePages ? "-2-up-compact-pages-only" : "-2-up"}$1`,
+  );
 }
 
 async function enlargeSummaryQrCodes(
@@ -9366,12 +9484,18 @@ async function enlargeSummaryQrCodes(
 
 export async function imposeTwoUpPdf(
   bytes: Uint8Array,
-  qrMarkers: TwoUpQrMarker[] = []
+  qrMarkers: TwoUpQrMarker[] = [],
+  omittedPageIndices: number[] = [],
 ) {
   const source = await PDFDocument.load(bytes, { ignoreEncryption: true });
-  const sourcePages = source.getPages();
-  if (sourcePages.length === 0) throw new Error("The PDF contains no pages to arrange.");
+  const allSourcePages = source.getPages();
+  if (allSourcePages.length === 0) throw new Error("The PDF contains no pages to arrange.");
   await enlargeSummaryQrCodes(source, qrMarkers);
+  const omitted = new Set(
+    omittedPageIndices.filter((pageIndex) => Number.isInteger(pageIndex) && pageIndex >= 0),
+  );
+  const sourcePages = allSourcePages.filter((_, pageIndex) => !omitted.has(pageIndex));
+  if (sourcePages.length === 0) throw new Error("No compact-print pages remain after applying the page exclusions.");
 
   const firstSize = sourcePages[0]!.getSize();
   const sheetWidth = Math.max(firstSize.width, firstSize.height);
@@ -9424,12 +9548,13 @@ export async function imposeTwoUpPdf(
 async function formatTwoUpDownload(
   packet: { bytes: Uint8Array; filename: string },
   enabled: boolean | undefined,
-  qrMarkers: TwoUpQrMarker[] = []
+  qrMarkers: TwoUpQrMarker[] = [],
+  omittedPageIndices: number[] = [],
 ) {
   if (!enabled) return packet;
   return {
-    bytes: await imposeTwoUpPdf(packet.bytes, qrMarkers),
-    filename: twoUpFilename(packet.filename)
+    bytes: await imposeTwoUpPdf(packet.bytes, qrMarkers, omittedPageIndices),
+    filename: twoUpFilename(packet.filename, omittedPageIndices.length > 0)
   };
 }
 
@@ -9512,7 +9637,12 @@ async function inspectWeeklyPacketQuality(input: {
 async function buildLegacyWeeklyPacket(
   parentUserId: string,
   weeklyPlanId: string,
-  options: { qualityControl?: boolean; forceRebuild?: boolean; twoUp?: boolean } = {}
+  options: {
+    qualityControl?: boolean;
+    forceRebuild?: boolean;
+    twoUp?: boolean;
+    omitFullSizePages?: boolean;
+  } = {}
 ): Promise<{ bytes: Uint8Array; filename: string }> {
   const [week] = await db
     .select()
@@ -9530,15 +9660,6 @@ async function buildLegacyWeeklyPacket(
   const filename = `${studentFilenameStem}-week-${week.weekNumber}.pdf`;
   const [cachedAsset] = await db.select().from(weeklyPlanPdfAssets)
     .where(eq(weeklyPlanPdfAssets.weeklyPlanId, week.id)).limit(1);
-  if (
-    cachedAsset?.qualityStatus === "passed" &&
-    Number(cachedAsset.qualityReport.templateVersion) === WEEKLY_PACKET_TEMPLATE_VERSION &&
-    !options.forceRebuild
-  ) {
-    const bytes = await downloadPrivateFile(cachedAsset.objectPath);
-    return formatTwoUpDownload({ bytes, filename }, options.twoUp);
-  }
-
   const items = await db
     .select({
       item: weeklyPlanItems,
@@ -9574,6 +9695,20 @@ async function buildLegacyWeeklyPacket(
         `PDF quality check found an invalid range for ${document.label}: pages ${item.firstPageIndex + 1}-${item.lastPageIndex + 1} of ${document.pageCount}.`
       );
     }
+  }
+  const fullSizeOnlyPageIndices = fullSizeOnlyPacketPageIndices(packetItems, 1);
+  if (
+    cachedAsset?.qualityStatus === "passed" &&
+    Number(cachedAsset.qualityReport.templateVersion) === WEEKLY_PACKET_TEMPLATE_VERSION &&
+    !options.forceRebuild
+  ) {
+    const bytes = await downloadPrivateFile(cachedAsset.objectPath);
+    return formatTwoUpDownload(
+      { bytes, filename },
+      options.twoUp,
+      [],
+      options.omitFullSizePages ? fullSizeOnlyPageIndices : [],
+    );
   }
 
   const packet = await PDFDocument.create();
@@ -9701,7 +9836,7 @@ async function buildLegacyWeeklyPacket(
   return formatTwoUpDownload({
     bytes,
     filename
-  }, options.twoUp);
+  }, options.twoUp, [], options.omitFullSizePages ? fullSizeOnlyPageIndices : []);
 }
 
 type WeeklyPacketContext = {
@@ -9723,6 +9858,7 @@ type CachedDayPacket = {
   sourcePageCount: number;
   summaryPageCount: number;
   pageCount: number;
+  fullSizeOnlyPageIndices: number[];
 };
 
 async function loadWeeklyPacketContext(
@@ -9871,6 +10007,10 @@ async function ensureWeeklyDayPackets(
           Number.isFinite(sourcePageCount) && sourcePageCount > 0 &&
           Number.isFinite(pageCount) && pageCount === summaryPageCount + sourcePageCount
         ) {
+          const fullSizeOnlyPageIndices = fullSizeOnlyPacketPageIndices(
+            dayItems,
+            summaryPageCount,
+          );
           dayPackets.push({
             dayNumber,
             bytes,
@@ -9878,7 +10018,8 @@ async function ensureWeeklyDayPackets(
             sourceFingerprint,
             sourcePageCount,
             summaryPageCount,
-            pageCount
+            pageCount,
+            fullSizeOnlyPageIndices,
           });
           continue;
         }
@@ -9977,7 +10118,8 @@ async function ensureWeeklyDayPackets(
       sourceFingerprint,
       sourcePageCount: expectedSourcePageCount,
       summaryPageCount,
-      pageCount: summaryPageCount + expectedSourcePageCount
+      pageCount: summaryPageCount + expectedSourcePageCount,
+      fullSizeOnlyPageIndices: fullSizeOnlyPacketPageIndices(dayItems, summaryPageCount),
     });
   }
 
@@ -10005,7 +10147,12 @@ async function addWeeklyPacketCover(input: {
 export async function buildWeeklyPacket(
   parentUserId: string,
   weeklyPlanId: string,
-  options: { qualityControl?: boolean; forceRebuild?: boolean; twoUp?: boolean } = {}
+  options: {
+    qualityControl?: boolean;
+    forceRebuild?: boolean;
+    twoUp?: boolean;
+    omitFullSizePages?: boolean;
+  } = {}
 ): Promise<{ bytes: Uint8Array; filename: string }> {
   const [week] = await db.select().from(weeklyPlans)
     .where(eq(weeklyPlans.id, weeklyPlanId)).limit(1);
@@ -10017,6 +10164,7 @@ export async function buildWeeklyPacket(
 
   const { context, dayPackets } = await ensureWeeklyDayPackets(parentUserId, weeklyPlanId, options);
   const summaryQrMarkers: TwoUpQrMarker[] = [];
+  const fullSizeOnlyPageIndices: number[] = [];
   let weeklyPageIndex = 1;
   for (const dayPacket of dayPackets) {
     for (let summaryIndex = 0; summaryIndex < dayPacket.summaryPageCount; summaryIndex += 1) {
@@ -10026,6 +10174,9 @@ export async function buildWeeklyPacket(
         dayNumber: dayPacket.dayNumber
       });
     }
+    fullSizeOnlyPageIndices.push(
+      ...dayPacket.fullSizeOnlyPageIndices.map((pageIndex) => weeklyPageIndex + pageIndex),
+    );
     weeklyPageIndex += dayPacket.pageCount;
   }
   const sourceFingerprint = await sha256Hex(new TextEncoder().encode(JSON.stringify({
@@ -10050,7 +10201,8 @@ export async function buildWeeklyPacket(
       return formatTwoUpDownload(
         { bytes, filename: context.filename },
         options.twoUp,
-        summaryQrMarkers
+        summaryQrMarkers,
+        options.omitFullSizePages ? fullSizeOnlyPageIndices : [],
       );
     } catch (error) {
       console.warn("Could not reuse the cached weekly PDF; assembling it again.", error);
@@ -10119,14 +10271,15 @@ export async function buildWeeklyPacket(
   return formatTwoUpDownload(
     { bytes, filename: context.filename },
     options.twoUp,
-    summaryQrMarkers
+    summaryQrMarkers,
+    options.omitFullSizePages ? fullSizeOnlyPageIndices : [],
   );
 }
 
 export async function buildWeeklyPacketDayArchive(
   parentUserId: string,
   weeklyPlanId: string,
-  options: { twoUp?: boolean } = {}
+  options: { twoUp?: boolean; omitFullSizePages?: boolean } = {}
 ): Promise<{ bytes: Uint8Array; filename: string }> {
   const { context, dayPackets } = await ensureWeeklyDayPackets(parentUserId, weeklyPlanId);
   const downloadPackets = await Promise.all(dayPackets.map(async (packet) => {
@@ -10138,14 +10291,21 @@ export async function buildWeeklyPacketDayArchive(
     }));
     return {
       ...packet,
-      bytes: await imposeTwoUpPdf(packet.bytes, qrMarkers),
-      filename: twoUpFilename(packet.filename)
+      bytes: await imposeTwoUpPdf(
+        packet.bytes,
+        qrMarkers,
+        options.omitFullSizePages ? packet.fullSizeOnlyPageIndices : [],
+      ),
+      filename: twoUpFilename(
+        packet.filename,
+        Boolean(options.omitFullSizePages && packet.fullSizeOnlyPageIndices.length > 0),
+      )
     };
   }));
   const zipEntries = Object.fromEntries(downloadPackets.map((packet) => [packet.filename, packet.bytes]));
   return {
     bytes: zipSync(zipEntries, { level: 0 }),
-    filename: `${context.filename.replace(/\.pdf$/i, "")}-days${options.twoUp ? "-2-up" : ""}.zip`
+    filename: `${context.filename.replace(/\.pdf$/i, "")}-days${options.twoUp ? "-2-up" : ""}${options.twoUp && options.omitFullSizePages ? "-compact-pages-only" : ""}.zip`
   };
 }
 

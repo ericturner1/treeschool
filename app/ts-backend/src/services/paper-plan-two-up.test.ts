@@ -51,6 +51,20 @@ describe("two-up lesson-plan PDFs", () => {
     expect(compact.getPage(0).getWidth()).toBe(842);
     expect(compact.getPage(0).getHeight()).toBe(595);
   });
+
+  test("omits pages annotated as full-size before pairing the compact pages", async () => {
+    const source = await PDFDocument.create();
+    const font = await source.embedFont(StandardFonts.Helvetica);
+    for (let pageNumber = 1; pageNumber <= 5; pageNumber += 1) {
+      const page = source.addPage([612, 792]);
+      page.drawText(`Source page ${pageNumber}`, { x: 40, y: 740, size: 24, font });
+    }
+
+    const compactBytes = await imposeTwoUpPdf(await source.save(), [], [1, 3]);
+    const compact = await PDFDocument.load(compactBytes);
+
+    expect(compact.getPageCount()).toBe(2);
+  });
 });
 
 describe("workbook page preservation", () => {

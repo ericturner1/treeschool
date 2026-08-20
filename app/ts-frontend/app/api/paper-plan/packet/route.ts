@@ -12,6 +12,7 @@ export async function GET(request: Request) {
   const weeklyPlanId = url.searchParams.get("weeklyPlanId");
   const format = url.searchParams.get("format") === "days" ? "days" : "week";
   const layout = url.searchParams.get("layout") === "two-up" ? "two-up" : "standard";
+  const omitFullSizePages = layout === "two-up" && url.searchParams.get("omitFullSizePages") === "1";
   if (!weeklyPlanId) {
     return Response.json({ error: "weeklyPlanId is required." }, { status: 400 });
   }
@@ -21,7 +22,8 @@ export async function GET(request: Request) {
       parentUserId: user.id,
       weeklyPlanId,
       format,
-      layout
+      layout,
+      omitFullSizePages,
     });
     return new Response(await response.arrayBuffer(), {
       headers: {

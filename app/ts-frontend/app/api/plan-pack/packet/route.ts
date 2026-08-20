@@ -8,6 +8,8 @@ export async function GET(request: Request) {
   const checkoutSessionId = url.searchParams.get("session_id");
   const weeklyPlanId = url.searchParams.get("weeklyPlanId");
   const format = url.searchParams.get("format") === "days" ? "days" : "week";
+  const layout = url.searchParams.get("layout") === "two-up" ? "two-up" : "standard";
+  const omitFullSizePages = layout === "two-up" && url.searchParams.get("omitFullSizePages") === "1";
 
   if (!intakeId || !checkoutSessionId || !weeklyPlanId) {
     return NextResponse.json(
@@ -21,7 +23,9 @@ export async function GET(request: Request) {
       intakeId,
       checkoutSessionId,
       weeklyPlanId,
-      format
+      format,
+      layout,
+      omitFullSizePages,
     });
     return new Response(await response.arrayBuffer(), {
       headers: {

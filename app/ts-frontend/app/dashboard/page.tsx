@@ -8,6 +8,7 @@ import {
 } from "../../lib/accounts/server";
 import { getCurrentUser } from "../../lib/auth/server";
 import { getRequestDictionary } from "../../lib/i18n/server";
+import { frequentPointReasons } from "../../lib/points/reasons";
 import { getStudentPoints, type StudentPointsPayload } from "../../lib/points/server";
 import { returnToParentAction } from "./actions";
 import { QuickAddPoints } from "./quick-add-points";
@@ -22,15 +23,7 @@ type DashboardPageProps = {
 };
 
 function frequentAwardReasons(points: StudentPointsPayload) {
-  const counts = new Map<string, number>();
-  for (const transaction of points.transactions) {
-    if (transaction.kind !== "award" || transaction.reversed || transaction.amount <= 0) continue;
-    counts.set(transaction.reason, (counts.get(transaction.reason) ?? 0) + 1);
-  }
-  return Array.from(counts)
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-    .slice(0, 5)
-    .map(([reason]) => reason);
+  return frequentPointReasons(points.transactions, "award");
 }
 
 export default async function DashboardPage(props: DashboardPageProps) {

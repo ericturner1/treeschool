@@ -2143,6 +2143,7 @@ const server = Bun.serve({
       const weeklyPlanId = url.searchParams.get("weeklyPlanId");
       const format = url.searchParams.get("format") === "days" ? "days" : "week";
       const twoUp = url.searchParams.get("layout") === "two-up";
+      const omitFullSizePages = twoUp && url.searchParams.get("omitFullSizePages") === "1";
       if (!parentUserId || !weeklyPlanId) {
         return Response.json(
           { error: "parentUserId and weeklyPlanId are required." },
@@ -2158,8 +2159,8 @@ const server = Bun.serve({
           layout: twoUp ? "two-up" : "standard"
         });
         const packet = format === "days"
-          ? await buildWeeklyPacketDayArchive(parentUserId, weeklyPlanId, { twoUp })
-          : await buildWeeklyPacket(parentUserId, weeklyPlanId, { twoUp });
+          ? await buildWeeklyPacketDayArchive(parentUserId, weeklyPlanId, { twoUp, omitFullSizePages })
+          : await buildWeeklyPacket(parentUserId, weeklyPlanId, { twoUp, omitFullSizePages });
         await completeWeeklyPlanDownload({
           parentUserId,
           weeklyPlanId,
@@ -2436,6 +2437,8 @@ const server = Bun.serve({
       const checkoutSessionId = url.searchParams.get("checkoutSessionId");
       const weeklyPlanId = url.searchParams.get("weeklyPlanId");
       const format = url.searchParams.get("format") === "days" ? "days" : "week";
+      const twoUp = url.searchParams.get("layout") === "two-up";
+      const omitFullSizePages = twoUp && url.searchParams.get("omitFullSizePages") === "1";
 
       if (!intakeId || !checkoutSessionId || !weeklyPlanId) {
         return Response.json(
@@ -2449,7 +2452,9 @@ const server = Bun.serve({
           intakeId,
           checkoutSessionId,
           weeklyPlanId,
-          format
+          format,
+          twoUp,
+          omitFullSizePages,
         });
         return new Response(packet.bytes, {
           headers: {

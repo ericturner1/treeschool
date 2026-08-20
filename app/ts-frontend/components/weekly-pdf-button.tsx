@@ -46,6 +46,7 @@ export function WeeklyPdfButton({
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<DownloadFormat>("week");
   const [twoUp, setTwoUp] = useState(false);
+  const [omitFullSizePages, setOmitFullSizePages] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +70,7 @@ export function WeeklyPdfButton({
     if (pending) return;
     setFormat("week");
     setTwoUp(false);
+    setOmitFullSizePages(false);
     setError(null);
     setOpen(true);
   }
@@ -81,7 +83,8 @@ export function WeeklyPdfButton({
       const separator = href.includes("?") ? "&" : "?";
       const params = new URLSearchParams({
         format,
-        ...(twoUp ? { layout: "two-up" } : {})
+        ...(twoUp ? { layout: "two-up" } : {}),
+        ...(twoUp && omitFullSizePages ? { omitFullSizePages: "1" } : {}),
       });
       const response = await fetch(`${href}${separator}${params.toString()}`, { cache: "no-store" });
       if (!response.ok) {
@@ -91,8 +94,8 @@ export function WeeklyPdfButton({
       const blob = await response.blob();
       const disposition = response.headers.get("Content-Disposition") ?? "";
       const fallback = format === "days"
-        ? `week-${weekNumber}-separate-days${twoUp ? "-2-up" : ""}.zip`
-        : `week-${weekNumber}${twoUp ? "-2-up" : ""}.pdf`;
+        ? `week-${weekNumber}-separate-days${twoUp ? "-2-up" : ""}${twoUp && omitFullSizePages ? "-compact-pages-only" : ""}.zip`
+        : `week-${weekNumber}${twoUp ? "-2-up" : ""}${twoUp && omitFullSizePages ? "-compact-pages-only" : ""}.pdf`;
       const filename = downloadFilename(disposition, fallback);
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -213,6 +216,31 @@ export function WeeklyPdfButton({
             </span>
           </span>
         </label>
+
+        {twoUp ? (
+          <label
+            className={`mt-3 flex cursor-pointer items-start gap-3 rounded-[18px] border px-4 py-3.5 transition ${
+              omitFullSizePages
+                ? "border-[#9ab77f] bg-[#f2f7ea]"
+                : "border-[#d8ccb8] bg-white hover:border-[#c8ac84]"
+            } ${pending ? "cursor-wait opacity-60" : ""}`}
+          >
+            <input
+              type="checkbox"
+              checked={omitFullSizePages}
+              onChange={(event) => setOmitFullSizePages(event.target.checked)}
+              disabled={pending}
+              className="mt-1 h-5 w-5 flex-none accent-[#6f9550]"
+            />
+            <span className="min-w-0">
+              <span className="block font-semibold text-ink">Omit pages that need full-size printing</span>
+              <span className="mt-1 block text-sm leading-5 text-ink/60">
+                Leaves traceable handwriting, drawing, cutting, staff-paper, and other pages marked
+                as full-size out of this compact file. Print those pages separately from the workbook.
+              </span>
+            </span>
+          </label>
+        ) : null}
 
         {error ? (
           <p className="mt-4 rounded-[14px] border border-[#d9afa2] bg-[#fff1ec] px-4 py-3 text-sm font-semibold text-[#8b3e2f]">
