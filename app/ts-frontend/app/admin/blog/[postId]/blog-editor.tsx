@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { ClipboardEvent, ReactNode } from "react";
 import type { BlogCategory, BlogPost } from "../../../../lib/blog/server";
 import {
   generateBlogDraftAction,
@@ -9,6 +9,77 @@ import {
   unpublishBlogPostAction,
 } from "../actions";
 import { DeleteBlogPostButton } from "./delete-blog-post-button";
+
+/**
+ * Mirrors the server allowlist in ts-backend/src/services/blog.ts (sanitizeBlogHtml).
+ * Keep the two in sync: anything the editor keeps but the server strips will silently
+ * disappear on save, which is exactly the paste-then-save mismatch this guards against.
+ */
+const EDITOR_ALLOWED_TAGS = new Set([
+  "P", "H2", "H3", "H4", "UL", "OL", "LI", "STRONG", "EM", "A",
+  "BLOCKQUOTE", "CODE", "PRE", "HR", "BR", "FIGURE", "FIGCAPTION", "IMG",
+]);
+
+/**
+ * h1 -> h2 because the article template already renders the post title as the page's
+ * only <h1>. The server unwraps b/i entirely, so promote them to their semantic
+ * equivalents before they reach it.
+ */
+const EDITOR_TAG_REMAP: Record<string, string> = {
+  H1: "H2",
+  B: "STRONG",
+  I: "EM",
+};
+
+const EDITOR_KEEP_ATTRS: Record<string, string[]> = {
+  A: ["href", "title", "target", "rel"],
+  IMG: ["src", "alt", "title", "width", "height", "loading"],
+};
+
+/**
+ * Reduces clipboard HTML to the same shape the server will accept, so that what the
+ * editor displays after a paste is what actually gets stored. Browsers put heavily
+ * inline-styled markup on the clipboard when copying rendered pages; without this the
+ * editor renders that pasted CSS and the styling vanishes on the next save.
+ */
+export function normalizePastedHtml(dirty: string): string {
+  const doc = new DOMParser().parseFromString(dirty, "text/html");
+
+  const clean = (parent: Node) => {
+    for (const child of [...parent.childNodes]) {
+      if (child.nodeType === Node.TEXT_NODE) continue;
+      if (child.nodeType !== Node.ELEMENT_NODE) {
+        child.remove();
+        continue;
+      }
+
+      const element = child as Element;
+      clean(element); // depth-first, so children are settled before the parent moves
+
+      const mapped = EDITOR_TAG_REMAP[element.tagName] ?? element.tagName;
+
+      if (!EDITOR_ALLOWED_TAGS.has(mapped)) {
+        element.replaceWith(...element.childNodes); // unwrap, keep the text
+        continue;
+      }
+
+      let target = element;
+      if (mapped !== element.tagName) {
+        target = doc.createElement(mapped.toLowerCase());
+        while (element.firstChild) target.appendChild(element.firstChild);
+        element.replaceWith(target);
+      }
+
+      const keep = EDITOR_KEEP_ATTRS[target.tagName] ?? [];
+      for (const attribute of [...target.attributes]) {
+        if (!keep.includes(attribute.name)) target.removeAttribute(attribute.name);
+      }
+    }
+  };
+
+  clean(doc.body);
+  return doc.body.innerHTML;
+}
 
 function ToolbarButton({
   label,
@@ -412,6 +483,15 @@ export function BlogEditor({
     const href = window.prompt("Paste an internal path or a complete URL");
     if (href) command("createLink", href);
   };
+  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    const html = event.clipboardData.getData("text/html");
+    if (!html) return; // plain-text pastes carry no markup to clean
+    event.preventDefault();
+    editorRef.current?.focus();
+    document.execCommand("insertHTML", false, normalizePastedHtml(html));
+    syncEditorHtml();
+    rememberEditorSelection();
+  };
   const rememberEditorSelection = () => {
     const selection = window.getSelection();
     if (!selection?.rangeCount || !editorRef.current) return;
@@ -667,6 +747,7 @@ export function BlogEditor({
             ref={attachEditor}
             contentEditable
             suppressContentEditableWarning
+            onPaste={handlePaste}
             onInput={() => {
               syncEditorHtml();
               rememberEditorSelection();
