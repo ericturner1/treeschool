@@ -486,6 +486,7 @@ type FunnelPageColumnContent = {
   id: string;
   span: number;
   offset?: number;
+  verticalAlign?: "top" | "center" | "bottom";
   elements: Array<z.infer<typeof funnelPageElementSchema>>;
   rows?: FunnelPageRowContent[];
 };
@@ -499,6 +500,7 @@ type FunnelPageColumnInput = {
   id: string;
   span?: number;
   offset?: number;
+  verticalAlign?: "top" | "center" | "bottom";
   elements: Array<z.input<typeof funnelPageElementSchema>>;
   rows?: FunnelPageRowInput[];
 };
@@ -512,6 +514,7 @@ const funnelPageColumnSchema: z.ZodType<FunnelPageColumnContent, z.ZodTypeDef, F
   id: z.string().trim().min(1).max(160),
   span: z.number().int().min(1).max(12).default(12),
   offset: z.number().int().min(0).max(11).optional(),
+  verticalAlign: z.enum(["top", "center", "bottom"]).optional(),
   elements: z.array(funnelPageElementSchema).max(100),
   rows: z.array(funnelPageRowSchema).max(30).optional()
 }).refine(

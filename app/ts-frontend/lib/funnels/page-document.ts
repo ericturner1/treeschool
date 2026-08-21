@@ -247,6 +247,7 @@ export type FunnelPageColumn = {
   id: string;
   span: number;
   offset?: number;
+  verticalAlign?: "top" | "center" | "bottom";
   elements: FunnelPageElement[];
   rows?: FunnelPageRow[];
 };

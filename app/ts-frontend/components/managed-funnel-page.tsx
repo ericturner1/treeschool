@@ -453,6 +453,7 @@ export async function ManagedFunnelPageView({
               key={column.id}
               className="grid gap-5 lg:[grid-column:var(--funnel-grid-column)]"
               style={{
+                alignSelf: column.verticalAlign === "top" ? "start" : column.verticalAlign === "center" ? "center" : column.verticalAlign === "bottom" ? "end" : undefined,
                 "--funnel-grid-column": column.offset !== undefined
                   ? `${column.offset + 1} / span ${column.span}`
                   : `span ${column.span} / span ${column.span}`

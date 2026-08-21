@@ -101,10 +101,12 @@ describe("funnel page layout rows", () => {
   test("preserves nested rows when resizing or removing columns", () => {
     const row = createFunnelPageRow(3);
     const nested = createFunnelPageRow(2);
+    row.columns[0]!.verticalAlign = "bottom";
     row.columns[2]!.rows = [nested];
 
     const resized = resizeFunnelPageRow(row, 2);
     expect(resized.columns[1]!.rows?.[0]?.id).toBe(nested.id);
+    expect(resized.columns[0]!.verticalAlign).toBe("bottom");
 
     const removed = removeFunnelPageColumn(row, 2);
     expect(removed.columns[1]!.rows?.[0]?.id).toBe(nested.id);

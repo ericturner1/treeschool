@@ -1013,7 +1013,10 @@ function EditorCanvas({
                     onDropRow({ sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 });
                   }}
                   className={`group/column relative grid min-w-0 content-start gap-4 rounded-[8px] transition ${columnSelected ? "cursor-grab active:cursor-grabbing" : ""} ${columnDragged ? "opacity-35" : ""} ${columnActive ? "outline outline-2 outline-[#8a674d] outline-offset-2" : ""}`}
-                  style={viewport === "mobile" ? undefined : { gridColumn: column.offset !== undefined ? `${column.offset + 1} / span ${column.span}` : `span ${column.span}` }}
+                  style={{
+                    alignSelf: column.verticalAlign === "top" ? "start" : column.verticalAlign === "center" ? "center" : column.verticalAlign === "bottom" ? "end" : undefined,
+                    ...(viewport === "mobile" ? {} : { gridColumn: column.offset !== undefined ? `${column.offset + 1} / span ${column.span}` : `span ${column.span}` }),
+                  }}
                 >
                   {columnDrag && canDropColumnsHere ? <FunnelColumnDropZone target={columnLocation} side="start" active={sameColumnDropTarget(columnDropTarget, columnLocation)} onTarget={onColumnDropTarget} onDrop={onDropColumn} /> : null}
                   {columnDrag && canDropColumnsHere && columnIndex === row.columns.length - 1 ? <FunnelColumnDropZone target={{ sectionIndex, rowPath, columnIndex: row.columns.length }} side="end" active={sameColumnDropTarget(columnDropTarget, { sectionIndex, rowPath, columnIndex: row.columns.length })} onTarget={onColumnDropTarget} onDrop={onDropColumn} /> : null}
@@ -2417,6 +2420,8 @@ function ColumnInspector({
       <div className="flex gap-1"><button type="button" disabled={columnIndex === 0} onClick={() => move(-1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">←</button><button type="button" disabled={columnIndex === columnCount - 1} onClick={() => move(1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">→</button><button type="button" disabled={columnCount <= 1} onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738] disabled:opacity-30">×</button></div>
     </div>
     <button type="button" onClick={selectRow} className="justify-self-start text-xs font-semibold text-[#74573e] underline underline-offset-4">Select parent row</button>
+    <label className="grid gap-1.5 text-xs font-semibold">Vertical content alignment<select className={INPUT} value={column.verticalAlign ?? "row"} onChange={(event) => update((draft) => { const value = event.target.value; if (value === "row") delete draft.verticalAlign; else draft.verticalAlign = value as NonNullable<FunnelPageColumn["verticalAlign"]>; })}><option value="row">Use row default</option><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></select></label>
+    <p className="text-[10px] leading-4 text-ink/50">Top aligns this column with the top edge of the tallest column in its row. Center and bottom align it within that same row height.</p>
     <InspectorGroup title="Grid position" open>
       <NumberControl label="Width · grid columns" value={column.span} min={1} max={12} onChange={(span) => update((draft) => { draft.span = Math.max(1, Math.min(12, span)); if (draft.offset !== undefined) draft.offset = Math.min(draft.offset, 12 - draft.span); })} />
       <label className="grid gap-1.5 text-xs font-semibold">Placement<select className={INPUT} value={positioned ? "positioned" : "auto"} onChange={(event) => update((draft) => { if (event.target.value === "auto") delete draft.offset; else draft.offset = Math.min(draft.offset ?? 0, 12 - draft.span); })}><option value="auto">Flow after previous column</option><option value="positioned">Set grid offset manually</option></select></label>

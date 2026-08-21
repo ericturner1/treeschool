@@ -125,6 +125,7 @@ describe("funnel administration normalization", () => {
           columns: [{
             id: "column_parent",
             span: 12,
+            verticalAlign: "top",
             elements: [],
             rows: [{
               id: "row_child",
@@ -140,6 +141,7 @@ describe("funnel administration normalization", () => {
     });
 
     expect(content.sections[0]?.rows[0]?.columns[0]?.rows?.[0]?.id).toBe("row_child");
+    expect(content.sections[0]?.rows[0]?.columns[0]?.verticalAlign).toBe("top");
     expect(content.sections[0]?.rows[0]?.columns[0]?.rows?.[0]?.columns[0]?.elements[0]?.id).toBe("nested_text");
   });
 
