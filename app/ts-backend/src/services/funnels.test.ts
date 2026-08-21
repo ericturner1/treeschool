@@ -207,7 +207,7 @@ describe("funnel administration normalization", () => {
                 paddingBottom: 8,
                 paddingLeft: 14
               },
-              props: { media: asset, fit: "contain", caption: "" }
+              props: { media: asset, fit: "contain", caption: "", sizePercent: 64 }
             }]
           }]
         }]
@@ -240,6 +240,7 @@ describe("funnel administration normalization", () => {
     expect(element?.type).toBe("image");
     if (element?.type !== "image") throw new Error("Expected an image element.");
     expect(element.props.media.publicUrl).toBe(asset.publicUrl);
+    expect(element.props.sizePercent).toBe(64);
     expect(element.spacing).toMatchObject({ marginTop: 10, marginRight: -4, paddingLeft: 14 });
   });
 

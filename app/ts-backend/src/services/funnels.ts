@@ -361,7 +361,8 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
     props: z.object({
       media: funnelMediaSnapshotSchema,
       fit: z.enum(["contain", "cover"]).default("contain"),
-      caption: z.string().trim().max(1000).default("")
+      caption: z.string().trim().max(1000).default(""),
+      sizePercent: z.number().int().min(10).max(100).optional()
     })
   }),
   funnelElementBaseSchema.extend({
@@ -3533,7 +3534,7 @@ export async function generateAdminFunnelPageDraft(
               `Allowed themes: ${FUNNEL_PAGE_THEMES.join(", ")}. Section tones: default, muted, accent, dark. Section widths: narrow, standard, wide.`,
               "Allowed element types are eyebrow, heading, text, list, image, workbook_gallery, button, lead_capture, and divider.",
               "Use this exact nesting shape: content={schemaVersion:2,kind:'funnel_page',theme,sections:[{id,props:{tone,width,background:null},rows:[{id,columns:[{id,span,elements:[]}]}]}]}.",
-              "Exact element props: eyebrow={text,align}; heading={text,level:'h1'|'h2'|'h3',align}; text={text,style:'lead'|'body'|'small',align}; list={items:string[],style:'checks'|'bullets',align}; image={media:{assetId,storagePath,publicUrl,alt,width,height},fit:'contain'|'cover',caption}; workbook_gallery={title,cover:media,images:media[],fit:'contain'|'cover',caption}; button={label,variant:'primary'|'secondary'|'text',align,action}; lead_capture={heading,collectFirstName,firstNameLabel,emailLabel,submitLabel,action}; divider={}.",
+              "Exact element props: eyebrow={text,align}; heading={text,level:'h1'|'h2'|'h3',align}; text={text,style:'lead'|'body'|'small',align}; list={items:string[],style:'checks'|'bullets',align}; image={media:{assetId,storagePath,publicUrl,alt,width,height},fit:'contain'|'cover',caption,sizePercent?:10..100}; workbook_gallery={title,cover:media,images:media[],fit:'contain'|'cover',caption}; button={label,variant:'primary'|'secondary'|'text',align,action}; lead_capture={heading,collectFirstName,firstNameLabel,emailLabel,submitLabel,action}; divider={}.",
               "Every element needs a unique stable string id. Rows, columns, and sections also need unique stable string ids. Columns use an integer span from 1 through 12.",
               "Buttons contain label, variant (primary, secondary, or text), align, and a semantic action.",
               "Use action {\"type\":\"next_step\"} to continue through the funnel. Use {\"type\":\"url\",\"target\":\"...\"} only for a deliberate external or fixed destination.",

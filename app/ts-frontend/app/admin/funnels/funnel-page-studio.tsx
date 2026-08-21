@@ -23,6 +23,7 @@ import {
   createFunnelPageRow,
   emptyFunnelPageDocument,
   removeFunnelPageColumn,
+  resolveFunnelImageSizePercent,
   resizeFunnelPageRow
 } from "../../../lib/funnels/page-document";
 import {
@@ -240,7 +241,7 @@ function createElement(type: FunnelPageElement["type"]): FunnelPageElement {
       appearance: { marker: "check", markerSize: 22, markerColor: "#76a456", itemSpacing: 8, markerGap: 12, borderWidth: 0, borderRadius: 14, paddingX: 0, paddingY: 0 }
     }
   };
-  if (type === "image") return { id, type, props: { media: emptyMedia(), fit: "contain", caption: "" } };
+  if (type === "image") return { id, type, props: { media: emptyMedia(), fit: "contain", caption: "", sizePercent: 100 } };
   if (type === "workbook_gallery") return { id, type, props: { title: "Workbook preview", cover: emptyMedia(), images: [], fit: "contain", caption: "" } };
   if (type === "button") return { id, type, props: { label: "Continue", variant: "primary", align: "left", action: { type: "next_step" } } };
   if (type === "countdown") return {
@@ -408,7 +409,7 @@ function PreviewElement({ element, palette, onSelect, selected }: { element: Fun
     }
     return <ul onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} grid`} style={funnelListContainerStyle(element.props)}>{element.props.items.map((item, index) => <li key={index} className="flex" style={funnelListItemStyle(element.props)}><span className="shrink-0 font-black" aria-hidden="true" style={funnelListMarkerStyle(element.props, palette.primary)}>{funnelListMarker(element.props)}</span><span style={funnelListTextStyle(element.props)}>{item}</span></li>)}</ul>;
   }
-  if (element.type === "image") return <button type="button" onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} min-h-28 w-full overflow-hidden border border-dashed border-ink/20 bg-white/40`}>{element.props.media.publicUrl ? <Image src={element.props.media.publicUrl} alt={element.props.media.alt} width={1000} height={700} unoptimized className={`max-h-96 w-full ${element.props.fit === "cover" ? "object-cover" : "object-contain"}`} /> : <span className="text-sm text-ink/45">Choose an image in the inspector</span>}</button>;
+  if (element.type === "image") return <button type="button" onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} mx-auto min-h-28 overflow-hidden border border-dashed border-ink/20 bg-white/40`} style={{ width: `${resolveFunnelImageSizePercent(element.props.sizePercent)}%` }}>{element.props.media.publicUrl ? <Image src={element.props.media.publicUrl} alt={element.props.media.alt} width={1000} height={700} unoptimized className={`max-h-96 w-full ${element.props.fit === "cover" ? "object-cover" : "object-contain"}`} /> : <span className="text-sm text-ink/45">Choose an image in the inspector</span>}</button>;
   if (element.type === "workbook_gallery") {
     const preview = element.props.cover.publicUrl ?? element.props.images.find((image) => image.publicUrl)?.publicUrl;
     const appearance = resolveFunnelWorkbookGalleryAppearance(element.props.appearance);
@@ -1612,7 +1613,7 @@ function ElementInspector({ element, update, chooseMedia, chooseGalleryMedia, mo
       {element.type === "text" ? <SelectControl label="Text style" value={element.props.style} onChange={(value) => update({ ...element, props: { ...element.props, style: value as "lead" | "body" | "small" } })}><option value="lead">Lead</option><option value="body">Body</option><option value="small">Small</option></SelectControl> : null}
     </InspectorGroup> : null}
     {element.type === "list" ? <ListInspector element={element} palette={buttonPalette} update={update} /> : null}
-    {element.type === "image" ? <InspectorGroup title="Image" open><button type="button" onClick={chooseMedia} className={SECONDARY_CONTROL}>Choose from media manager</button><label className={CONTROL_LABEL}>Alternative text<input className={INPUT} value={element.props.media.alt} onChange={(event) => update({ ...element, props: { ...element.props, media: { ...element.props.media, alt: event.target.value } } })} /></label><SelectControl label="Image fit" value={element.props.fit} onChange={(value) => update({ ...element, props: { ...element.props, fit: value as "contain" | "cover" } })}><option value="contain">Show whole image</option><option value="cover">Fill and crop</option></SelectControl></InspectorGroup> : null}
+    {element.type === "image" ? <InspectorGroup title="Image" open><button type="button" onClick={chooseMedia} className={SECONDARY_CONTROL}>Choose from media manager</button><RangeControl label="Size" value={resolveFunnelImageSizePercent(element.props.sizePercent)} min={10} max={100} step={1} formatValue={(value) => `${Math.round(value)}%`} onChange={(sizePercent) => update({ ...element, props: { ...element.props, sizePercent } })} /><label className={CONTROL_LABEL}>Alternative text<input className={INPUT} value={element.props.media.alt} onChange={(event) => update({ ...element, props: { ...element.props, media: { ...element.props.media, alt: event.target.value } } })} /></label><SelectControl label="Image fit" value={element.props.fit} onChange={(value) => update({ ...element, props: { ...element.props, fit: value as "contain" | "cover" } })}><option value="contain">Show whole image</option><option value="cover">Fill and crop</option></SelectControl></InspectorGroup> : null}
     {element.type === "workbook_gallery" ? <WorkbookGalleryInspector element={element} update={update} chooseMedia={chooseGalleryMedia} /> : null}
     {element.type === "button" ? <ButtonInspector element={element} palette={buttonPalette} update={update} /> : null}
     {element.type === "countdown" ? <CountdownInspector element={element} palette={buttonPalette} update={update} /> : null}
@@ -2441,7 +2442,7 @@ export function FunnelPageStudio({
 
 function ColorControl({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className={CONTROL_LABEL}>{label}<span className="flex items-center gap-2"><input type="color" value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-12 shrink-0 cursor-pointer rounded-[10px] border border-[#cfbea4] bg-white p-1" /><input className={INPUT} value={value} onChange={(event) => onChange(event.target.value)} /></span></label>; }
 function NumberControl({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) { return <label className={CONTROL_LABEL}>{label}<input type="number" className={INPUT} value={value} min={min} max={max} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
-function RangeControl({ label, value, min, max, step, onChange }: { label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) { return <label className={CONTROL_LABEL}><span className="flex items-center justify-between gap-3"><span>{label}</span><output className="rounded-full bg-[#edf5e7] px-2 py-1 text-[10px] font-bold tabular-nums text-[#4d6a39]">{value.toFixed(2)}×</output></span><input type="range" value={value} min={min} max={max} step={step} onChange={(event) => onChange(Number(event.target.value))} className="h-2 w-full cursor-pointer accent-[#76a456]" /></label>; }
+function RangeControl({ label, value, min, max, step, onChange, formatValue = (current) => `${current.toFixed(2)}×` }: { label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void; formatValue?: (value: number) => string }) { return <label className={CONTROL_LABEL}><span className="flex items-center justify-between gap-3"><span>{label}</span><output className="rounded-full bg-[#edf5e7] px-2 py-1 text-[10px] font-bold tabular-nums text-[#4d6a39]">{formatValue(value)}</output></span><input type="range" value={value} min={min} max={max} step={step} onChange={(event) => onChange(Number(event.target.value))} className="h-2 w-full cursor-pointer accent-[#76a456]" /></label>; }
 function LayoutSpacingControls({ spacing, onChange, hasOverrides, allowNegativeMargins = true }: { spacing?: FunnelElementSpacing; onChange: (spacing: FunnelElementSpacing | undefined) => void; hasOverrides?: boolean; allowNegativeMargins?: boolean }) {
   const [moreControl, setMoreControl] = useState(false);
   const value = spacing ?? {};

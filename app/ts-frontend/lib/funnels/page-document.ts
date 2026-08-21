@@ -254,7 +254,7 @@ export type FunnelPageElement =
     })
   | (FunnelElementBase & {
       type: "image";
-      props: { media: FunnelMediaSnapshot; fit: "contain" | "cover"; caption: string };
+      props: { media: FunnelMediaSnapshot; fit: "contain" | "cover"; caption: string; sizePercent?: number };
     })
   | (FunnelElementBase & {
       type: "workbook_gallery";
@@ -381,6 +381,10 @@ export type FunnelPageDocument = {
 
 export function createFunnelDocumentId(prefix: string) {
   return `${prefix}_${crypto.randomUUID()}`;
+}
+
+export function resolveFunnelImageSizePercent(sizePercent?: number) {
+  return Math.max(10, Math.min(100, Math.round(sizePercent ?? 100)));
 }
 
 export function createFunnelPageRow(

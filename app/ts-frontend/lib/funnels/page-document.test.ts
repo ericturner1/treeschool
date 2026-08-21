@@ -5,11 +5,19 @@ import {
   funnelDocumentHasForwardAction,
   getFunnelDocumentTitle,
   removeFunnelPageColumn,
+  resolveFunnelImageSizePercent,
   resizeFunnelPageRow,
   type FunnelPageElement,
 } from "./page-document";
 
 describe("funnel page layout rows", () => {
+  test("keeps image sizing backward compatible and within the editor range", () => {
+    expect(resolveFunnelImageSizePercent()).toBe(100);
+    expect(resolveFunnelImageSizePercent(64.6)).toBe(65);
+    expect(resolveFunnelImageSizePercent(4)).toBe(10);
+    expect(resolveFunnelImageSizePercent(140)).toBe(100);
+  });
+
   test("creates balanced one-to-four-column rows", () => {
     for (const count of [1, 2, 3, 4] as const) {
       const row = createFunnelPageRow(count);

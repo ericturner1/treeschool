@@ -8,6 +8,7 @@ import type {
   FunnelPageSection,
   FunnelPageStyles
 } from "../lib/funnels/page-document";
+import { resolveFunnelImageSizePercent } from "../lib/funnels/page-document";
 import { FunnelButtonIconGlyph, resolveFunnelButtonIcon } from "./funnel-button-icon";
 import type {
   ManagedFunnelAttribution,
@@ -224,7 +225,7 @@ function PageElement({
     const source = element.props.media.publicUrl ?? element.props.media.storagePath;
     if (!source) return null;
     return (
-      <figure className={`${visibility} grid gap-2`}>
+      <figure className={`${visibility} mx-auto grid gap-2`} style={{ width: `${resolveFunnelImageSizePercent(element.props.sizePercent)}%` }}>
         <Image
           src={source}
           alt={element.props.media.alt}
@@ -415,6 +416,25 @@ function PageElement({
   return <hr className={`${visibility} border-ink/10`} />;
 }
 
+function DraftPreviewControl({ revisionNumber, href }: { revisionNumber: number; href: string }) {
+  return (
+    <a
+      href={href}
+      aria-label={`Draft preview, revision ${revisionNumber}. Return to funnel administration.`}
+      title={`Draft preview · Revision ${revisionNumber}`}
+      className="group fixed right-4 top-4 z-[200] inline-flex h-11 max-w-11 items-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-ink/15 bg-white/90 px-3 text-xs font-semibold text-ink/65 shadow-[0_8px_28px_rgba(35,28,21,.18)] backdrop-blur-md transition-[max-width,background-color,border-color] duration-200 hover:max-w-64 hover:border-[#8eaa79] hover:bg-white focus-visible:max-w-64 focus-visible:border-[#8eaa79] focus-visible:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#8eaa79]/25"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5 shrink-0">
+        <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+        <circle cx="12" cy="12" r="2.5" />
+      </svg>
+      <span className="max-w-0 overflow-hidden opacity-0 transition-[max-width,opacity] duration-200 group-hover:max-w-52 group-hover:opacity-100 group-focus-visible:max-w-52 group-focus-visible:opacity-100">
+        Draft preview · Revision {revisionNumber}
+      </span>
+    </a>
+  );
+}
+
 export async function ManagedFunnelPageView({
   data,
   adminBackHref,
@@ -513,6 +533,12 @@ export async function ManagedFunnelPageView({
         isThankYou={step.stepType === "thank_you" || step.stepType === "fulfillment"}
         preview={page.preview}
       />
+      {page.preview ? (
+        <DraftPreviewControl
+          revisionNumber={page.latestRevisionNumber}
+          href={adminBackHref ?? `/admin/funnels/${encodeURIComponent(funnel.slug)}?step=${encodeURIComponent(step.id)}`}
+        />
+      ) : null}
       <div className={`pointer-events-none absolute -right-24 -top-28 h-80 w-80 rounded-full opacity-45 blur-3xl ${theme.glow}`} aria-hidden="true" />
       <div className="relative mx-auto flex min-h-screen w-full max-w-[1400px] flex-col px-5 py-6 sm:px-8">
         {showSiteHeader ? (
@@ -521,18 +547,7 @@ export async function ManagedFunnelPageView({
               <Image src="/tree-icon.png" alt="" width={54} height={54} className="h-12 w-12 object-contain" priority />
               <span className="brand-logo text-[25px] font-semibold leading-none">treeschool</span>
             </Link>
-            {page.preview ? (
-              <span className="rounded-full border border-ink/20 bg-white/70 px-3 py-1.5 text-xs font-semibold text-ink/60">
-                Draft preview · Revision {page.latestRevisionNumber}
-              </span>
-            ) : null}
           </header>
-        ) : page.preview ? (
-          <div className="flex justify-end">
-            <span className="rounded-full border border-ink/20 bg-white/70 px-3 py-1.5 text-xs font-semibold text-ink/60">
-              Draft preview · Revision {page.latestRevisionNumber}
-            </span>
-          </div>
         ) : null}
 
         <div
@@ -615,11 +630,6 @@ export async function ManagedFunnelPageView({
               <Link href="/terms" className="hover:text-ink">Terms</Link>
             </div>
           </footer>
-        ) : null}
-        {adminBackHref ? (
-          <a href={adminBackHref} className="mx-auto mb-2 mt-4 text-xs text-ink/40 underline underline-offset-4 hover:text-ink/60">
-            Back to funnel administration
-          </a>
         ) : null}
       </div>
     </main>
