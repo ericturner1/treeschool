@@ -125,6 +125,22 @@ function dragEventSummary(event: DragEvent<HTMLElement>) {
   };
 }
 
+function setFunnelRowDragImage(event: DragEvent<HTMLElement>) {
+  const eventTarget = event.currentTarget;
+  const row = eventTarget.closest<HTMLElement>("[data-funnel-row]") ?? eventTarget;
+  const bounds = row.getBoundingClientRect();
+  const offsetX = Math.min(Math.max(event.clientX - bounds.left, 0), bounds.width);
+  const offsetY = Math.min(Math.max(event.clientY - bounds.top, 0), bounds.height);
+  event.dataTransfer.setDragImage(row, offsetX, offsetY);
+  writeFunnelDragDebug("row.drag-image.set", {
+    source: dragNodeSummary(row),
+    width: Math.round(bounds.width),
+    height: Math.round(bounds.height),
+    offsetX: Math.round(offsetX),
+    offsetY: Math.round(offsetY),
+  });
+}
+
 function beginFunnelDragDebug() {
   if (!funnelDragDebugEnabled()) return;
   funnelDragDebugSequence = 0;
@@ -923,11 +939,15 @@ function EditorCanvas({
           {rowDrag && canDropRowsHere ? <FunnelRowDropZone key="drop-zone" target={rowTarget} active={sameRowDropTarget(rowDropTarget, rowTarget)} copy={rowDrag.kind === "new"} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
           <div
             key="row"
+            data-funnel-row={row.id}
             draggable={rowSelected}
             className={`group/row relative rounded-[10px] transition ${rowSelected ? "cursor-grab active:cursor-grabbing" : ""} ${depth > 0 ? "my-2" : ""} ${rowDragged ? "opacity-35" : ""} ${rowActive ? "outline outline-2 outline-[#5f873f] outline-offset-4" : ""}`}
             onClick={(event) => { event.stopPropagation(); selectAt(rowSelection, event.altKey); }}
             onPointerMove={(event) => trackPointer(event, rowSelection)}
-            onDragStart={(event) => startCanvasRowDrag(event, rowLocation)}
+            onDragStartCapture={(event) => {
+              if (!rowSelected) return;
+              startCanvasRowDrag(event, rowLocation);
+            }}
             onDragEnd={(event) => onEndRowDrag(event)}
           >
             <div className={`grid ${viewport === "mobile" ? "grid-cols-1" : "grid-cols-12"}`} style={{ gap: columnGap }}>
@@ -1590,6 +1610,7 @@ export function FunnelPageStudio({
   const allowNavigationRef = useRef(false);
   const rowDragRef = useRef<FunnelRowDrag | null>(null);
   const rowDropTargetRef = useRef<FunnelRowDropTarget | null>(null);
+  const rowDragFrameRef = useRef<number | null>(null);
   const historyGuardIdRef = useRef(`funnel-page-editor-${stepId}`);
   const backHref = `/admin/funnels/${encodeURIComponent(funnelSlug)}?step=${encodeURIComponent(stepId)}${page ? `&page=${encodeURIComponent(page.id)}` : ""}`;
   const previewHref = `/admin/funnels/${encodeURIComponent(funnelSlug)}/preview/${encodeURIComponent(stepId)}${page ? `?page=${encodeURIComponent(page.id)}` : ""}`;
@@ -1741,18 +1762,27 @@ export function FunnelPageStudio({
     event.stopPropagation();
     event.dataTransfer.effectAllowed = drag.kind === "new" ? "copy" : "move";
     event.dataTransfer.setData("text/plain", drag.kind === "new" ? `new:funnel-row:${drag.columnCount}` : "move:funnel-row");
+    if (drag.kind === "existing") setFunnelRowDragImage(event);
     writeFunnelDragDebug("row.dragstart", {
       drag,
       previousRowDragRef: rowDragRef.current,
       browserEvent: dragEventSummary(event),
     });
     rowDragRef.current = drag;
-    setRowDrag(drag);
     rowDropTargetRef.current = null;
-    setRowDropTarget(null);
-    endElementDrag();
-    endBlockDrag();
-    endColumnDrag();
+    if (rowDragFrameRef.current !== null) cancelAnimationFrame(rowDragFrameRef.current);
+    // Updating the canvas during the dragstart event makes Chromium cancel a
+    // nested row drag before it can enter a destination. Wait until the browser
+    // has committed the native drag, then reveal the insertion targets.
+    rowDragFrameRef.current = requestAnimationFrame(() => {
+      rowDragFrameRef.current = null;
+      if (rowDragRef.current !== drag) return;
+      setRowDrag(drag);
+      setRowDropTarget(null);
+      endElementDrag();
+      endBlockDrag();
+      endColumnDrag();
+    });
   }
 
   function endRowDrag(event?: DragEvent<HTMLElement>) {
@@ -1761,6 +1791,10 @@ export function FunnelPageStudio({
       rowDragState: rowDrag,
       browserEvent: event ? dragEventSummary(event) : null,
     });
+    if (rowDragFrameRef.current !== null) {
+      cancelAnimationFrame(rowDragFrameRef.current);
+      rowDragFrameRef.current = null;
+    }
     rowDragRef.current = null;
     setRowDrag(null);
     rowDropTargetRef.current = null;
