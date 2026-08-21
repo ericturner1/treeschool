@@ -73,6 +73,89 @@ type FunnelCanvasDragOwner =
   | { kind: "row"; source: FunnelRowLocation }
   | { kind: "column"; source: FunnelColumnLocation };
 
+type FunnelDragDebugEntry = {
+  sequence: number;
+  at: string;
+  elapsedMs: number;
+  event: string;
+  details: Record<string, unknown>;
+};
+
+type FunnelDragDebugState = {
+  sessionId: string;
+  events: FunnelDragDebugEntry[];
+};
+
+let funnelDragDebugSequence = 0;
+let funnelDragDebugStartedAt = 0;
+let funnelDragDebugSessionActive = false;
+
+function funnelDragDebugWindow() {
+  return window as typeof window & {
+    __treeschoolFunnelDragDebug?: FunnelDragDebugState;
+  };
+}
+
+function funnelDragDebugEnabled() {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  return params.get("debugDrag") === "1" || params.get("dragDebug") === "1";
+}
+
+function dragNodeSummary(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return null;
+  return {
+    tag: target.tagName.toLowerCase(),
+    id: target.id || null,
+    ariaLabel: target.getAttribute("aria-label"),
+    draggable: target.draggable,
+  };
+}
+
+function dragEventSummary(event: DragEvent<HTMLElement>) {
+  return {
+    target: dragNodeSummary(event.target),
+    currentTarget: dragNodeSummary(event.currentTarget),
+    clientX: event.clientX,
+    clientY: event.clientY,
+    defaultPrevented: event.defaultPrevented,
+    effectAllowed: event.dataTransfer.effectAllowed,
+    dropEffect: event.dataTransfer.dropEffect,
+    transferTypes: Array.from(event.dataTransfer.types),
+  };
+}
+
+function beginFunnelDragDebug() {
+  if (!funnelDragDebugEnabled()) return;
+  funnelDragDebugSequence = 0;
+  funnelDragDebugStartedAt = performance.now();
+  funnelDragDebugSessionActive = true;
+  funnelDragDebugWindow().__treeschoolFunnelDragDebug = {
+    sessionId: crypto.randomUUID(),
+    events: [],
+  };
+}
+
+function writeFunnelDragDebug(event: string, details: Record<string, unknown> = {}) {
+  if (!funnelDragDebugEnabled() || !funnelDragDebugSessionActive) return;
+  const state = funnelDragDebugWindow().__treeschoolFunnelDragDebug;
+  if (!state) return;
+  const entry: FunnelDragDebugEntry = {
+    sequence: ++funnelDragDebugSequence,
+    at: new Date().toISOString(),
+    elapsedMs: Math.round((performance.now() - funnelDragDebugStartedAt) * 10) / 10,
+    event,
+    details,
+  };
+  state.events.push(entry);
+  if (state.events.length > 200) state.events.splice(0, state.events.length - 200);
+  console.info(`[Treeschool Funnel DnD #${entry.sequence}] ${event}`, details);
+}
+
+function finishFunnelDragDebug() {
+  funnelDragDebugSessionActive = false;
+}
+
 const funnelElementGroups: Array<{
   label: string;
   elements: FunnelPageElement["type"][];
@@ -653,7 +736,7 @@ function EditorCanvas({
   onRowDropTarget: (target: FunnelRowDropTarget) => void;
   onDropRow: (target: FunnelRowDropTarget) => void;
   onStartRowDrag: (event: DragEvent<HTMLElement>, drag: FunnelRowDrag) => void;
-  onEndRowDrag: () => void;
+  onEndRowDrag: (event: DragEvent<HTMLElement>) => void;
   columnDrag: FunnelColumnLocation | null;
   columnDropTarget: FunnelColumnDropTarget | null;
   onStartColumnDrag: (event: DragEvent<HTMLElement>, source: FunnelColumnLocation) => void;
@@ -748,19 +831,46 @@ function EditorCanvas({
   }
 
   function startCanvasRowDrag(event: DragEvent<HTMLElement>, source: FunnelRowLocation) {
+    beginFunnelDragDebug();
     const owner = canvasDragOwner(source.sectionIndex, source.rowPath);
+    writeFunnelDragDebug("canvas.dragstart.classified", {
+      gestureOrigin: "row",
+      requestedSource: source,
+      selected: selection,
+      hoverSelection,
+      resolvedOwner: owner,
+      browserEvent: dragEventSummary(event),
+    });
     if (owner?.kind === "column") onStartColumnDrag(event, owner.source);
     else onStartRowDrag(event, { kind: "existing", source: owner?.source ?? source });
   }
 
   function startCanvasColumnDrag(event: DragEvent<HTMLElement>, source: FunnelColumnLocation) {
+    beginFunnelDragDebug();
     const owner = canvasDragOwner(source.sectionIndex, source.rowPath, source.columnIndex);
+    writeFunnelDragDebug("canvas.dragstart.classified", {
+      gestureOrigin: "column",
+      requestedSource: source,
+      selected: selection,
+      hoverSelection,
+      resolvedOwner: owner,
+      browserEvent: dragEventSummary(event),
+    });
     if (owner?.kind === "row") onStartRowDrag(event, { kind: "existing", source: owner.source });
     else onStartColumnDrag(event, owner?.source ?? source);
   }
 
   function startCanvasElementDrag(event: DragEvent<HTMLElement>, source: FunnelElementLocation) {
+    beginFunnelDragDebug();
     const owner = canvasDragOwner(source.sectionIndex, source.rowPath, source.columnIndex);
+    writeFunnelDragDebug("canvas.dragstart.classified", {
+      gestureOrigin: "element",
+      requestedSource: source,
+      selected: selection,
+      hoverSelection,
+      resolvedOwner: owner,
+      browserEvent: dragEventSummary(event),
+    });
     if (owner?.kind === "row") onStartRowDrag(event, { kind: "existing", source: owner.source });
     else if (owner?.kind === "column") onStartColumnDrag(event, owner.source);
     else onStartElementDrag(event, { kind: "existing", source });
@@ -809,7 +919,7 @@ function EditorCanvas({
             onClick={(event) => { event.stopPropagation(); selectAt(rowSelection, event.altKey); }}
             onPointerMove={(event) => trackPointer(event, rowSelection)}
             onDragStart={(event) => startCanvasRowDrag(event, rowLocation)}
-            onDragEnd={onEndRowDrag}
+            onDragEnd={(event) => onEndRowDrag(event)}
           >
             <div className={`grid ${viewport === "mobile" ? "grid-cols-1" : "grid-cols-12"}`} style={{ gap: columnGap }}>
               {row.columns.map((column, columnIndex) => {
@@ -834,6 +944,11 @@ function EditorCanvas({
                   onDragEnter={rowDrag && canDropInsideColumn ? (event) => {
                     event.preventDefault();
                     event.stopPropagation();
+                    writeFunnelDragDebug("column.dragenter.accept-row", {
+                      destination: { sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 },
+                      rowDrag,
+                      browserEvent: dragEventSummary(event),
+                    });
                     onRowDropTarget({ sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 });
                   } : undefined}
                   onDragOver={rowDrag && canDropInsideColumn ? (event) => {
@@ -845,6 +960,11 @@ function EditorCanvas({
                   onDrop={rowDrag && canDropInsideColumn ? (event) => {
                     event.preventDefault();
                     event.stopPropagation();
+                    writeFunnelDragDebug("column.drop.accept-row", {
+                      destination: { sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 },
+                      rowDrag,
+                      browserEvent: dragEventSummary(event),
+                    });
                     onDropRow({ sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 });
                   } : undefined}
                   className={`group/column relative grid min-w-0 cursor-grab content-start gap-4 rounded-[8px] transition active:cursor-grabbing ${columnDragged ? "opacity-35" : ""} ${columnActive ? "outline outline-2 outline-[#8a674d] outline-offset-2" : ""}`}
@@ -1420,6 +1540,7 @@ export function FunnelPageStudio({
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
   const allowNavigationRef = useRef(false);
   const rowDragRef = useRef<FunnelRowDrag | null>(null);
+  const rowDropTargetRef = useRef<FunnelRowDropTarget | null>(null);
   const historyGuardIdRef = useRef(`funnel-page-editor-${stepId}`);
   const backHref = `/admin/funnels/${encodeURIComponent(funnelSlug)}?step=${encodeURIComponent(stepId)}${page ? `&page=${encodeURIComponent(page.id)}` : ""}`;
   const previewHref = `/admin/funnels/${encodeURIComponent(funnelSlug)}/preview/${encodeURIComponent(stepId)}${page ? `?page=${encodeURIComponent(page.id)}` : ""}`;
@@ -1427,6 +1548,13 @@ export function FunnelPageStudio({
   useEffect(() => {
     hasUnsavedChangesRef.current = hasUnsavedChanges;
   }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!funnelDragDebugEnabled()) return;
+    console.info(
+      "[Treeschool Funnel DnD] Diagnostics enabled. Reproduce one drag, then inspect window.__treeschoolFunnelDragDebug."
+    );
+  }, []);
 
   useEffect(() => {
     function beforeUnload(event: BeforeUnloadEvent) {
@@ -1560,53 +1688,109 @@ export function FunnelPageStudio({
   }
 
   function startRowDrag(event: DragEvent<HTMLElement>, drag: FunnelRowDrag) {
+    if (!funnelDragDebugSessionActive) beginFunnelDragDebug();
     event.stopPropagation();
     event.dataTransfer.effectAllowed = drag.kind === "new" ? "copy" : "move";
     event.dataTransfer.setData("text/plain", drag.kind === "new" ? `new:funnel-row:${drag.columnCount}` : "move:funnel-row");
+    writeFunnelDragDebug("row.dragstart", {
+      drag,
+      previousRowDragRef: rowDragRef.current,
+      browserEvent: dragEventSummary(event),
+    });
     rowDragRef.current = drag;
     setRowDrag(drag);
+    rowDropTargetRef.current = null;
     setRowDropTarget(null);
     endElementDrag();
     endBlockDrag();
     endColumnDrag();
   }
 
-  function endRowDrag() {
+  function endRowDrag(event?: DragEvent<HTMLElement>) {
+    writeFunnelDragDebug("row.dragend", {
+      rowDragRef: rowDragRef.current,
+      rowDragState: rowDrag,
+      browserEvent: event ? dragEventSummary(event) : null,
+    });
     rowDragRef.current = null;
     setRowDrag(null);
+    rowDropTargetRef.current = null;
     setRowDropTarget(null);
+    // A successful drop clears React drag state before the browser emits its
+    // final dragend event. Keep the diagnostic session alive until that event
+    // so its dropEffect and target are preserved in the same trace.
+    if (event) finishFunnelDragDebug();
   }
 
   function updateRowDropTarget(target: FunnelRowDropTarget) {
-    setRowDropTarget((current) => sameRowDropTarget(current, target) ? current : target);
+    if (sameRowDropTarget(rowDropTargetRef.current, target)) return;
+    writeFunnelDragDebug("row.drop-target.changed", { previous: rowDropTargetRef.current, next: target });
+    rowDropTargetRef.current = target;
+    setRowDropTarget(target);
   }
 
   function dropRow(target: FunnelRowDropTarget) {
     const drag = rowDragRef.current ?? rowDrag;
-    if (!drag) return;
+    writeFunnelDragDebug("row.drop.received", {
+      target,
+      rowDragRef: rowDragRef.current,
+      rowDragState: rowDrag,
+      resolvedDrag: drag,
+    });
+    if (!drag) {
+      writeFunnelDragDebug("row.drop.rejected", { reason: "No active row drag was available.", target });
+      return;
+    }
     mutate((draft) => {
       if (drag.kind === "existing"
         && drag.source.sectionIndex === target.sectionIndex
         && target.parentColumnPath !== null
-        && indexPathStartsWith(target.parentColumnPath, drag.source.rowPath)) return;
+        && indexPathStartsWith(target.parentColumnPath, drag.source.rowPath)) {
+        writeFunnelDragDebug("row.drop.rejected", { reason: "The destination is inside the dragged row.", drag, target });
+        return;
+      }
       const targetRows = rowsAtParentColumn(draft, target.sectionIndex, target.parentColumnPath, true);
-      if (!targetRows) return;
+      if (!targetRows) {
+        writeFunnelDragDebug("row.drop.rejected", { reason: "The destination row collection could not be resolved.", drag, target });
+        return;
+      }
       if (drag.kind === "new") {
         const destinationIndex = Math.min(Math.max(target.rowIndex, 0), targetRows.length);
         targetRows.splice(destinationIndex, 0, createFunnelPageRow(drag.columnCount));
         const destinationParentPath = findRowsParentColumnPath(draft, target.sectionIndex, targetRows);
+        writeFunnelDragDebug("row.drop.applied", { drag, target, destinationIndex, destinationParentPath });
         if (destinationParentPath !== undefined) setSelection({ kind: "row", sectionIndex: target.sectionIndex, rowPath: [...(destinationParentPath ?? []), destinationIndex] });
         return;
       }
       const sourceParentColumnPath = drag.source.rowPath.length > 1 ? drag.source.rowPath.slice(0, -1) : null;
       const sourceRows = rowsAtParentColumn(draft, drag.source.sectionIndex, sourceParentColumnPath);
       const sourceIndex = drag.source.rowPath.at(-1);
-      if (sourceIndex === undefined) return;
-      if (!sourceRows) return;
-      if (sourceRows !== targetRows && sourceParentColumnPath === null && sourceRows.length <= 1) return;
+      if (sourceIndex === undefined) {
+        writeFunnelDragDebug("row.drop.rejected", { reason: "The source row index was missing.", drag, target });
+        return;
+      }
+      if (!sourceRows) {
+        writeFunnelDragDebug("row.drop.rejected", { reason: "The source row collection could not be resolved.", drag, target });
+        return;
+      }
+      if (sourceRows !== targetRows && sourceParentColumnPath === null && sourceRows.length <= 1) {
+        writeFunnelDragDebug("row.drop.rejected", { reason: "A section must retain at least one root row.", drag, target, sourceRowCount: sourceRows.length });
+        return;
+      }
       const destinationIndex = moveItemAtInsertionPoint(sourceRows, sourceIndex, targetRows, target.rowIndex);
-      if (destinationIndex === null) return;
+      if (destinationIndex === null) {
+        writeFunnelDragDebug("row.drop.rejected", { reason: "The row move helper rejected the insertion point.", drag, target, sourceIndex });
+        return;
+      }
       const destinationParentPath = findRowsParentColumnPath(draft, target.sectionIndex, targetRows);
+      writeFunnelDragDebug("row.drop.applied", {
+        drag,
+        target,
+        sourceIndex,
+        sourceParentColumnPath,
+        destinationIndex,
+        destinationParentPath,
+      });
       if (destinationParentPath !== undefined) setSelection({ kind: "row", sectionIndex: target.sectionIndex, rowPath: [...(destinationParentPath ?? []), destinationIndex] });
     });
     endRowDrag();
