@@ -923,8 +923,8 @@ function EditorCanvas({
           {rowDrag && canDropRowsHere ? <FunnelRowDropZone key="drop-zone" target={rowTarget} active={sameRowDropTarget(rowDropTarget, rowTarget)} copy={rowDrag.kind === "new"} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
           <div
             key="row"
-            draggable
-            className={`group/row relative cursor-grab rounded-[10px] transition active:cursor-grabbing ${depth > 0 ? "my-2" : ""} ${rowDragged ? "opacity-35" : ""} ${rowActive ? "outline outline-2 outline-[#5f873f] outline-offset-4" : ""}`}
+            draggable={rowSelected}
+            className={`group/row relative rounded-[10px] transition ${rowSelected ? "cursor-grab active:cursor-grabbing" : ""} ${depth > 0 ? "my-2" : ""} ${rowDragged ? "opacity-35" : ""} ${rowActive ? "outline outline-2 outline-[#5f873f] outline-offset-4" : ""}`}
             onClick={(event) => { event.stopPropagation(); selectAt(rowSelection, event.altKey); }}
             onPointerMove={(event) => trackPointer(event, rowSelection)}
             onDragStart={(event) => startCanvasRowDrag(event, rowLocation)}
@@ -945,7 +945,7 @@ function EditorCanvas({
                 const columnActive = sameSelection(activeSelection, columnSelection);
                 return <div
                   key={column.id}
-                  draggable
+                  draggable={columnSelected}
                   onClick={(event) => { event.stopPropagation(); selectAt(columnSelection, event.altKey); }}
                   onPointerMove={(event) => trackPointer(event, columnSelection)}
                   onDragStart={(event) => startCanvasColumnDrag(event, columnLocation)}
@@ -992,14 +992,17 @@ function EditorCanvas({
                     });
                     onDropRow({ sectionIndex, parentColumnPath: columnPath, rowIndex: column.rows?.length ?? 0 });
                   }}
-                  className={`group/column relative grid min-w-0 cursor-grab content-start gap-4 rounded-[8px] transition active:cursor-grabbing ${columnDragged ? "opacity-35" : ""} ${columnActive ? "outline outline-2 outline-[#8a674d] outline-offset-2" : ""}`}
+                  className={`group/column relative grid min-w-0 content-start gap-4 rounded-[8px] transition ${columnSelected ? "cursor-grab active:cursor-grabbing" : ""} ${columnDragged ? "opacity-35" : ""} ${columnActive ? "outline outline-2 outline-[#8a674d] outline-offset-2" : ""}`}
                   style={viewport === "mobile" ? undefined : { gridColumn: column.offset !== undefined ? `${column.offset + 1} / span ${column.span}` : `span ${column.span}` }}
                 >
                   {columnDrag && canDropColumnsHere ? <FunnelColumnDropZone target={columnLocation} side="start" active={sameColumnDropTarget(columnDropTarget, columnLocation)} onTarget={onColumnDropTarget} onDrop={onDropColumn} /> : null}
                   {columnDrag && canDropColumnsHere && columnIndex === row.columns.length - 1 ? <FunnelColumnDropZone target={{ sectionIndex, rowPath, columnIndex: row.columns.length }} side="end" active={sameColumnDropTarget(columnDropTarget, { sectionIndex, rowPath, columnIndex: row.columns.length })} onTarget={onColumnDropTarget} onDrop={onDropColumn} /> : null}
                   <button
                     type="button"
+                    draggable
                     onClick={(event) => { event.stopPropagation(); selectAt(columnSelection, event.altKey); }}
+                    onDragStart={(event) => onStartColumnDrag(event, columnLocation)}
+                    onDragEnd={onEndColumnDrag}
                     className={`absolute -left-1 -top-3 z-40 rounded-full border border-[#cbb99e] bg-white px-2 py-1 text-[9px] font-bold text-ink/55 shadow-sm transition ${columnSelected ? "opacity-100" : "opacity-0 group-hover/column:opacity-100 focus:opacity-100"}`}
                     aria-label={`Select column ${columnIndex + 1}`}
                     title="Select this column; drag the column itself to move it"
@@ -1010,9 +1013,10 @@ function EditorCanvas({
                     const location: FunnelElementLocation = { kind: "element", sectionIndex, rowPath, columnIndex, elementIndex };
                     const target: FunnelElementDropTarget = { sectionIndex, rowPath, columnIndex, elementIndex };
                     const dragged = elementDrag?.kind === "existing" && sameElementLocation(elementDrag.source, location);
+                    const elementSelected = sameSelection(selection, location);
                     return <div key={element.id} className="min-w-0">
                       {elementDrag ? <FunnelElementDropZone key="drop-zone" target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} /> : null}
-                      <div key="element" draggable onClickCapture={(event) => { if (!event.altKey) return; event.preventDefault(); event.stopPropagation(); selectAt(location, true); }} onPointerMove={(event) => trackPointer(event, location)} onDragStart={(event) => startCanvasElementDrag(event, location)} onDragEnd={onEndElementDrag} className={`group/drag relative transition ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
+                      <div key="element" draggable={elementSelected} onClickCapture={(event) => { if (!event.altKey) return; event.preventDefault(); event.stopPropagation(); selectAt(location, true); }} onPointerMove={(event) => trackPointer(event, location)} onDragStart={(event) => startCanvasElementDrag(event, location)} onDragEnd={onEndElementDrag} className={`group/drag relative transition ${elementSelected ? "cursor-grab active:cursor-grabbing" : ""} ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
                         <PreviewElement element={element} palette={palette} selected={sameSelection(activeSelection, location)} onSelect={() => selectAt(location)} />
                       </div>
                     </div>;
@@ -1032,7 +1036,10 @@ function EditorCanvas({
             </div>
             <button
               type="button"
+              draggable
               onClick={(event) => { event.stopPropagation(); selectAt(rowSelection, event.altKey); }}
+              onDragStart={(event) => onStartRowDrag(event, { kind: "existing", source: rowLocation })}
+              onDragEnd={(event) => onEndRowDrag(event)}
               className={`absolute -right-2 -top-3 z-50 rounded-full border border-[#9eb489] bg-[#f4f9ef] px-2 py-1 text-[10px] font-bold text-[#4d6a39] shadow-sm transition ${rowSelected ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus:opacity-100"}`}
               aria-label={`Select row ${rowIndex + 1}`}
               title="Select this row; drag the row itself to move it"
