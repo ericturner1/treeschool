@@ -920,8 +920,9 @@ function EditorCanvas({
         const rowSelected = sameSelection(selection, rowSelection);
         const rowActive = sameSelection(activeSelection, rowSelection);
         return <Fragment key={row.id}>
-          {rowDrag && canDropRowsHere ? <FunnelRowDropZone target={rowTarget} active={sameRowDropTarget(rowDropTarget, rowTarget)} copy={rowDrag.kind === "new"} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
+          {rowDrag && canDropRowsHere ? <FunnelRowDropZone key="drop-zone" target={rowTarget} active={sameRowDropTarget(rowDropTarget, rowTarget)} copy={rowDrag.kind === "new"} onTarget={onRowDropTarget} onDrop={onDropRow} /> : null}
           <div
+            key="row"
             draggable
             className={`group/row relative cursor-grab rounded-[10px] transition active:cursor-grabbing ${depth > 0 ? "my-2" : ""} ${rowDragged ? "opacity-35" : ""} ${rowActive ? "outline outline-2 outline-[#5f873f] outline-offset-4" : ""}`}
             onClick={(event) => { event.stopPropagation(); selectAt(rowSelection, event.altKey); }}
@@ -1010,8 +1011,8 @@ function EditorCanvas({
                     const target: FunnelElementDropTarget = { sectionIndex, rowPath, columnIndex, elementIndex };
                     const dragged = elementDrag?.kind === "existing" && sameElementLocation(elementDrag.source, location);
                     return <div key={element.id} className="min-w-0">
-                      {elementDrag ? <FunnelElementDropZone target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} /> : null}
-                      <div draggable onClickCapture={(event) => { if (!event.altKey) return; event.preventDefault(); event.stopPropagation(); selectAt(location, true); }} onPointerMove={(event) => trackPointer(event, location)} onDragStart={(event) => startCanvasElementDrag(event, location)} onDragEnd={onEndElementDrag} className={`group/drag relative transition ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
+                      {elementDrag ? <FunnelElementDropZone key="drop-zone" target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} /> : null}
+                      <div key="element" draggable onClickCapture={(event) => { if (!event.altKey) return; event.preventDefault(); event.stopPropagation(); selectAt(location, true); }} onPointerMove={(event) => trackPointer(event, location)} onDragStart={(event) => startCanvasElementDrag(event, location)} onDragEnd={onEndElementDrag} className={`group/drag relative transition ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
                         <PreviewElement element={element} palette={palette} selected={sameSelection(activeSelection, location)} onSelect={() => selectAt(location)} />
                       </div>
                     </div>;
@@ -1076,8 +1077,9 @@ function EditorCanvas({
           const sectionPaddingY = section.props.paddingY ?? paddingY;
           return (
             <Fragment key={section.id}>
-            {blockDrag ? <FunnelSectionDropZone target={sectionIndex} active={sectionDropTarget === sectionIndex} onTarget={onSectionDropTarget} onDrop={onDropBlock} /> : null}
+            {blockDrag ? <FunnelSectionDropZone key="drop-zone" target={sectionIndex} active={sectionDropTarget === sectionIndex} onTarget={onSectionDropTarget} onDrop={onDropBlock} /> : null}
             <section
+              key="section"
               onClick={(event) => { event.stopPropagation(); selectAt(sectionSelection, event.altKey); }}
               onPointerMove={(event) => trackPointer(event, sectionSelection)}
               onDragEnter={(event) => {
