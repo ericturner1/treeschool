@@ -1551,7 +1551,7 @@ export function FunnelPageStudio({
 
   useEffect(() => {
     if (!funnelDragDebugEnabled()) return;
-    console.info(
+    console.warn(
       "[Treeschool Funnel DnD] Diagnostics enabled. Reproduce one drag, then inspect window.__treeschoolFunnelDragDebug."
     );
   }, []);

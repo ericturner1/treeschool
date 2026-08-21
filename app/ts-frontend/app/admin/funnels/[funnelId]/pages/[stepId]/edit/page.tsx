@@ -19,12 +19,16 @@ export const metadata: Metadata = {
 export default async function FunnelPageEditorRoute(
   props: {
     params: Promise<{ funnelId: string; stepId: string }>;
-    searchParams?: Promise<{ page?: string }>;
+    searchParams?: Promise<{ page?: string; debugDrag?: string; dragDebug?: string }>;
   }
 ) {
   const searchParams = await props.searchParams;
   const params = await props.params;
-  const next = `/admin/funnels/${encodeURIComponent(params.funnelId)}/pages/${encodeURIComponent(params.stepId)}/edit${searchParams?.page ? `?page=${encodeURIComponent(searchParams.page)}` : ""}`;
+  const returnQuery = new URLSearchParams();
+  if (searchParams?.page) returnQuery.set("page", searchParams.page);
+  if (searchParams?.debugDrag === "1") returnQuery.set("debugDrag", "1");
+  if (searchParams?.dragDebug === "1") returnQuery.set("dragDebug", "1");
+  const next = `/admin/funnels/${encodeURIComponent(params.funnelId)}/pages/${encodeURIComponent(params.stepId)}/edit${returnQuery.size > 0 ? `?${returnQuery.toString()}` : ""}`;
   const user = await getCurrentUser();
   if (!user?.id) redirect(`/p/signin?next=${encodeURIComponent(next)}`);
   const access = await getNativeWorkbookNavigation(user.id).catch(() => null);
