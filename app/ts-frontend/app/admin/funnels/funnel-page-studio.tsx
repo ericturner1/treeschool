@@ -1250,6 +1250,7 @@ function ButtonInspector({ element, update, palette }: { element: FunnelButtonEl
       <label className="grid gap-1.5 text-xs font-semibold">Button text<input className={INPUT} value={props.label} onChange={(event) => updateProps({ label: event.target.value })} /></label>
       <label className="grid gap-1.5 text-xs font-semibold">Subtext<input className={INPUT} value={props.subtext ?? ""} placeholder="Optional reassurance or guarantee" onChange={(event) => updateProps({ subtext: event.target.value })} /></label>
       <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show arrow</span><input type="checkbox" checked={props.showArrow !== false} onChange={(event) => updateProps({ showArrow: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Full width</span><input type="checkbox" checked={appearance.width === "full"} onChange={(event) => updateAppearance({ width: event.target.checked ? "full" : "fit" })} className="h-4 w-4 accent-[#76a456]" /></label>
     </InspectorGroup>
     <InspectorGroup title="Main text typography" open>
       <FontFamilyControl label="Font type" value={typography.fontFamily ?? ""} onChange={(fontFamily) => updateTypography({ fontFamily: fontFamily || undefined })} />
@@ -1265,7 +1266,6 @@ function ButtonInspector({ element, update, palette }: { element: FunnelButtonEl
     </InspectorGroup>
     <InspectorGroup title="Button shape & color" open>
       <label className="grid gap-1.5 text-xs font-semibold">Style<select className={INPUT} value={props.variant} onChange={(event) => updateProps({ variant: event.target.value as FunnelButtonElement["props"]["variant"] })}><option value="primary">Primary</option><option value="secondary">Secondary</option><option value="text">Text link</option></select></label>
-      <label className="grid gap-1.5 text-xs font-semibold">Width<select className={INPUT} value={appearance.width ?? "fit"} onChange={(event) => updateAppearance({ width: event.target.value as "fit" | "full" })}><option value="fit">Fit content</option><option value="full">Full column</option></select></label>
       <ColorControl label="Background color" value={appearance.backgroundColor ?? defaultBackground} onChange={(backgroundColor) => updateAppearance({ backgroundColor })} />
       <ColorControl label="Border color" value={appearance.borderColor ?? defaultBorder} onChange={(borderColor) => updateAppearance({ borderColor })} />
       <div className="grid grid-cols-2 gap-2"><NumberControl label="Border width" value={appearance.borderWidth ?? (textVariant ? 0 : 2)} min={0} max={16} onChange={(borderWidth) => updateAppearance({ borderWidth })} /><NumberControl label="Corner radius" value={appearance.borderRadius ?? palette.pageBorderRadius ?? (textVariant ? 0 : 18)} min={0} max={999} onChange={(borderRadius) => updateAppearance({ borderRadius })} /></div>
