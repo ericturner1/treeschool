@@ -2514,14 +2514,14 @@ function RowInspector({
       <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Section {sectionIndex + 1} → {nested ? "Nested row" : "Row"} {rowIndex + 1}</p><h3 className="mt-1 text-lg font-semibold">Row layout</h3></div>
       <div className="flex gap-1"><button type="button" disabled={rowIndex === 0} onClick={() => move(-1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">↑</button><button type="button" disabled={rowIndex === rowCount - 1} onClick={() => move(1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">↓</button><button type="button" disabled={!nested && rowCount <= 1} onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738] disabled:opacity-30">×</button></div>
     </div>
+    <LayoutSpacingControls spacing={row.spacing} onChange={(spacing) => update((draft) => { if (spacing) draft.spacing = spacing; else delete draft.spacing; })} />
     <InspectorGroup title="Grid layout" open>
       <SelectControl label="Number of columns" value={row.columns.length} onChange={(value) => updateColumnCount(Number(value) as FunnelRowColumnCount)}>{([1, 2, 3, 4] as const).map((count) => <option key={count} value={count}>{count} {count === 1 ? "column" : "columns"}</option>)}</SelectControl>
       <p className="text-[10px] leading-4 text-ink/50">Changing the count creates an even grid. If you reduce it, Treeschool moves content from removed columns into the last remaining column instead of deleting it.</p>
     </InspectorGroup>
-    <InspectorGroup title="Columns" open>
+    <InspectorGroup title="Columns">
       {row.columns.map((column, columnIndex) => <button key={column.id} type="button" onClick={() => selectColumn(columnIndex)} className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-left text-xs transition hover:border-[#8a674d] hover:bg-[#fffaf2]"><span className="font-semibold">Column {columnIndex + 1}</span><span className="text-[10px] text-ink/45">{column.span}/12{column.offset !== undefined ? ` · offset ${column.offset}` : " · auto"} · {column.elements.length} {column.elements.length === 1 ? "element" : "elements"}{column.rows?.length ? ` · ${column.rows.length} nested ${column.rows.length === 1 ? "row" : "rows"}` : ""}</span></button>)}
     </InspectorGroup>
-    <LayoutSpacingControls spacing={row.spacing} onChange={(spacing) => update((draft) => { if (spacing) draft.spacing = spacing; else delete draft.spacing; })} />
   </div>;
 }
 
@@ -2554,6 +2554,7 @@ function ColumnInspector({
       <div className="flex gap-1"><button type="button" disabled={columnIndex === 0} onClick={() => move(-1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">←</button><button type="button" disabled={columnIndex === columnCount - 1} onClick={() => move(1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">→</button><button type="button" disabled={columnCount <= 1} onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738] disabled:opacity-30">×</button></div>
     </div>
     <button type="button" onClick={selectRow} className={RESET_CONTROL}>Select parent row</button>
+    <LayoutSpacingControls spacing={column.spacing} onChange={(spacing) => update((draft) => { if (spacing) draft.spacing = spacing; else delete draft.spacing; })} />
     <InspectorGroup title="Layout" open>
       <SelectControl label="Vertical content alignment" value={column.verticalAlign ?? "row"} onChange={(value) => update((draft) => { if (value === "row") delete draft.verticalAlign; else draft.verticalAlign = value as NonNullable<FunnelPageColumn["verticalAlign"]>; })}><option value="row">Use row default</option><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></SelectControl>
       <p className="text-[10px] leading-4 text-ink/50">Top aligns this column with the top edge of the tallest column in its row. Center and bottom align it within that same row height.</p>
@@ -2562,7 +2563,6 @@ function ColumnInspector({
       {positioned ? <NumberControl label="Offset from left" value={column.offset ?? 0} min={0} max={maxOffset} onChange={(offset) => update((draft) => { draft.offset = Math.max(0, Math.min(12 - draft.span, offset)); })} /> : null}
       <p className="text-[10px] leading-4 text-ink/50">The page uses a twelve-column grid. Width controls how many tracks this column occupies; offset pins its starting position from the left.</p>
     </InspectorGroup>
-    <LayoutSpacingControls spacing={column.spacing} onChange={(spacing) => update((draft) => { if (spacing) draft.spacing = spacing; else delete draft.spacing; })} />
     <div className="rounded-[12px] border border-[#dfcfb7] bg-white/65 px-3 py-3 text-xs text-ink/55"><strong className="text-ink">{column.elements.length}</strong> {column.elements.length === 1 ? "element" : "elements"} in this column. Drag elements on the canvas to move them between columns.</div>
   </div>;
 }
