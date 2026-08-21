@@ -1865,6 +1865,15 @@ export function FunnelPageStudio({
         writeFunnelDragDebug("row.drop.rejected", { reason: "The row move helper rejected the insertion point.", drag, target, sourceIndex });
         return;
       }
+      if (sourceParentColumnPath === null && target.parentColumnPath !== null) {
+        const nestedRow = targetRows[destinationIndex];
+        if (nestedRow) {
+          targetRows[destinationIndex] = resizeFunnelPageRow(
+            nestedRow,
+            nestedRow.columns.length as FunnelRowColumnCount,
+          );
+        }
+      }
       const destinationParentPath = findRowsParentColumnPath(draft, target.sectionIndex, targetRows);
       writeFunnelDragDebug("row.drop.applied", {
         drag,

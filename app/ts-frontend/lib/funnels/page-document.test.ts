@@ -56,6 +56,19 @@ describe("funnel page layout rows", () => {
     ]);
   });
 
+  test("rebalances a row when it keeps the same column count", () => {
+    const row = createFunnelPageRow(4);
+    row.columns.forEach((column, index) => {
+      column.span = 1;
+      column.offset = index + 1;
+    });
+
+    const rebalanced = resizeFunnelPageRow(row, 4);
+
+    expect(rebalanced.columns.map((column) => column.span)).toEqual([3, 3, 3, 3]);
+    expect(rebalanced.columns.every((column) => column.offset === undefined)).toBe(true);
+  });
+
   test("removes a selected column without discarding its elements", () => {
     const row = createFunnelPageRow(3);
     row.columns[0]!.elements.push({
