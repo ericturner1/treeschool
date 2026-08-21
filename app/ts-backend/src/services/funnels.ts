@@ -425,6 +425,8 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
         shadowColor: z.string().trim().max(40).optional(),
         shadowDepth: z.number().int().min(0).max(30).optional()
       }).optional(),
+      icon: z.enum(["none", "arrow-right", "arrow-left", "chevron-right", "check", "shopping-cart", "download", "book-open", "star", "sparkles", "lock", "play", "mail", "gift", "heart", "calendar", "external-link"]).optional(),
+      iconPosition: z.enum(["left", "right"]).optional(),
       showArrow: z.boolean().optional(),
       action: funnelActionSchema
     })

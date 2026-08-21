@@ -8,6 +8,7 @@ import type {
   FunnelPageSection,
   FunnelPageStyles
 } from "../lib/funnels/page-document";
+import { FunnelButtonIconGlyph, resolveFunnelButtonIcon } from "./funnel-button-icon";
 import type {
   ManagedFunnelAttribution,
   ManagedFunnelPagePayload
@@ -294,11 +295,14 @@ function PageElement({
     const textColor = funnelButtonDefaultTextColor(element.props, palette);
     const className = "inline-flex min-h-14 flex-col items-center justify-center gap-0.5 text-center transition duration-200 hover:-translate-y-0.5";
     const style = funnelButtonBoxStyle(element.props, palette);
+    const icon = resolveFunnelButtonIcon(element.props);
+    const iconGlyph = icon ? <FunnelButtonIconGlyph icon={icon} className="h-[1.1em] w-[1.1em] shrink-0" /> : null;
     const contents = (
       <>
         <span className="inline-flex items-center justify-center gap-2 text-lg font-semibold" style={funnelButtonTextStyle(element.props.typography, textColor)}>
+          {element.props.iconPosition === "left" ? iconGlyph : null}
           {element.props.label}
-          {element.props.showArrow === false ? null : <span aria-hidden="true">→</span>}
+          {element.props.iconPosition === "left" ? null : iconGlyph}
         </span>
         {element.props.subtext ? <span className="text-xs font-medium opacity-90" style={funnelButtonSubtextStyle(element.props.subtextTypography, textColor)}>{element.props.subtext}</span> : null}
       </>

@@ -3,6 +3,24 @@ export type FunnelPageTone = "default" | "muted" | "accent" | "dark";
 export type FunnelPageWidth = "narrow" | "standard" | "wide";
 export type FunnelTextAlign = "left" | "center" | "right";
 export type FunnelButtonWidth = "fit" | "full";
+export type FunnelButtonIcon =
+  | "arrow-right"
+  | "arrow-left"
+  | "chevron-right"
+  | "check"
+  | "shopping-cart"
+  | "download"
+  | "book-open"
+  | "star"
+  | "sparkles"
+  | "lock"
+  | "play"
+  | "mail"
+  | "gift"
+  | "heart"
+  | "calendar"
+  | "external-link";
+export type FunnelButtonIconPosition = "left" | "right";
 export type FunnelListMarker = "check" | "bullet" | "arrow" | "star";
 
 export type FunnelCountdownDuration = {
@@ -200,6 +218,9 @@ export type FunnelPageElement =
         typography?: FunnelButtonTypography;
         subtextTypography?: FunnelButtonTypography;
         appearance?: FunnelButtonAppearance;
+        icon?: FunnelButtonIcon | "none";
+        iconPosition?: FunnelButtonIconPosition;
+        /** Retained so legacy page revisions keep their original arrow behavior. */
         showArrow?: boolean;
         action: FunnelAction;
       };

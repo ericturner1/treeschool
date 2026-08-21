@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { FUNNEL_BUTTON_ICON_OPTIONS, FunnelButtonIconGlyph, resolveFunnelButtonIcon } from "../../../components/funnel-button-icon";
 import { FunnelProgressSteps } from "../../../components/funnel-progress-steps";
 import { moveItemAtInsertionPoint } from "../../../lib/editor-drag";
 import { allSpacingSides, funnelElementSpacingStyle } from "../../../lib/funnels/element-spacing";
@@ -422,7 +423,9 @@ function PreviewElement({ element, palette, onSelect, selected }: { element: Fun
   }
   if (element.type === "button") {
     const textColor = funnelButtonDefaultTextColor(element.props, palette);
-    return <div onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} flex ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"}`}><span className="inline-flex min-h-12 flex-col items-center justify-center gap-0.5 text-center transition" style={funnelButtonBoxStyle(element.props, palette)}><span className="inline-flex items-center justify-center gap-2 text-lg font-semibold" style={funnelButtonTextStyle(element.props.typography, textColor)}>{element.props.label}{element.props.showArrow === false ? null : <span aria-hidden="true">→</span>}</span>{element.props.subtext ? <span className="text-xs font-medium opacity-90" style={funnelButtonSubtextStyle(element.props.subtextTypography, textColor)}>{element.props.subtext}</span> : null}</span></div>;
+    const icon = resolveFunnelButtonIcon(element.props);
+    const iconGlyph = icon ? <FunnelButtonIconGlyph icon={icon} className="h-[1.1em] w-[1.1em] shrink-0" /> : null;
+    return <div onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} flex ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"}`}><span className="inline-flex min-h-12 flex-col items-center justify-center gap-0.5 text-center transition" style={funnelButtonBoxStyle(element.props, palette)}><span className="inline-flex items-center justify-center gap-2 text-lg font-semibold" style={funnelButtonTextStyle(element.props.typography, textColor)}>{element.props.iconPosition === "left" ? iconGlyph : null}{element.props.label}{element.props.iconPosition === "left" ? null : iconGlyph}</span>{element.props.subtext ? <span className="text-xs font-medium opacity-90" style={funnelButtonSubtextStyle(element.props.subtextTypography, textColor)}>{element.props.subtext}</span> : null}</span></div>;
   }
   if (element.type === "countdown") {
     const configured = element.props.mode === "deadline"
@@ -1249,13 +1252,30 @@ function ButtonInspector({ element, update, palette }: { element: FunnelButtonEl
   const defaultBackground = primary ? palette.primary : textVariant ? "#ffffff" : palette.secondary;
   const defaultBorder = palette.primary;
   const defaultShadow = primary ? palette.primaryShadow : palette.secondaryShadow;
+  const selectedIcon = resolveFunnelButtonIcon(props)?.toString() ?? "none";
+  const iconPosition = props.iconPosition ?? "right";
 
   return <div className="grid gap-3">
     <InspectorGroup title="Copy" open>
       <label className="grid gap-1.5 text-xs font-semibold">Button text<input className={INPUT} value={props.label} onChange={(event) => updateProps({ label: event.target.value })} /></label>
       <label className="grid gap-1.5 text-xs font-semibold">Subtext<input className={INPUT} value={props.subtext ?? ""} placeholder="Optional reassurance or guarantee" onChange={(event) => updateProps({ subtext: event.target.value })} /></label>
-      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show arrow</span><input type="checkbox" checked={props.showArrow !== false} onChange={(event) => updateProps({ showArrow: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
       <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Full width</span><input type="checkbox" checked={appearance.width === "full"} onChange={(event) => updateAppearance({ width: event.target.checked ? "full" : "fit" })} className="h-4 w-4 accent-[#76a456]" /></label>
+    </InspectorGroup>
+    <InspectorGroup title="Icon" open>
+      <p className="text-xs leading-5 text-ink/50">Choose an icon, then place it before or after the button text.</p>
+      <div className="grid grid-cols-4 gap-2">
+        {FUNNEL_BUTTON_ICON_OPTIONS.map((option) => {
+          const selected = selectedIcon === option.value;
+          return <button key={option.value} type="button" aria-pressed={selected} title={option.label} onClick={() => updateProps({ icon: option.value, showArrow: undefined })} className={`grid min-h-[66px] place-items-center gap-1 rounded-[11px] border px-1.5 py-2 text-center transition ${selected ? "border-[#5f8546] bg-[#e5f0dc] text-[#466333] ring-2 ring-[#739655]/25" : "border-[#dfcfb7] bg-white text-ink/65 hover:border-[#9bb586] hover:bg-[#f6faF2]"}`}>
+            {option.value === "none" ? <span className="grid h-6 w-6 place-items-center text-xl font-light" aria-hidden="true">—</span> : <FunnelButtonIconGlyph icon={option.value} className="h-6 w-6" />}
+            <span className="text-[9px] font-semibold leading-3">{option.label}</span>
+          </button>;
+        })}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button type="button" disabled={selectedIcon === "none"} aria-pressed={iconPosition === "left"} onClick={() => updateProps({ iconPosition: "left" })} className={`rounded-[11px] border px-3 py-2.5 text-xs font-semibold disabled:opacity-40 ${iconPosition === "left" ? "border-[#5f8546] bg-[#e5f0dc] text-[#466333]" : "border-[#dfcfb7] bg-white"}`}>Icon on left</button>
+        <button type="button" disabled={selectedIcon === "none"} aria-pressed={iconPosition === "right"} onClick={() => updateProps({ iconPosition: "right" })} className={`rounded-[11px] border px-3 py-2.5 text-xs font-semibold disabled:opacity-40 ${iconPosition === "right" ? "border-[#5f8546] bg-[#e5f0dc] text-[#466333]" : "border-[#dfcfb7] bg-white"}`}>Icon on right</button>
+      </div>
     </InspectorGroup>
     <InspectorGroup title="Main text typography" open>
       <FontFamilyControl label="Font type" value={typography.fontFamily ?? ""} onChange={(fontFamily) => updateTypography({ fontFamily: fontFamily || undefined })} />
@@ -1276,7 +1296,7 @@ function ButtonInspector({ element, update, palette }: { element: FunnelButtonEl
       <div className="grid grid-cols-2 gap-2"><NumberControl label="Border width" value={appearance.borderWidth ?? (textVariant ? 0 : 2)} min={0} max={16} onChange={(borderWidth) => updateAppearance({ borderWidth })} /><NumberControl label="Corner radius" value={appearance.borderRadius ?? palette.pageBorderRadius ?? (textVariant ? 0 : 18)} min={0} max={999} onChange={(borderRadius) => updateAppearance({ borderRadius })} /></div>
       <div className="grid grid-cols-2 gap-2"><NumberControl label="Side padding" value={appearance.paddingX ?? (textVariant ? 0 : 28)} min={0} max={160} onChange={(paddingX) => updateAppearance({ paddingX })} /><NumberControl label="Top/bottom" value={appearance.paddingY ?? (textVariant ? 0 : 16)} min={0} max={100} onChange={(paddingY) => updateAppearance({ paddingY })} /></div>
       <div className="grid grid-cols-[1fr_96px] gap-2"><ColorControl label="Shadow color" value={appearance.shadowColor ?? defaultShadow} onChange={(shadowColor) => updateAppearance({ shadowColor })} /><NumberControl label="Depth" value={appearance.shadowDepth ?? (primary ? 8 : textVariant ? 0 : 6)} min={0} max={30} onChange={(shadowDepth) => updateAppearance({ shadowDepth })} /></div>
-      <button type="button" onClick={() => updateProps({ typography: undefined, subtextTypography: undefined, appearance: undefined, showArrow: undefined })} className="rounded-[11px] border border-[#cfbea4] bg-white px-3 py-2 text-xs font-semibold text-ink/60 hover:border-[#9f7c5e] hover:text-ink">Reset styling to page defaults</button>
+      <button type="button" onClick={() => updateProps({ typography: undefined, subtextTypography: undefined, appearance: undefined, icon: undefined, iconPosition: undefined, showArrow: undefined })} className="rounded-[11px] border border-[#cfbea4] bg-white px-3 py-2 text-xs font-semibold text-ink/60 hover:border-[#9f7c5e] hover:text-ink">Reset styling to page defaults</button>
     </InspectorGroup>
   </div>;
 }

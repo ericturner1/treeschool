@@ -367,7 +367,8 @@ describe("funnel administration normalization", () => {
                 subtext: "30-day guarantee",
                 variant: "primary",
                 align: "center",
-                showArrow: false,
+                icon: "shopping-cart",
+                iconPosition: "left",
                 typography: { fontFamily: "Georgia, serif", fontSize: 28, lineHeight: 32, fontWeight: 700, color: "#ffffff" },
                 subtextTypography: { fontSize: 14, lineHeight: 18, fontWeight: 500, color: "#f4f8ee" },
                 appearance: { backgroundColor: "#76a456", borderColor: "#365e2d", borderWidth: 3, borderRadius: 12, paddingX: 36, paddingY: 18, width: "full", shadowColor: "#294823", shadowDepth: 7 },
@@ -386,7 +387,8 @@ describe("funnel administration normalization", () => {
     expect(button.props.typography?.fontFamily).toBe("Georgia, serif");
     expect(button.props.appearance?.borderColor).toBe("#365e2d");
     expect(button.props.appearance?.width).toBe("full");
-    expect(button.props.showArrow).toBe(false);
+    expect(button.props.icon).toBe("shopping-cart");
+    expect(button.props.iconPosition).toBe("left");
   });
 
   test("preserves countdown timing, expiry behavior, and typography", () => {
