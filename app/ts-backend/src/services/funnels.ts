@@ -262,22 +262,24 @@ const funnelMediaSnapshotSchema = z.object({
   height: z.number().int().positive().max(20_000).optional().nullable().default(null)
 });
 
+const funnelElementSpacingSchema = z.object({
+  marginTop: z.number().int().min(-300).max(300).optional(),
+  marginRight: z.number().int().min(-300).max(300).optional(),
+  marginBottom: z.number().int().min(-300).max(300).optional(),
+  marginLeft: z.number().int().min(-300).max(300).optional(),
+  paddingTop: z.number().int().min(0).max(300).optional(),
+  paddingRight: z.number().int().min(0).max(300).optional(),
+  paddingBottom: z.number().int().min(0).max(300).optional(),
+  paddingLeft: z.number().int().min(0).max(300).optional()
+});
+
 const funnelElementBaseSchema = z.object({
   id: z.string().trim().min(1).max(160),
   visibility: z.object({
     desktop: z.boolean().optional(),
     mobile: z.boolean().optional()
   }).optional(),
-  spacing: z.object({
-    marginTop: z.number().int().min(-300).max(300).optional(),
-    marginRight: z.number().int().min(-300).max(300).optional(),
-    marginBottom: z.number().int().min(-300).max(300).optional(),
-    marginLeft: z.number().int().min(-300).max(300).optional(),
-    paddingTop: z.number().int().min(0).max(300).optional(),
-    paddingRight: z.number().int().min(0).max(300).optional(),
-    paddingBottom: z.number().int().min(0).max(300).optional(),
-    paddingLeft: z.number().int().min(0).max(300).optional()
-  }).optional()
+  spacing: funnelElementSpacingSchema.optional()
 });
 
 const funnelCountdownTypographySchema = z.object({
@@ -423,9 +425,24 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
         paddingY: z.number().int().min(0).max(100).optional(),
         width: z.enum(["fit", "full"]).optional(),
         shadowColor: z.string().trim().max(40).optional(),
-        shadowDepth: z.number().int().min(0).max(30).optional()
+        shadowDepth: z.number().int().min(0).max(30).optional(),
+        hoverBackgroundColor: z.string().trim().max(40).optional(),
+        hoverScale: z.number().min(0.5).max(1.25).optional()
       }).optional(),
-      icon: z.enum(["none", "arrow-right", "arrow-left", "chevron-right", "check", "shopping-cart", "download", "book-open", "star", "sparkles", "lock", "play", "mail", "gift", "heart", "calendar", "external-link"]).optional(),
+      icon: z.enum([
+        "none", "arrow-right", "arrow-left", "arrow-up", "arrow-down",
+        "chevron-right", "chevron-left", "chevron-up", "chevron-down",
+        "check", "plus", "minus", "info", "help-circle", "alert-triangle",
+        "shopping-cart", "download", "book-open", "star", "sparkles", "lock",
+        "play", "mail", "gift", "heart", "calendar", "external-link", "phone",
+        "map-pin", "clock", "user", "users", "home", "globe", "search", "settings",
+        "wand", "rocket", "trophy", "graduation-cap", "music", "camera", "image",
+        "file-text", "printer", "share", "refresh", "thumbs-up", "smile",
+        "circle", "zap", "flame", "sun", "moon", "leaf", "menu", "log-in",
+        "upload", "save", "copy", "edit", "trash", "eye", "credit-card",
+        "tag", "percent", "dollar-sign", "package", "pencil", "lightbulb",
+        "headphones", "video", "microphone", "bell", "message-circle"
+      ]).optional(),
       iconPosition: z.enum(["left", "right"]).optional(),
       showArrow: z.boolean().optional(),
       action: funnelActionSchema
@@ -481,6 +498,7 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
 
 type FunnelPageRowContent = {
   id: string;
+  spacing?: z.infer<typeof funnelElementSpacingSchema>;
   columns: FunnelPageColumnContent[];
 };
 
@@ -489,12 +507,14 @@ type FunnelPageColumnContent = {
   span: number;
   offset?: number;
   verticalAlign?: "top" | "center" | "bottom";
+  spacing?: z.infer<typeof funnelElementSpacingSchema>;
   elements: Array<z.infer<typeof funnelPageElementSchema>>;
   rows?: FunnelPageRowContent[];
 };
 
 type FunnelPageRowInput = {
   id: string;
+  spacing?: z.input<typeof funnelElementSpacingSchema>;
   columns: FunnelPageColumnInput[];
 };
 
@@ -503,12 +523,14 @@ type FunnelPageColumnInput = {
   span?: number;
   offset?: number;
   verticalAlign?: "top" | "center" | "bottom";
+  spacing?: z.input<typeof funnelElementSpacingSchema>;
   elements: Array<z.input<typeof funnelPageElementSchema>>;
   rows?: FunnelPageRowInput[];
 };
 
 const funnelPageRowSchema: z.ZodType<FunnelPageRowContent, z.ZodTypeDef, FunnelPageRowInput> = z.lazy(() => z.object({
   id: z.string().trim().min(1).max(160),
+  spacing: funnelElementSpacingSchema.optional(),
   columns: z.array(funnelPageColumnSchema).min(1).max(4)
 }));
 
@@ -517,6 +539,7 @@ const funnelPageColumnSchema: z.ZodType<FunnelPageColumnContent, z.ZodTypeDef, F
   span: z.number().int().min(1).max(12).default(12),
   offset: z.number().int().min(0).max(11).optional(),
   verticalAlign: z.enum(["top", "center", "bottom"]).optional(),
+  spacing: funnelElementSpacingSchema.optional(),
   elements: z.array(funnelPageElementSchema).max(100),
   rows: z.array(funnelPageRowSchema).max(30).optional()
 }).refine(
@@ -564,6 +587,10 @@ const funnelPageDocumentSchema = z.object({
       backgroundColor: z.string().trim().max(40).optional(),
       paddingX: z.number().int().min(0).max(300).optional(),
       paddingY: z.number().int().min(0).max(300).optional(),
+      paddingTop: z.number().int().min(0).max(300).optional(),
+      paddingRight: z.number().int().min(0).max(300).optional(),
+      paddingBottom: z.number().int().min(0).max(300).optional(),
+      paddingLeft: z.number().int().min(0).max(300).optional(),
       marginTop: z.number().int().min(0).max(300).optional(),
       marginRight: z.number().int().min(0).max(300).optional(),
       marginBottom: z.number().int().min(0).max(300).optional(),

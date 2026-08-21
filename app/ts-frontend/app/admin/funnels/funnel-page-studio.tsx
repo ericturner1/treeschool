@@ -5,9 +5,10 @@ import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, typ
 import { FUNNEL_BUTTON_ICON_OPTIONS, FunnelButtonIconGlyph, resolveFunnelButtonIcon } from "../../../components/funnel-button-icon";
 import { FunnelProgressSteps } from "../../../components/funnel-progress-steps";
 import { moveItemAtInsertionPoint } from "../../../lib/editor-drag";
-import { allSpacingSides, funnelElementSpacingStyle } from "../../../lib/funnels/element-spacing";
+import { funnelElementSpacingStyle } from "../../../lib/funnels/element-spacing";
 import type {
   FunnelAction,
+  FunnelElementSpacing,
   FunnelListMarker,
   FunnelMediaSnapshot,
   FunnelPageColumn,
@@ -26,6 +27,7 @@ import {
 } from "../../../lib/funnels/page-document";
 import {
   FUNNEL_BUTTON_FONT_OPTIONS,
+  FUNNEL_BUTTON_INTERACTION_CLASS,
   funnelButtonBoxStyle,
   funnelButtonDefaultTextColor,
   funnelButtonSubtextStyle,
@@ -192,6 +194,10 @@ type MediaTarget =
   | { kind: "workbook_gallery"; slot: "cover" | "append" | number };
 
 const INPUT = "min-h-10 w-full rounded-[11px] border border-[#cfbea4] bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-[#739655] focus:ring-4 focus:ring-[#739655]/15";
+const CONTROL_LABEL = "grid gap-1.5 text-xs font-semibold";
+const TOGGLE_CONTROL = "flex min-h-11 items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold";
+const SECONDARY_CONTROL = "rounded-[11px] border border-[#cfbea4] bg-white px-3 py-2 text-xs font-semibold text-[#74573e] transition hover:border-[#9f7c5e] hover:text-ink";
+const RESET_CONTROL = "justify-self-start text-xs font-semibold text-[#74573e] underline decoration-[#74573e]/35 underline-offset-4 hover:decoration-[#74573e]";
 const themes = {
   sage: { page: "#edf4e7", surface: "#fffdf8", muted: "#f5f9f0", accent: "#dfeccf", dark: "#4d6b3a", primary: "#76a456", secondary: "#ffffff", primaryShadow: "#486f34", secondaryShadow: "#cdddbd" },
   cream: { page: "#f8f1e4", surface: "#fffaf2", muted: "#fbf4e8", accent: "#f1e3cf", dark: "#694833", primary: "#8a674d", secondary: "#ffffff", primaryShadow: "#5b3d2c", secondaryShadow: "#e3d0b0" },
@@ -425,7 +431,7 @@ function PreviewElement({ element, palette, onSelect, selected }: { element: Fun
     const textColor = funnelButtonDefaultTextColor(element.props, palette);
     const icon = resolveFunnelButtonIcon(element.props);
     const iconGlyph = icon ? <FunnelButtonIconGlyph icon={icon} className="h-[1.1em] w-[1.1em] shrink-0" /> : null;
-    return <div onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} flex ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"}`}><span className="inline-flex min-h-12 flex-col items-center justify-center gap-0.5 text-center transition" style={funnelButtonBoxStyle(element.props, palette)}><span className="inline-flex items-center justify-center gap-2 text-lg font-semibold" style={funnelButtonTextStyle(element.props.typography, textColor)}>{element.props.iconPosition === "left" ? iconGlyph : null}{element.props.label}{element.props.iconPosition === "left" ? null : iconGlyph}</span>{element.props.subtext ? <span className="text-xs font-medium opacity-90" style={funnelButtonSubtextStyle(element.props.subtextTypography, textColor)}>{element.props.subtext}</span> : null}</span></div>;
+    return <div onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} flex ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"}`}><span className={`inline-flex min-h-12 flex-col items-center justify-center gap-0.5 text-center ${FUNNEL_BUTTON_INTERACTION_CLASS}`} style={funnelButtonBoxStyle(element.props, palette)}><span className="inline-flex items-center justify-center gap-2 text-lg font-semibold" style={funnelButtonTextStyle(element.props.typography, textColor)}>{element.props.iconPosition === "left" ? iconGlyph : null}{element.props.label}{element.props.iconPosition === "left" ? null : iconGlyph}</span>{element.props.subtext ? <span className="text-xs font-medium opacity-90" style={funnelButtonSubtextStyle(element.props.subtextTypography, textColor)}>{element.props.subtext}</span> : null}</span></div>;
   }
   if (element.type === "countdown") {
     const configured = element.props.mode === "deadline"
@@ -952,6 +958,7 @@ function EditorCanvas({
               startCanvasRowDrag(event, rowLocation);
             }}
             onDragEnd={(event) => onEndRowDrag(event)}
+            style={funnelElementSpacingStyle(row)}
           >
             <div className={`grid ${viewport === "mobile" ? "grid-cols-1" : "grid-cols-12"}`} style={{ gap: columnGap }}>
               {row.columns.map((column, columnIndex) => {
@@ -1017,6 +1024,7 @@ function EditorCanvas({
                   }}
                   className={`group/column relative grid min-w-0 content-start gap-4 rounded-[8px] transition ${columnSelected ? "cursor-grab active:cursor-grabbing" : ""} ${columnDragged ? "opacity-35" : ""} ${columnActive ? "outline outline-2 outline-[#8a674d] outline-offset-2" : ""}`}
                   style={{
+                    ...(funnelElementSpacingStyle(column) ?? {}),
                     alignSelf: column.verticalAlign === "top" ? "start" : column.verticalAlign === "center" ? "center" : column.verticalAlign === "bottom" ? "end" : undefined,
                     ...(viewport === "mobile" ? {} : { gridColumn: column.offset !== undefined ? `${column.offset + 1} / span ${column.span}` : `span ${column.span}` }),
                   }}
@@ -1156,10 +1164,10 @@ function EditorCanvas({
                 marginRight: section.props.marginRight,
                 marginBottom: section.props.marginBottom,
                 marginLeft: section.props.marginLeft,
-                paddingTop: sectionPaddingY,
-                paddingRight: section.props.paddingX ?? (viewport === "mobile" ? 24 : 40),
-                paddingBottom: sectionPaddingY,
-                paddingLeft: section.props.paddingX ?? (viewport === "mobile" ? 24 : 40)
+                paddingTop: section.props.paddingTop ?? sectionPaddingY,
+                paddingRight: section.props.paddingRight ?? section.props.paddingX ?? (viewport === "mobile" ? 24 : 40),
+                paddingBottom: section.props.paddingBottom ?? sectionPaddingY,
+                paddingLeft: section.props.paddingLeft ?? section.props.paddingX ?? (viewport === "mobile" ? 24 : 40)
               }}
             >
               <div className="mx-auto" style={{ maxWidth: section.props.width === "narrow" ? Math.min(width, 820) : section.props.width === "wide" ? Math.max(width, 1280) : width }}>
@@ -1233,8 +1241,16 @@ function InspectorGroup({ title, children, open = false }: { title: string; chil
   return <details open={expanded} onToggle={(event) => setExpanded(event.currentTarget.open)} className="group rounded-[14px] border border-[#dfcfb7] bg-white/65"><summary className="cursor-pointer list-none px-3 py-3 text-xs font-bold text-ink marker:hidden">{title}<span className="float-right text-ink/35 transition group-open:rotate-180">⌄</span></summary><div className="grid gap-3 border-t border-[#eadfce] p-3">{children}</div></details>;
 }
 
+function SelectControl({ label, value, onChange, children, help }: { label: string; value: string | number; onChange: (value: string) => void; children: ReactNode; help?: string }) {
+  return <label className={CONTROL_LABEL}>{label}<select className={INPUT} value={value} onChange={(event) => onChange(event.target.value)}>{children}</select>{help ? <span className="text-[10px] font-normal leading-4 text-ink/45">{help}</span> : null}</label>;
+}
+
+function ToggleControl({ label, checked, onChange, help }: { label: string; checked: boolean; onChange: (checked: boolean) => void; help?: string }) {
+  return <label className={`${TOGGLE_CONTROL} ${help ? "items-start" : ""}`}><span>{label}{help ? <span className="mt-1 block font-normal leading-4 text-ink/50">{help}</span> : null}</span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className={`${help ? "mt-0.5" : ""} h-4 w-4 shrink-0 accent-[#76a456]`} /></label>;
+}
+
 function FontFamilyControl({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label className="grid gap-1.5 text-xs font-semibold">{label}<select className={INPUT} value={value} onChange={(event) => onChange(event.target.value)}>{FUNNEL_BUTTON_FONT_OPTIONS.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</select></label>;
+  return <SelectControl label={label} value={value} onChange={onChange}>{FUNNEL_BUTTON_FONT_OPTIONS.map((option) => <option key={option.label} value={option.value}>{option.label}</option>)}</SelectControl>;
 }
 
 function ButtonInspector({ element, update, palette }: { element: FunnelButtonElement; update: (next: FunnelButtonElement) => void; palette: FunnelButtonPalette }) {
@@ -1254,23 +1270,33 @@ function ButtonInspector({ element, update, palette }: { element: FunnelButtonEl
   const defaultShadow = primary ? palette.primaryShadow : palette.secondaryShadow;
   const selectedIcon = resolveFunnelButtonIcon(props)?.toString() ?? "none";
   const iconPosition = props.iconPosition ?? "right";
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [iconSearch, setIconSearch] = useState("");
+  const selectedIconOption = FUNNEL_BUTTON_ICON_OPTIONS.find((option) => option.value === selectedIcon) ?? FUNNEL_BUTTON_ICON_OPTIONS[0]!;
+  const matchingIconOptions = FUNNEL_BUTTON_ICON_OPTIONS.filter((option) => `${option.label} ${option.category}`.toLowerCase().includes(iconSearch.trim().toLowerCase()));
+  const iconCategories = ["General", "Navigation", "Actions", "Commerce", "Learning", "People"] as const;
+
+  useEffect(() => {
+    if (!iconPickerOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setIconPickerOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [iconPickerOpen]);
 
   return <div className="grid gap-3">
     <InspectorGroup title="Copy" open>
       <label className="grid gap-1.5 text-xs font-semibold">Button text<input className={INPUT} value={props.label} onChange={(event) => updateProps({ label: event.target.value })} /></label>
       <label className="grid gap-1.5 text-xs font-semibold">Subtext<input className={INPUT} value={props.subtext ?? ""} placeholder="Optional reassurance or guarantee" onChange={(event) => updateProps({ subtext: event.target.value })} /></label>
-      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Full width</span><input type="checkbox" checked={appearance.width === "full"} onChange={(event) => updateAppearance({ width: event.target.checked ? "full" : "fit" })} className="h-4 w-4 accent-[#76a456]" /></label>
+      <ToggleControl label="Full width" checked={appearance.width === "full"} onChange={(checked) => updateAppearance({ width: checked ? "full" : "fit" })} />
     </InspectorGroup>
-    <InspectorGroup title="Icon" open>
+    <InspectorGroup title="Icon">
       <p className="text-xs leading-5 text-ink/50">Choose an icon, then place it before or after the button text.</p>
-      <div className="grid grid-cols-4 gap-2">
-        {FUNNEL_BUTTON_ICON_OPTIONS.map((option) => {
-          const selected = selectedIcon === option.value;
-          return <button key={option.value} type="button" aria-pressed={selected} title={option.label} onClick={() => updateProps({ icon: option.value, showArrow: undefined })} className={`grid min-h-[66px] place-items-center gap-1 rounded-[11px] border px-1.5 py-2 text-center transition ${selected ? "border-[#5f8546] bg-[#e5f0dc] text-[#466333] ring-2 ring-[#739655]/25" : "border-[#dfcfb7] bg-white text-ink/65 hover:border-[#9bb586] hover:bg-[#f6faF2]"}`}>
-            {option.value === "none" ? <span className="grid h-6 w-6 place-items-center text-xl font-light" aria-hidden="true">—</span> : <FunnelButtonIconGlyph icon={option.value} className="h-6 w-6" />}
-            <span className="text-[9px] font-semibold leading-3">{option.label}</span>
-          </button>;
-        })}
+      <div className="flex items-center gap-3 rounded-[12px] border border-[#dfcfb7] bg-white p-3">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] bg-[#edf5e7] text-[#4e7139]">
+          {selectedIconOption.value === "none" ? <span className="text-xl font-light" aria-hidden="true">—</span> : <FunnelButtonIconGlyph icon={selectedIconOption.value} className="h-6 w-6" />}
+        </span>
+        <span className="min-w-0 flex-1"><strong className="block truncate text-xs">{selectedIconOption.label}</strong><span className="text-[10px] text-ink/45">{selectedIconOption.category}</span></span>
+        <button type="button" onClick={() => setIconPickerOpen(true)} className="rounded-[10px] border border-[#b8cba7] bg-[#f5faef] px-3 py-2 text-xs font-semibold text-[#4d6a39]">Choose icon</button>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <button type="button" disabled={selectedIcon === "none"} aria-pressed={iconPosition === "left"} onClick={() => updateProps({ iconPosition: "left" })} className={`rounded-[11px] border px-3 py-2.5 text-xs font-semibold disabled:opacity-40 ${iconPosition === "left" ? "border-[#5f8546] bg-[#e5f0dc] text-[#466333]" : "border-[#dfcfb7] bg-white"}`}>Icon on left</button>
@@ -1289,15 +1315,42 @@ function ButtonInspector({ element, update, palette }: { element: FunnelButtonEl
       <label className="grid gap-1.5 text-xs font-semibold">Font weight<select className={INPUT} value={subtextTypography.fontWeight ?? 500} onChange={(event) => updateSubtextTypography({ fontWeight: Number(event.target.value) })}><option value="400">Regular</option><option value="500">Medium</option><option value="600">Semibold</option><option value="700">Bold</option><option value="800">Extra bold</option></select></label>
       <ColorControl label="Subtext color" value={subtextTypography.color ?? defaultTextColor} onChange={(color) => updateSubtextTypography({ color })} />
     </InspectorGroup>
-    <InspectorGroup title="Button shape & color" open>
+    <InspectorGroup title="Appearance" open>
       <label className="grid gap-1.5 text-xs font-semibold">Style<select className={INPUT} value={props.variant} onChange={(event) => updateProps({ variant: event.target.value as FunnelButtonElement["props"]["variant"] })}><option value="primary">Primary</option><option value="secondary">Secondary</option><option value="text">Text link</option></select></label>
       <ColorControl label="Background color" value={appearance.backgroundColor ?? defaultBackground} onChange={(backgroundColor) => updateAppearance({ backgroundColor })} />
       <ColorControl label="Border color" value={appearance.borderColor ?? defaultBorder} onChange={(borderColor) => updateAppearance({ borderColor })} />
       <div className="grid grid-cols-2 gap-2"><NumberControl label="Border width" value={appearance.borderWidth ?? (textVariant ? 0 : 2)} min={0} max={16} onChange={(borderWidth) => updateAppearance({ borderWidth })} /><NumberControl label="Corner radius" value={appearance.borderRadius ?? palette.pageBorderRadius ?? (textVariant ? 0 : 18)} min={0} max={999} onChange={(borderRadius) => updateAppearance({ borderRadius })} /></div>
-      <div className="grid grid-cols-2 gap-2"><NumberControl label="Side padding" value={appearance.paddingX ?? (textVariant ? 0 : 28)} min={0} max={160} onChange={(paddingX) => updateAppearance({ paddingX })} /><NumberControl label="Top/bottom" value={appearance.paddingY ?? (textVariant ? 0 : 16)} min={0} max={100} onChange={(paddingY) => updateAppearance({ paddingY })} /></div>
+      <div className="grid grid-cols-2 gap-2"><NumberControl label="Padding horizontal" value={appearance.paddingX ?? (textVariant ? 0 : 28)} min={0} max={160} onChange={(paddingX) => updateAppearance({ paddingX })} /><NumberControl label="Padding vertical" value={appearance.paddingY ?? (textVariant ? 0 : 16)} min={0} max={100} onChange={(paddingY) => updateAppearance({ paddingY })} /></div>
       <div className="grid grid-cols-[1fr_96px] gap-2"><ColorControl label="Shadow color" value={appearance.shadowColor ?? defaultShadow} onChange={(shadowColor) => updateAppearance({ shadowColor })} /><NumberControl label="Depth" value={appearance.shadowDepth ?? (primary ? 8 : textVariant ? 0 : 6)} min={0} max={30} onChange={(shadowDepth) => updateAppearance({ shadowDepth })} /></div>
-      <button type="button" onClick={() => updateProps({ typography: undefined, subtextTypography: undefined, appearance: undefined, icon: undefined, iconPosition: undefined, showArrow: undefined })} className="rounded-[11px] border border-[#cfbea4] bg-white px-3 py-2 text-xs font-semibold text-ink/60 hover:border-[#9f7c5e] hover:text-ink">Reset styling to page defaults</button>
+      <button type="button" onClick={() => updateProps({ typography: undefined, subtextTypography: undefined, appearance: undefined, icon: undefined, iconPosition: undefined, showArrow: undefined })} className={SECONDARY_CONTROL}>Reset styling to page defaults</button>
     </InspectorGroup>
+    <InspectorGroup title="Hover effect" open>
+      <ColorControl label="Hover background color" value={appearance.hoverBackgroundColor ?? appearance.backgroundColor ?? defaultBackground} onChange={(hoverBackgroundColor) => updateAppearance({ hoverBackgroundColor })} />
+      <RangeControl label="Hover scale" value={appearance.hoverScale ?? 1} min={0.5} max={1.25} step={0.01} onChange={(hoverScale) => updateAppearance({ hoverScale })} />
+      <p className="text-[10px] leading-4 text-ink/50">1.00 keeps the button at its normal size. Values below 1 shrink it; values above 1 enlarge it.</p>
+    </InspectorGroup>
+    {iconPickerOpen ? <div className="fixed inset-0 z-[300] grid place-items-center bg-[#1f261b]/55 p-4 backdrop-blur-[2px]" onMouseDown={() => setIconPickerOpen(false)}>
+      <div role="dialog" aria-modal="true" aria-labelledby="button-icon-picker-title" className="flex max-h-[86vh] w-full max-w-[860px] flex-col overflow-hidden rounded-[24px] border border-[#cdbb9f] bg-[#fffaf2] shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-between gap-4 border-b border-[#e3d6c2] px-5 py-4 sm:px-6">
+          <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Button</p><h3 id="button-icon-picker-title" className="mt-1 text-xl font-semibold">Choose an icon</h3></div>
+          <button type="button" onClick={() => setIconPickerOpen(false)} className="grid h-10 w-10 place-items-center rounded-full border border-[#d7c6ad] bg-white text-xl text-ink/60" aria-label="Close icon picker">×</button>
+        </div>
+        <div className="border-b border-[#e3d6c2] px-5 py-3 sm:px-6"><label className="grid gap-1.5 text-xs font-semibold">Search icons<input autoFocus className={INPUT} value={iconSearch} onChange={(event) => setIconSearch(event.target.value)} placeholder="Try cart, book, arrow, person…" /></label></div>
+        <div className="overflow-y-auto px-5 py-5 sm:px-6">
+          {matchingIconOptions.length ? <div className="grid gap-6">{iconCategories.map((category) => {
+            const options = matchingIconOptions.filter((option) => option.category === category);
+            if (!options.length) return null;
+            return <section key={category}><h4 className="mb-2 text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">{category}</h4><div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">{options.map((option) => {
+              const selected = selectedIcon === option.value;
+              return <button key={option.value} type="button" aria-pressed={selected} title={option.label} onClick={() => { updateProps({ icon: option.value, showArrow: undefined }); setIconPickerOpen(false); }} className={`grid min-h-[76px] place-items-center gap-1 rounded-[12px] border px-1.5 py-2 text-center transition ${selected ? "border-[#5f8546] bg-[#e5f0dc] text-[#466333] ring-2 ring-[#739655]/25" : "border-[#dfcfb7] bg-white text-ink/65 hover:border-[#9bb586] hover:bg-[#f6faf2]"}`}>
+                {option.value === "none" ? <span className="grid h-7 w-7 place-items-center text-xl font-light" aria-hidden="true">—</span> : <FunnelButtonIconGlyph icon={option.value} className="h-7 w-7" />}
+                <span className="text-[9px] font-semibold leading-3">{option.label}</span>
+              </button>;
+            })}</div></section>;
+          })}</div> : <p className="py-16 text-center text-sm text-ink/50">No icons match “{iconSearch}”.</p>}
+        </div>
+      </div>
+    </div> : null}
   </div>;
 }
 
@@ -1321,7 +1374,7 @@ function ListInspector({ element, update, palette }: { element: FunnelListElemen
       <div className="grid grid-cols-2 gap-2"><NumberControl label="Icon size" value={appearance.markerSize ?? 22} min={8} max={96} onChange={(markerSize) => updateAppearance({ markerSize })} /><NumberControl label="Icon gap" value={appearance.markerGap ?? 12} min={0} max={80} onChange={(markerGap) => updateAppearance({ markerGap })} /></div>
       <NumberControl label={appearance.layout === "inline" ? "Item spacing" : "Vertical spacing"} value={appearance.itemSpacing ?? 8} min={0} max={80} onChange={(itemSpacing) => updateAppearance({ itemSpacing })} />
       <ColorControl label="Icon color" value={appearance.markerColor ?? palette.primary} onChange={(markerColor) => updateAppearance({ markerColor })} />
-      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Circular icon badge</span><input type="checkbox" checked={appearance.markerBadge === true} onChange={(event) => updateAppearance({ markerBadge: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+      <ToggleControl label="Circular icon badge" checked={appearance.markerBadge === true} onChange={(markerBadge) => updateAppearance({ markerBadge })} />
       {appearance.markerBadge ? <div className="grid grid-cols-[1fr_96px] gap-2"><ColorControl label="Badge color" value={appearance.markerBadgeColor ?? "#dfead4"} onChange={(markerBadgeColor) => updateAppearance({ markerBadgeColor })} /><NumberControl label="Badge size" value={appearance.markerBadgeSize ?? 24} min={16} max={96} onChange={(markerBadgeSize) => updateAppearance({ markerBadgeSize })} /></div> : null}
     </InspectorGroup>
     <InspectorGroup title="Typography" open>
@@ -1330,13 +1383,13 @@ function ListInspector({ element, update, palette }: { element: FunnelListElemen
       <label className="grid gap-1.5 text-xs font-semibold">Font weight<select className={INPUT} value={typography.fontWeight ?? 600} onChange={(event) => updateTypography({ fontWeight: Number(event.target.value) })}><option value="400">Regular</option><option value="500">Medium</option><option value="600">Semibold</option><option value="700">Bold</option><option value="800">Extra bold</option><option value="900">Black</option></select></label>
       <ColorControl label="Text color" value={typography.color ?? "#172033"} onChange={(color) => updateTypography({ color })} />
     </InspectorGroup>
-    <InspectorGroup title="Background, border & padding">
-      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Transparent background</span><input type="checkbox" checked={!appearance.backgroundColor} onChange={(event) => updateAppearance({ backgroundColor: event.target.checked ? undefined : "#ffffff" })} className="h-4 w-4 accent-[#76a456]" /></label>
+    <InspectorGroup title="Appearance">
+      <ToggleControl label="Transparent background" checked={!appearance.backgroundColor} onChange={(checked) => updateAppearance({ backgroundColor: checked ? undefined : "#ffffff" })} />
       {appearance.backgroundColor ? <ColorControl label="Background color" value={appearance.backgroundColor} onChange={(backgroundColor) => updateAppearance({ backgroundColor })} /> : null}
       <ColorControl label="Border color" value={appearance.borderColor ?? "#d8c5a8"} onChange={(borderColor) => updateAppearance({ borderColor })} />
       <div className="grid grid-cols-2 gap-2"><NumberControl label="Border width" value={appearance.borderWidth ?? 0} min={0} max={16} onChange={(borderWidth) => updateAppearance({ borderWidth })} /><NumberControl label="Corner radius" value={appearance.borderRadius ?? 14} min={0} max={160} onChange={(borderRadius) => updateAppearance({ borderRadius })} /></div>
-      <div className="grid grid-cols-2 gap-2"><NumberControl label="Side padding" value={appearance.paddingX ?? 0} min={0} max={160} onChange={(paddingX) => updateAppearance({ paddingX })} /><NumberControl label="Top/bottom" value={appearance.paddingY ?? 0} min={0} max={120} onChange={(paddingY) => updateAppearance({ paddingY })} /></div>
-      <button type="button" onClick={() => updateProps({ typography: undefined, appearance: undefined })} className="rounded-[11px] border border-[#cfbea4] bg-white px-3 py-2 text-xs font-semibold text-ink/60 hover:border-[#9f7c5e] hover:text-ink">Reset list styling</button>
+      <div className="grid grid-cols-2 gap-2"><NumberControl label="Padding horizontal" value={appearance.paddingX ?? 0} min={0} max={160} onChange={(paddingX) => updateAppearance({ paddingX })} /><NumberControl label="Padding vertical" value={appearance.paddingY ?? 0} min={0} max={120} onChange={(paddingY) => updateAppearance({ paddingY })} /></div>
+      <button type="button" onClick={() => updateProps({ typography: undefined, appearance: undefined })} className={SECONDARY_CONTROL}>Reset list styling</button>
     </InspectorGroup>
   </div>;
 }
@@ -1378,7 +1431,7 @@ function CountdownInspector({ element, update, palette }: { element: FunnelCount
       {props.expiryAction.type === "message" ? <label className="grid gap-1.5 text-xs font-semibold">Expired message<input className={INPUT} value={props.expiryAction.message} onChange={(event) => updateProps({ expiryAction: { type: "message", message: event.target.value } })} /></label> : null}
     </InspectorGroup>
     <InspectorGroup title="Display" open>
-      <div className="grid grid-cols-2 gap-2"><label className="flex items-center justify-between gap-2 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show days</span><input type="checkbox" checked={props.showDays} onChange={(event) => updateProps({ showDays: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label><label className="flex items-center justify-between gap-2 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show labels</span><input type="checkbox" checked={props.showLabels} onChange={(event) => updateProps({ showLabels: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label></div>
+      <div className="grid grid-cols-2 gap-2"><ToggleControl label="Show days" checked={props.showDays} onChange={(showDays) => updateProps({ showDays })} /><ToggleControl label="Show labels" checked={props.showLabels} onChange={(showLabels) => updateProps({ showLabels })} /></div>
       <label className="grid gap-1.5 text-xs font-semibold">Separator<input className={INPUT} value={props.separator} maxLength={3} onChange={(event) => updateProps({ separator: event.target.value })} /></label>
     </InspectorGroup>
     <InspectorGroup title="Time typography" open>
@@ -1390,7 +1443,7 @@ function CountdownInspector({ element, update, palette }: { element: FunnelCount
       <FontFamilyControl label="Font type" value={labelTypography.fontFamily ?? ""} onChange={(fontFamily) => updateLabelTypography({ fontFamily: fontFamily || undefined })} />
       <div className="grid grid-cols-2 gap-2"><NumberControl label="Font size" value={labelTypography.fontSize ?? 11} min={8} max={48} onChange={(fontSize) => updateLabelTypography({ fontSize })} /><label className="grid gap-1.5 text-xs font-semibold">Weight<select className={INPUT} value={labelTypography.fontWeight ?? 600} onChange={(event) => updateLabelTypography({ fontWeight: Number(event.target.value) })}><option value="400">Regular</option><option value="500">Medium</option><option value="600">Semibold</option><option value="700">Bold</option><option value="800">Extra bold</option></select></label></div>
       <ColorControl label="Label color" value={labelTypography.color ?? "#70685d"} onChange={(color) => updateLabelTypography({ color })} />
-      <button type="button" onClick={() => updateProps({ typography: undefined, labelTypography: undefined })} className="rounded-[11px] border border-[#cfbea4] bg-white px-3 py-2 text-xs font-semibold text-ink/60 hover:border-[#9f7c5e] hover:text-ink">Reset typography</button>
+      <button type="button" onClick={() => updateProps({ typography: undefined, labelTypography: undefined })} className={SECONDARY_CONTROL}>Reset typography</button>
     </InspectorGroup>
   </div>;
 }
@@ -1427,8 +1480,11 @@ function WorkbookGalleryInspector({
   };
 
   return <div className="grid gap-3">
-    <label className="grid gap-1.5 text-xs font-semibold">Workbook title<input className={INPUT} value={element.props.title} onChange={(event) => updateProps({ title: event.target.value })} /></label>
-    {element.props.previewSlug ? <div className="grid gap-2 rounded-[11px] border border-[#b7cda3] bg-[#edf5e7] p-3"><p className="text-xs font-semibold text-[#4d6a39]">Linked to generated previews</p><p className="break-all text-[10px] text-ink/50">{element.props.previewSlug}</p><p className="text-[10px] leading-4 text-ink/50">Treeschool loads the latest generated cover, contents, and sample-page thumbnails when a visitor opens this gallery.</p><button type="button" onClick={() => updateProps({ previewSlug: undefined })} className="justify-self-start text-[10px] font-bold text-earth underline underline-offset-2">Use only manually selected images</button></div> : null}
+    <InspectorGroup title="Gallery copy" open>
+      <label className={CONTROL_LABEL}>Workbook title<input className={INPUT} value={element.props.title} onChange={(event) => updateProps({ title: event.target.value })} /></label>
+      <label className={CONTROL_LABEL}>Caption<input className={INPUT} value={element.props.caption} onChange={(event) => updateProps({ caption: event.target.value })} placeholder="Optional text below the thumbnail" /></label>
+      {element.props.previewSlug ? <div className="grid gap-2 rounded-[11px] border border-[#b7cda3] bg-[#edf5e7] p-3"><p className="text-xs font-semibold text-[#4d6a39]">Linked to generated previews</p><p className="break-all text-[10px] text-ink/50">{element.props.previewSlug}</p><p className="text-[10px] leading-4 text-ink/50">Treeschool loads the latest generated cover, contents, and sample-page thumbnails when a visitor opens this gallery.</p><button type="button" onClick={() => updateProps({ previewSlug: undefined })} className={RESET_CONTROL}>Use only manually selected images</button></div> : null}
+    </InspectorGroup>
     <InspectorGroup title="Cover thumbnail" open>
       {element.props.cover.publicUrl ? <Image src={element.props.cover.publicUrl} alt={element.props.cover.alt} width={260} height={320} unoptimized className="mx-auto max-h-44 w-full rounded-[10px] border border-[#dfcfb7] bg-white object-contain p-2" /> : <div className="grid min-h-28 place-items-center rounded-[10px] border border-dashed border-[#cfbea4] bg-white text-xs text-ink/45">No cover selected</div>}
       <button type="button" onClick={() => chooseMedia("cover")} className="rounded-[11px] border-2 border-[#739655] bg-[#edf5e7] px-3 py-2 text-xs font-semibold text-[#4d6a39]">{element.props.cover.publicUrl ? "Replace cover" : "Choose cover"}</button>
@@ -1455,25 +1511,24 @@ function WorkbookGalleryInspector({
       <p className="text-[10px] leading-4 text-ink/50">The bookstore preset removes the white frame and darkens the cover on hover so the label stays readable. Any setting below can be adjusted independently.</p>
       <label className="grid gap-1.5 text-xs font-semibold">Thumbnail shape<select className={INPUT} value={appearance.aspectRatio} onChange={(event) => updateAppearance({ aspectRatio: event.target.value as "3:4" | "4:5" | "square" })}><option value="3:4">Workbook cover (3:4)</option><option value="4:5">Tall card (4:5)</option><option value="square">Square</option></select></label>
       <label className="grid gap-1.5 text-xs font-semibold">Image fit<select className={INPUT} value={element.props.fit} onChange={(event) => updateProps({ fit: event.target.value as "contain" | "cover" })}><option value="contain">Show whole page</option><option value="cover">Fill and crop</option></select></label>
-      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Transparent frame</span><input type="checkbox" checked={appearance.frameBackgroundColor === "transparent"} onChange={(event) => updateAppearance({ frameBackgroundColor: event.target.checked ? "transparent" : "#ffffff" })} className="h-4 w-4 accent-[#76a456]" /></label>
+      <ToggleControl label="Transparent frame" checked={appearance.frameBackgroundColor === "transparent"} onChange={(checked) => updateAppearance({ frameBackgroundColor: checked ? "transparent" : "#ffffff" })} />
       {appearance.frameBackgroundColor === "transparent" ? null : <ColorControl label="Frame background" value={appearance.frameBackgroundColor} onChange={(frameBackgroundColor) => updateAppearance({ frameBackgroundColor })} />}
       <ColorControl label="Frame border color" value={appearance.frameBorderColor === "transparent" ? "#ffffff" : appearance.frameBorderColor} onChange={(frameBorderColor) => updateAppearance({ frameBorderColor })} />
       <div className="grid grid-cols-2 gap-2"><NumberControl label="Border width" value={appearance.frameBorderWidth} min={0} max={16} onChange={(frameBorderWidth) => updateAppearance({ frameBorderWidth })} /><NumberControl label="Corner radius" value={appearance.frameBorderRadius} min={0} max={160} onChange={(frameBorderRadius) => updateAppearance({ frameBorderRadius })} /></div>
       <div className="grid grid-cols-2 gap-2"><NumberControl label="Inner padding" value={appearance.framePadding} min={0} max={100} onChange={(framePadding) => updateAppearance({ framePadding })} /><NumberControl label="Image scale %" value={appearance.imageScale} min={80} max={160} onChange={(imageScale) => updateAppearance({ imageScale })} /></div>
-      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show resting shadow</span><input type="checkbox" checked={appearance.restingShadow} onChange={(event) => updateAppearance({ restingShadow: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+      <ToggleControl label="Show resting shadow" checked={appearance.restingShadow} onChange={(restingShadow) => updateAppearance({ restingShadow })} />
     </InspectorGroup>
     <InspectorGroup title="Hover effect" open>
-      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Zoom image on hover</span><input type="checkbox" checked={appearance.zoomOnHover} onChange={(event) => updateAppearance({ zoomOnHover: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
-      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Darken image on hover</span><input type="checkbox" checked={appearance.darkenOnHover} onChange={(event) => updateAppearance({ darkenOnHover: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+      <ToggleControl label="Zoom image on hover" checked={appearance.zoomOnHover} onChange={(zoomOnHover) => updateAppearance({ zoomOnHover })} />
+      <ToggleControl label="Darken image on hover" checked={appearance.darkenOnHover} onChange={(darkenOnHover) => updateAppearance({ darkenOnHover })} />
       {appearance.darkenOnHover ? <NumberControl label="Hover brightness %" value={appearance.hoverBrightness} min={10} max={100} onChange={(hoverBrightness) => updateAppearance({ hoverBrightness })} /> : null}
-      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Lift thumbnail on hover</span><input type="checkbox" checked={appearance.hoverLift} onChange={(event) => updateAppearance({ hoverLift: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
-      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Add shadow on hover</span><input type="checkbox" checked={appearance.hoverShadow} onChange={(event) => updateAppearance({ hoverShadow: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+      <ToggleControl label="Lift thumbnail on hover" checked={appearance.hoverLift} onChange={(hoverLift) => updateAppearance({ hoverLift })} />
+      <ToggleControl label="Add shadow on hover" checked={appearance.hoverShadow} onChange={(hoverShadow) => updateAppearance({ hoverShadow })} />
     </InspectorGroup>
     <InspectorGroup title="Hover label" open>
-      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show hover label</span><input type="checkbox" checked={appearance.showOverlay} onChange={(event) => updateAppearance({ showOverlay: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+      <ToggleControl label="Show hover label" checked={appearance.showOverlay} onChange={(showOverlay) => updateAppearance({ showOverlay })} />
       {appearance.showOverlay ? <><label className="grid gap-1.5 text-xs font-semibold">Label text<input className={INPUT} value={appearance.overlayText} maxLength={160} onChange={(event) => updateAppearance({ overlayText: event.target.value })} /></label><ColorControl label="Label background" value={appearance.overlayBackgroundColor} onChange={(overlayBackgroundColor) => updateAppearance({ overlayBackgroundColor })} /><ColorControl label="Label text color" value={appearance.overlayTextColor} onChange={(overlayTextColor) => updateAppearance({ overlayTextColor })} /></> : null}
     </InspectorGroup>
-    <label className="grid gap-1.5 text-xs font-semibold">Caption<input className={INPUT} value={element.props.caption} onChange={(event) => updateProps({ caption: event.target.value })} placeholder="Optional text below the thumbnail" /></label>
   </div>;
 }
 
@@ -1520,8 +1575,8 @@ function ProgressStepsInspector({
 
   return <div className="grid gap-3">
     <InspectorGroup title="Progress" open>
-      <label className="grid gap-1.5 text-xs font-semibold">Current step<select className={INPUT} value={element.props.currentStep} onChange={(event) => updateProps({ currentStep: Number(event.target.value) })}>{element.props.steps.map((step, index) => <option key={index} value={index + 1}>{index + 1} · {step || "Untitled step"}</option>)}</select></label>
-      <label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show step numbers</span><input type="checkbox" checked={element.props.showNumbers} onChange={(event) => updateProps({ showNumbers: event.target.checked })} className="h-4 w-4 accent-[#76a456]" /></label>
+      <SelectControl label="Current step" value={element.props.currentStep} onChange={(value) => updateProps({ currentStep: Number(value) })}>{element.props.steps.map((step, index) => <option key={index} value={index + 1}>{index + 1} · {step || "Untitled step"}</option>)}</SelectControl>
+      <ToggleControl label="Show step numbers" checked={element.props.showNumbers} onChange={(showNumbers) => updateProps({ showNumbers })} />
     </InspectorGroup>
     <InspectorGroup title={`Steps (${element.props.steps.length}/8)`} open>
       <p className="text-xs leading-5 text-ink/50">Add two to eight labels. The highlighted step follows the item when you reorder it.</p>
@@ -1539,51 +1594,32 @@ function ProgressStepsInspector({
 }
 
 function ElementSpacingInspector({ element, update }: { element: FunnelPageElement; update: (next: FunnelPageElement) => void }) {
-  const spacing = element.spacing ?? {};
-  const marginValues = [spacing.marginTop, spacing.marginRight, spacing.marginBottom, spacing.marginLeft];
-  const paddingValues = [spacing.paddingTop, spacing.paddingRight, spacing.paddingBottom, spacing.paddingLeft];
-  const uniformValue = (values: Array<number | undefined>) => values.every((value) => value === values[0]) ? values[0] ?? 0 : 0;
-  const setSpacing = (next: Partial<NonNullable<FunnelPageElement["spacing"]>>) => update({ ...element, spacing: { ...spacing, ...next } });
-
-  return <InspectorGroup title="Margin & padding" open>
-    <p className="text-xs leading-5 text-ink/50">Margin adds space around the element. Padding adds space inside it. Use “all sides” for speed, then fine-tune individual sides.</p>
-    <div className="grid grid-cols-2 gap-2">
-      <NumberControl label="Margin · all sides" value={uniformValue(marginValues)} min={-300} max={300} onChange={(value) => setSpacing(allSpacingSides("margin", value))} />
-      <NumberControl label="Padding · all sides" value={uniformValue(paddingValues)} min={0} max={300} onChange={(value) => setSpacing(allSpacingSides("padding", value))} />
-    </div>
-    <details className="rounded-[11px] border border-[#dfcfb7] bg-white p-3">
-      <summary className="cursor-pointer text-xs font-semibold">Fine-tune each side</summary>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <NumberControl label="Margin top" value={spacing.marginTop ?? 0} min={-300} max={300} onChange={(marginTop) => setSpacing({ marginTop })} />
-        <NumberControl label="Margin right" value={spacing.marginRight ?? 0} min={-300} max={300} onChange={(marginRight) => setSpacing({ marginRight })} />
-        <NumberControl label="Margin bottom" value={spacing.marginBottom ?? 0} min={-300} max={300} onChange={(marginBottom) => setSpacing({ marginBottom })} />
-        <NumberControl label="Margin left" value={spacing.marginLeft ?? 0} min={-300} max={300} onChange={(marginLeft) => setSpacing({ marginLeft })} />
-        <NumberControl label="Padding top" value={spacing.paddingTop ?? 0} min={0} max={300} onChange={(paddingTop) => setSpacing({ paddingTop })} />
-        <NumberControl label="Padding right" value={spacing.paddingRight ?? 0} min={0} max={300} onChange={(paddingRight) => setSpacing({ paddingRight })} />
-        <NumberControl label="Padding bottom" value={spacing.paddingBottom ?? 0} min={0} max={300} onChange={(paddingBottom) => setSpacing({ paddingBottom })} />
-        <NumberControl label="Padding left" value={spacing.paddingLeft ?? 0} min={0} max={300} onChange={(paddingLeft) => setSpacing({ paddingLeft })} />
-      </div>
-    </details>
-    {element.spacing ? <button type="button" onClick={() => { const next = { ...element }; delete next.spacing; update(next); }} className="justify-self-start text-xs font-semibold text-[#74573e] underline underline-offset-4">Reset element spacing</button> : null}
-  </InspectorGroup>;
+  return <LayoutSpacingControls spacing={element.spacing} onChange={(spacing) => {
+    const next = { ...element };
+    if (spacing) next.spacing = spacing;
+    else delete next.spacing;
+    update(next);
+  }} />;
 }
 
 function ElementInspector({ element, update, chooseMedia, chooseGalleryMedia, move, remove, buttonPalette }: { element: FunnelPageElement; update: (next: FunnelPageElement) => void; chooseMedia: () => void; chooseGalleryMedia: (slot: "cover" | "append" | number) => void; move: (direction: -1 | 1) => void; remove: () => void; buttonPalette: FunnelButtonPalette }) {
   const align = "align" in element.props ? element.props.align : null;
   return <div className="grid gap-4">
     <div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Element</p><h3 className="mt-1 text-lg font-semibold capitalize">{element.type.replaceAll("_", " ")}</h3></div><div className="flex gap-1"><button type="button" onClick={() => move(-1)} className="rounded-lg border px-2 py-1">↑</button><button type="button" onClick={() => move(1)} className="rounded-lg border px-2 py-1">↓</button><button type="button" onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738]">×</button></div></div>
-    {element.type === "eyebrow" || element.type === "heading" || element.type === "text" ? <label className="grid gap-1.5 text-xs font-semibold">Text<textarea rows={element.type === "text" ? 7 : 3} className={`${INPUT} resize-y`} value={element.props.text} onChange={(event) => update({ ...element, props: { ...element.props, text: event.target.value } } as FunnelPageElement)} /></label> : null}
-    {element.type === "heading" ? <label className="grid gap-1.5 text-xs font-semibold">Heading size<select className={INPUT} value={element.props.level} onChange={(event) => update({ ...element, props: { ...element.props, level: event.target.value as "h1" | "h2" | "h3" } })}><option value="h1">Page headline</option><option value="h2">Section heading</option><option value="h3">Small heading</option></select></label> : null}
-    {element.type === "text" ? <label className="grid gap-1.5 text-xs font-semibold">Text style<select className={INPUT} value={element.props.style} onChange={(event) => update({ ...element, props: { ...element.props, style: event.target.value as "lead" | "body" | "small" } })}><option value="lead">Lead</option><option value="body">Body</option><option value="small">Small</option></select></label> : null}
+    {element.type === "eyebrow" || element.type === "heading" || element.type === "text" ? <InspectorGroup title="Content" open>
+      <label className={CONTROL_LABEL}>Text<textarea rows={element.type === "text" ? 7 : 3} className={`${INPUT} resize-y`} value={element.props.text} onChange={(event) => update({ ...element, props: { ...element.props, text: event.target.value } } as FunnelPageElement)} /></label>
+      {element.type === "heading" ? <SelectControl label="Heading size" value={element.props.level} onChange={(value) => update({ ...element, props: { ...element.props, level: value as "h1" | "h2" | "h3" } })}><option value="h1">Page headline</option><option value="h2">Section heading</option><option value="h3">Small heading</option></SelectControl> : null}
+      {element.type === "text" ? <SelectControl label="Text style" value={element.props.style} onChange={(value) => update({ ...element, props: { ...element.props, style: value as "lead" | "body" | "small" } })}><option value="lead">Lead</option><option value="body">Body</option><option value="small">Small</option></SelectControl> : null}
+    </InspectorGroup> : null}
     {element.type === "list" ? <ListInspector element={element} palette={buttonPalette} update={update} /> : null}
-    {element.type === "image" ? <><button type="button" onClick={chooseMedia} className="rounded-[13px] border-2 border-[#739655] bg-[#edf5e7] px-4 py-3 text-sm font-semibold text-[#4d6a39]">Choose from media manager</button><label className="grid gap-1.5 text-xs font-semibold">Alternative text<input className={INPUT} value={element.props.media.alt} onChange={(event) => update({ ...element, props: { ...element.props, media: { ...element.props.media, alt: event.target.value } } })} /></label><label className="grid gap-1.5 text-xs font-semibold">Image fit<select className={INPUT} value={element.props.fit} onChange={(event) => update({ ...element, props: { ...element.props, fit: event.target.value as "contain" | "cover" } })}><option value="contain">Show whole image</option><option value="cover">Fill and crop</option></select></label></> : null}
+    {element.type === "image" ? <InspectorGroup title="Image" open><button type="button" onClick={chooseMedia} className={SECONDARY_CONTROL}>Choose from media manager</button><label className={CONTROL_LABEL}>Alternative text<input className={INPUT} value={element.props.media.alt} onChange={(event) => update({ ...element, props: { ...element.props, media: { ...element.props.media, alt: event.target.value } } })} /></label><SelectControl label="Image fit" value={element.props.fit} onChange={(value) => update({ ...element, props: { ...element.props, fit: value as "contain" | "cover" } })}><option value="contain">Show whole image</option><option value="cover">Fill and crop</option></SelectControl></InspectorGroup> : null}
     {element.type === "workbook_gallery" ? <WorkbookGalleryInspector element={element} update={update} chooseMedia={chooseGalleryMedia} /> : null}
     {element.type === "button" ? <ButtonInspector element={element} palette={buttonPalette} update={update} /> : null}
     {element.type === "countdown" ? <CountdownInspector element={element} palette={buttonPalette} update={update} /> : null}
     {element.type === "progress_steps" ? <ProgressStepsInspector element={element} update={update} /> : null}
-    {element.type === "lead_capture" ? <><label className="grid gap-1.5 text-xs font-semibold">Form heading<input className={INPUT} value={element.props.heading} onChange={(event) => update({ ...element, props: { ...element.props, heading: event.target.value } })} /></label><label className="grid gap-1.5 text-xs font-semibold">Submit label<input className={INPUT} value={element.props.submitLabel} onChange={(event) => update({ ...element, props: { ...element.props, submitLabel: event.target.value } })} /></label></> : null}
-    {element.type === "button" || element.type === "lead_capture" ? <><label className="grid gap-1.5 text-xs font-semibold">Click action<select className={INPUT} value={element.props.action.type} onChange={(event) => update({ ...element, props: { ...element.props, action: buildAction(event.target.value as FunnelAction["type"], actionTarget(element.props.action), actionOffer(element.props.action)) } } as FunnelPageElement)}><option value="next_step">Next funnel step</option><option value="url">Fixed URL</option><option value="checkout">Start checkout</option><option value="accept_offer">Accept offer</option><option value="decline_offer">Decline offer</option><option value="none">No action</option></select></label>{element.props.action.type === "url" || element.props.action.type === "checkout" ? <label className="grid gap-1.5 text-xs font-semibold">Destination<input className={INPUT} value={actionTarget(element.props.action)} onChange={(event) => update({ ...element, props: { ...element.props, action: buildAction(element.props.action.type, event.target.value, actionOffer(element.props.action)) } } as FunnelPageElement)} placeholder="Optional funnel-relative target" /></label> : null}{"offerKey" in element.props.action ? <label className="grid gap-1.5 text-xs font-semibold">Offer key<input className={INPUT} value={element.props.action.offerKey} onChange={(event) => update({ ...element, props: { ...element.props, action: buildAction(element.props.action.type, actionTarget(element.props.action), event.target.value) } } as FunnelPageElement)} /></label> : null}</> : null}
-    {align ? <label className="grid gap-1.5 text-xs font-semibold">Alignment<select className={INPUT} value={align} onChange={(event) => update({ ...element, props: { ...element.props, align: event.target.value as "left" | "center" | "right" } } as FunnelPageElement)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label> : null}
+    {element.type === "lead_capture" ? <InspectorGroup title="Form" open><label className={CONTROL_LABEL}>Form heading<input className={INPUT} value={element.props.heading} onChange={(event) => update({ ...element, props: { ...element.props, heading: event.target.value } })} /></label><label className={CONTROL_LABEL}>Submit label<input className={INPUT} value={element.props.submitLabel} onChange={(event) => update({ ...element, props: { ...element.props, submitLabel: event.target.value } })} /></label></InspectorGroup> : null}
+    {element.type === "button" || element.type === "lead_capture" ? <InspectorGroup title="Action" open><SelectControl label="Click action" value={element.props.action.type} onChange={(value) => update({ ...element, props: { ...element.props, action: buildAction(value as FunnelAction["type"], actionTarget(element.props.action), actionOffer(element.props.action)) } } as FunnelPageElement)}><option value="next_step">Next funnel step</option><option value="url">Fixed URL</option><option value="checkout">Start checkout</option><option value="accept_offer">Accept offer</option><option value="decline_offer">Decline offer</option><option value="none">No action</option></SelectControl>{element.props.action.type === "url" || element.props.action.type === "checkout" ? <label className={CONTROL_LABEL}>Destination<input className={INPUT} value={actionTarget(element.props.action)} onChange={(event) => update({ ...element, props: { ...element.props, action: buildAction(element.props.action.type, event.target.value, actionOffer(element.props.action)) } } as FunnelPageElement)} placeholder="Optional funnel-relative target" /></label> : null}{"offerKey" in element.props.action ? <label className={CONTROL_LABEL}>Offer key<input className={INPUT} value={element.props.action.offerKey} onChange={(event) => update({ ...element, props: { ...element.props, action: buildAction(element.props.action.type, actionTarget(element.props.action), event.target.value) } } as FunnelPageElement)} /></label> : null}</InspectorGroup> : null}
+    {align ? <InspectorGroup title="Alignment" open><SelectControl label="Content alignment" value={align} onChange={(value) => update({ ...element, props: { ...element.props, align: value as "left" | "center" | "right" } } as FunnelPageElement)}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></SelectControl></InspectorGroup> : null}
     <ElementSpacingInspector element={element} update={update} />
   </div>;
 }
@@ -2257,7 +2293,16 @@ export function FunnelPageStudio({
       )}
     </section>
   ) : null;
-  const pageInspector = <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Page</p><h3 className="mt-1 text-lg font-semibold">Page settings</h3><p className="mt-3 text-sm leading-6 text-ink/55">Select a section, row, column, or element on the canvas to edit it. Page-wide styles are available from the left panel.</p><button type="button" onClick={() => { setPanel("styles"); setLeftSidebarCollapsed(false); }} className="mt-4 w-full rounded-[12px] border border-[#d8c5a8] bg-white px-4 py-3 text-sm font-semibold">Open page styles</button><div className="mt-5 border-t border-[#eadfce] pt-5"><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Search appearance</p><div className="mt-3 grid gap-4"><label className="grid gap-1.5 text-xs font-semibold">SEO title<input className={INPUT} value={seo.title} maxLength={140} onChange={(event) => setSeo((current) => ({ ...current, title: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.title.length}/140 characters</span></label><label className="grid gap-1.5 text-xs font-semibold">Meta description<textarea className={`${INPUT} min-h-28 resize-y`} value={seo.description} maxLength={320} onChange={(event) => setSeo((current) => ({ ...current, description: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.description.length}/320 characters</span></label><label className="flex items-start gap-3 rounded-[12px] border border-[#dfcfb7] bg-white px-3 py-3 text-xs font-semibold"><input type="checkbox" checked={seo.noIndex} onChange={(event) => setSeo((current) => ({ ...current, noIndex: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-[#76a456]" /><span>Hide this page from search engines<span className="mt-1 block font-normal leading-5 text-ink/50">Adds a no-index directive while keeping the page available by its funnel URL.</span></span></label></div></div></div>;
+  const pageInspector = <div className="grid gap-4">
+    <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Page</p><h3 className="mt-1 text-lg font-semibold">Page settings</h3></div>
+    <p className="text-sm leading-6 text-ink/55">Select a section, row, column, or element on the canvas to edit it. Page-wide styles are available from the left panel.</p>
+    <button type="button" onClick={() => { setPanel("styles"); setLeftSidebarCollapsed(false); }} className={SECONDARY_CONTROL}>Open page styles</button>
+    <InspectorGroup title="Search appearance" open>
+      <label className={CONTROL_LABEL}>SEO title<input className={INPUT} value={seo.title} maxLength={140} onChange={(event) => setSeo((current) => ({ ...current, title: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.title.length}/140 characters</span></label>
+      <label className={CONTROL_LABEL}>Meta description<textarea className={`${INPUT} min-h-28 resize-y`} value={seo.description} maxLength={320} onChange={(event) => setSeo((current) => ({ ...current, description: event.target.value }))} /><span className="text-[10px] font-normal text-ink/45">{seo.description.length}/320 characters</span></label>
+      <ToggleControl label="Hide this page from search engines" help="Adds a no-index directive while keeping the page available by its funnel URL." checked={seo.noIndex} onChange={(noIndex) => setSeo((current) => ({ ...current, noIndex }))} />
+    </InspectorGroup>
+  </div>;
   const inspectorContent = (() => {
     if (selection.kind === "element" && currentElement) {
       return <ElementInspector
@@ -2295,6 +2340,7 @@ export function FunnelPageStudio({
         rowIndex={rowIndex}
         rowCount={siblingRows.length}
         nested={parentColumnPath !== null}
+        update={(recipe) => mutate((draft) => { const row = rowAtPath(draft, selection.sectionIndex, selection.rowPath); if (row) recipe(row); })}
         updateColumnCount={(columnCount) => setRowColumnCount(selection.sectionIndex, selection.rowPath, columnCount)}
         selectColumn={(columnIndex) => setSelection({ kind: "column", sectionIndex: selection.sectionIndex, rowPath: selection.rowPath, columnIndex })}
         move={(direction) => moveRow(selection.sectionIndex, selection.rowPath, direction)}
@@ -2350,7 +2396,23 @@ export function FunnelPageStudio({
           </section>)}
         </div> : null}
         {!leftSidebarCollapsed && panel === "blocks" ? <div className="mt-4"><p className="mb-2 text-[11px] leading-4 text-ink/45">Drag a block between sections on the page, or click to append it.</p><div className="grid gap-2">{(["hero", "split", "offer", "blank"] as FunnelBlockKind[]).map((kind) => <button type="button" draggable key={kind} onClick={() => appendBlock(kind)} onDragStart={(event) => startBlockDrag(event, kind)} onDragEnd={endBlockDrag} className="min-h-14 cursor-grab rounded-[12px] border border-[#d8c5a8] bg-white px-3 text-left text-sm font-semibold capitalize hover:border-[#739655] active:cursor-grabbing">{kind} section</button>)}</div></div> : null}
-        {!leftSidebarCollapsed && panel === "styles" ? <div className="mt-4 grid gap-4"><InspectorGroup title="Site header & footer" open><p className="text-[11px] leading-5 text-ink/50">Funnel pages have no site chrome unless you enable it here.</p><label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show site header</span><input type="checkbox" checked={document.siteChrome?.showHeader === true} onChange={(event) => mutate((draft) => { draft.siteChrome = { showHeader: event.target.checked, showFooter: draft.siteChrome?.showFooter === true }; })} className="h-4 w-4 accent-[#76a456]" /></label><label className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-xs font-semibold"><span>Show site footer</span><input type="checkbox" checked={document.siteChrome?.showFooter === true} onChange={(event) => mutate((draft) => { draft.siteChrome = { showHeader: draft.siteChrome?.showHeader === true, showFooter: event.target.checked }; })} className="h-4 w-4 accent-[#76a456]" /></label></InspectorGroup><label className="grid gap-1 text-xs font-semibold">Theme<select className={INPUT} value={document.theme} onChange={(event) => mutate((draft) => { draft.theme = event.target.value as FunnelPageDocument["theme"]; })}>{Object.keys(themes).map((theme) => <option key={theme} value={theme}>{theme[0]!.toUpperCase()}{theme.slice(1)}</option>)}</select></label><ColorControl label="Page background" value={document.styles?.colors?.pageBackground ?? baseTheme.page} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, pageBackground: value } }; })} /><ColorControl label="Surface" value={document.styles?.colors?.surface ?? baseTheme.surface} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, surface: value } }; })} /><ColorControl label="Primary" value={document.styles?.colors?.primary ?? baseTheme.primary} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, primary: value } }; })} /><NumberControl label="Content width" value={document.styles?.layout?.contentWidth ?? 1120} min={640} max={1600} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, layout: { ...draft.styles?.layout, contentWidth: value } }; })} /><NumberControl label="Section spacing" value={document.styles?.layout?.sectionGap ?? 22} min={0} max={160} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, layout: { ...draft.styles?.layout, sectionGap: value } }; })} /></div> : null}
+        {!leftSidebarCollapsed && panel === "styles" ? <div className="mt-4 grid gap-3">
+          <InspectorGroup title="Site header & footer" open>
+            <p className="text-[11px] leading-5 text-ink/50">Funnel pages have no site chrome unless you enable it here.</p>
+            <ToggleControl label="Show site header" checked={document.siteChrome?.showHeader === true} onChange={(showHeader) => mutate((draft) => { draft.siteChrome = { showHeader, showFooter: draft.siteChrome?.showFooter === true }; })} />
+            <ToggleControl label="Show site footer" checked={document.siteChrome?.showFooter === true} onChange={(showFooter) => mutate((draft) => { draft.siteChrome = { showHeader: draft.siteChrome?.showHeader === true, showFooter }; })} />
+          </InspectorGroup>
+          <InspectorGroup title="Theme & colors" open>
+            <SelectControl label="Theme" value={document.theme} onChange={(value) => mutate((draft) => { draft.theme = value as FunnelPageDocument["theme"]; })}>{Object.keys(themes).map((theme) => <option key={theme} value={theme}>{theme[0]!.toUpperCase()}{theme.slice(1)}</option>)}</SelectControl>
+            <ColorControl label="Page background" value={document.styles?.colors?.pageBackground ?? baseTheme.page} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, pageBackground: value } }; })} />
+            <ColorControl label="Surface" value={document.styles?.colors?.surface ?? baseTheme.surface} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, surface: value } }; })} />
+            <ColorControl label="Primary" value={document.styles?.colors?.primary ?? baseTheme.primary} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, colors: { ...draft.styles?.colors, primary: value } }; })} />
+          </InspectorGroup>
+          <InspectorGroup title="Page layout" open>
+            <NumberControl label="Content width" value={document.styles?.layout?.contentWidth ?? 1120} min={640} max={1600} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, layout: { ...draft.styles?.layout, contentWidth: value } }; })} />
+            <NumberControl label="Space between sections" value={document.styles?.layout?.sectionGap ?? 22} min={0} max={160} onChange={(value) => mutate((draft) => { draft.styles = { ...draft.styles, layout: { ...draft.styles?.layout, sectionGap: value } }; })} />
+          </InspectorGroup>
+        </div> : null}
       </aside>
       <section className="min-w-0 overflow-auto bg-[#d9d4cc] p-5"><EditorCanvas document={document} selection={selection} onSelect={setSelection} viewport={viewport} elementDrag={elementDrag} dropTarget={elementDropTarget} onStartElementDrag={startElementDrag} onDropTarget={updateElementDropTarget} onDropElement={dropElement} onEndElementDrag={endElementDrag} blockDrag={blockDrag} sectionDropTarget={sectionDropTarget} onSectionDropTarget={updateSectionDropTarget} onDropBlock={dropBlock} rowDrag={rowDrag} rowDropTarget={rowDropTarget} onRowDropTarget={updateRowDropTarget} onDropRow={dropRow} onStartRowDrag={startRowDrag} onEndRowDrag={endRowDrag} resolveRowDrag={() => rowDragRef.current ?? rowDrag} columnDrag={columnDrag} columnDropTarget={columnDropTarget} onStartColumnDrag={startColumnDrag} onColumnDropTarget={updateColumnDropTarget} onDropColumn={dropColumn} onEndColumnDrag={endColumnDrag} orderFormPreview={orderFormPreview} /></section>
       <aside className={`overflow-auto border-l border-[#d6c6af] bg-[#fffaf2] ${rightSidebarCollapsed ? "p-2" : "p-4"}`}>
@@ -2377,14 +2439,60 @@ export function FunnelPageStudio({
   </main>;
 }
 
-function ColorControl({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="grid gap-1 text-xs font-semibold">{label}<span className="flex items-center gap-2"><input type="color" value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-12 rounded border" /><input className={INPUT} value={value} onChange={(event) => onChange(event.target.value)} /></span></label>; }
-function NumberControl({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) { return <label className="grid gap-1 text-xs font-semibold">{label}<input type="number" className={INPUT} value={value} min={min} max={max} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
+function ColorControl({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className={CONTROL_LABEL}>{label}<span className="flex items-center gap-2"><input type="color" value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-12 shrink-0 cursor-pointer rounded-[10px] border border-[#cfbea4] bg-white p-1" /><input className={INPUT} value={value} onChange={(event) => onChange(event.target.value)} /></span></label>; }
+function NumberControl({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) { return <label className={CONTROL_LABEL}>{label}<input type="number" className={INPUT} value={value} min={min} max={max} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
+function RangeControl({ label, value, min, max, step, onChange }: { label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) { return <label className={CONTROL_LABEL}><span className="flex items-center justify-between gap-3"><span>{label}</span><output className="rounded-full bg-[#edf5e7] px-2 py-1 text-[10px] font-bold tabular-nums text-[#4d6a39]">{value.toFixed(2)}×</output></span><input type="range" value={value} min={min} max={max} step={step} onChange={(event) => onChange(Number(event.target.value))} className="h-2 w-full cursor-pointer accent-[#76a456]" /></label>; }
+function LayoutSpacingControls({ spacing, onChange, hasOverrides, allowNegativeMargins = true }: { spacing?: FunnelElementSpacing; onChange: (spacing: FunnelElementSpacing | undefined) => void; hasOverrides?: boolean; allowNegativeMargins?: boolean }) {
+  const [moreControl, setMoreControl] = useState(false);
+  const value = spacing ?? {};
+  const marginTop = value.marginTop ?? 0;
+  const marginRight = value.marginRight ?? 0;
+  const marginBottom = value.marginBottom ?? 0;
+  const marginLeft = value.marginLeft ?? 0;
+  const paddingTop = value.paddingTop ?? 0;
+  const paddingRight = value.paddingRight ?? 0;
+  const paddingBottom = value.paddingBottom ?? 0;
+  const paddingLeft = value.paddingLeft ?? 0;
+  const axisValue = (first: number, second: number) => first === second ? first : 0;
+  const setSpacing = (next: Partial<FunnelElementSpacing>) => onChange({ ...value, ...next });
+  const marginMin = allowNegativeMargins ? -300 : 0;
+  const resettable = hasOverrides ?? spacing !== undefined;
+
+  return <InspectorGroup title="Spacing" open>
+    <p className="text-xs leading-5 text-ink/50">Margin adds space outside the selected item. Padding adds space inside it.</p>
+    <div className="grid grid-cols-2 gap-2">
+      <NumberControl label={marginLeft === marginRight ? "Margin horizontal" : "Margin horizontal · mixed"} value={axisValue(marginLeft, marginRight)} min={marginMin} max={300} onChange={(next) => setSpacing({ marginLeft: next, marginRight: next })} />
+      <NumberControl label={marginTop === marginBottom ? "Margin vertical" : "Margin vertical · mixed"} value={axisValue(marginTop, marginBottom)} min={marginMin} max={300} onChange={(next) => setSpacing({ marginTop: next, marginBottom: next })} />
+      <NumberControl label={paddingLeft === paddingRight ? "Padding horizontal" : "Padding horizontal · mixed"} value={axisValue(paddingLeft, paddingRight)} min={0} max={300} onChange={(next) => setSpacing({ paddingLeft: next, paddingRight: next })} />
+      <NumberControl label={paddingTop === paddingBottom ? "Padding vertical" : "Padding vertical · mixed"} value={axisValue(paddingTop, paddingBottom)} min={0} max={300} onChange={(next) => setSpacing({ paddingTop: next, paddingBottom: next })} />
+    </div>
+    <button type="button" onClick={() => setMoreControl((current) => !current)} className={`justify-self-start ${SECONDARY_CONTROL}`}>{moreControl ? "Less control" : "More control…"}</button>
+    {moreControl ? <div className="grid gap-3 rounded-[12px] border border-[#dfcfb7] bg-white/60 p-3">
+      <p className="text-[10px] font-black uppercase tracking-[.1em] text-[#567b40]">Individual margins</p>
+      <div className="grid grid-cols-2 gap-2">
+        <NumberControl label="Top" value={marginTop} min={marginMin} max={300} onChange={(marginTop) => setSpacing({ marginTop })} />
+        <NumberControl label="Right" value={marginRight} min={marginMin} max={300} onChange={(marginRight) => setSpacing({ marginRight })} />
+        <NumberControl label="Bottom" value={marginBottom} min={marginMin} max={300} onChange={(marginBottom) => setSpacing({ marginBottom })} />
+        <NumberControl label="Left" value={marginLeft} min={marginMin} max={300} onChange={(marginLeft) => setSpacing({ marginLeft })} />
+      </div>
+      <p className="mt-1 text-[10px] font-black uppercase tracking-[.1em] text-[#567b40]">Individual padding</p>
+      <div className="grid grid-cols-2 gap-2">
+        <NumberControl label="Top" value={paddingTop} min={0} max={300} onChange={(paddingTop) => setSpacing({ paddingTop })} />
+        <NumberControl label="Right" value={paddingRight} min={0} max={300} onChange={(paddingRight) => setSpacing({ paddingRight })} />
+        <NumberControl label="Bottom" value={paddingBottom} min={0} max={300} onChange={(paddingBottom) => setSpacing({ paddingBottom })} />
+        <NumberControl label="Left" value={paddingLeft} min={0} max={300} onChange={(paddingLeft) => setSpacing({ paddingLeft })} />
+      </div>
+    </div> : null}
+    {resettable ? <button type="button" onClick={() => onChange(undefined)} className={RESET_CONTROL}>Reset spacing</button> : null}
+  </InspectorGroup>;
+}
 function RowInspector({
   row,
   sectionIndex,
   rowIndex,
   rowCount,
   nested,
+  update,
   updateColumnCount,
   selectColumn,
   move,
@@ -2395,6 +2503,7 @@ function RowInspector({
   rowIndex: number;
   rowCount: number;
   nested: boolean;
+  update: (recipe: (row: FunnelPageRow) => void) => void;
   updateColumnCount: (columnCount: FunnelRowColumnCount) => void;
   selectColumn: (columnIndex: number) => void;
   move: (direction: -1 | 1) => void;
@@ -2405,11 +2514,14 @@ function RowInspector({
       <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Section {sectionIndex + 1} → {nested ? "Nested row" : "Row"} {rowIndex + 1}</p><h3 className="mt-1 text-lg font-semibold">Row layout</h3></div>
       <div className="flex gap-1"><button type="button" disabled={rowIndex === 0} onClick={() => move(-1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">↑</button><button type="button" disabled={rowIndex === rowCount - 1} onClick={() => move(1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">↓</button><button type="button" disabled={!nested && rowCount <= 1} onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738] disabled:opacity-30">×</button></div>
     </div>
-    <label className="grid gap-1.5 text-xs font-semibold">Number of columns<select className={INPUT} value={row.columns.length} onChange={(event) => updateColumnCount(Number(event.target.value) as FunnelRowColumnCount)}>{([1, 2, 3, 4] as const).map((count) => <option key={count} value={count}>{count} {count === 1 ? "column" : "columns"}</option>)}</select></label>
-    <p className="text-[10px] leading-4 text-ink/50">Changing the count creates an even grid. If you reduce it, Treeschool moves content from removed columns into the last remaining column instead of deleting it.</p>
+    <InspectorGroup title="Grid layout" open>
+      <SelectControl label="Number of columns" value={row.columns.length} onChange={(value) => updateColumnCount(Number(value) as FunnelRowColumnCount)}>{([1, 2, 3, 4] as const).map((count) => <option key={count} value={count}>{count} {count === 1 ? "column" : "columns"}</option>)}</SelectControl>
+      <p className="text-[10px] leading-4 text-ink/50">Changing the count creates an even grid. If you reduce it, Treeschool moves content from removed columns into the last remaining column instead of deleting it.</p>
+    </InspectorGroup>
     <InspectorGroup title="Columns" open>
       {row.columns.map((column, columnIndex) => <button key={column.id} type="button" onClick={() => selectColumn(columnIndex)} className="flex items-center justify-between gap-3 rounded-[11px] border border-[#dfcfb7] bg-white px-3 py-2 text-left text-xs transition hover:border-[#8a674d] hover:bg-[#fffaf2]"><span className="font-semibold">Column {columnIndex + 1}</span><span className="text-[10px] text-ink/45">{column.span}/12{column.offset !== undefined ? ` · offset ${column.offset}` : " · auto"} · {column.elements.length} {column.elements.length === 1 ? "element" : "elements"}{column.rows?.length ? ` · ${column.rows.length} nested ${column.rows.length === 1 ? "row" : "rows"}` : ""}</span></button>)}
     </InspectorGroup>
+    <LayoutSpacingControls spacing={row.spacing} onChange={(spacing) => update((draft) => { if (spacing) draft.spacing = spacing; else delete draft.spacing; })} />
   </div>;
 }
 
@@ -2441,15 +2553,16 @@ function ColumnInspector({
       <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Section {sectionIndex + 1} → Row {rowIndex + 1}</p><h3 className="mt-1 text-lg font-semibold">Column {columnIndex + 1}</h3></div>
       <div className="flex gap-1"><button type="button" disabled={columnIndex === 0} onClick={() => move(-1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">←</button><button type="button" disabled={columnIndex === columnCount - 1} onClick={() => move(1)} className="rounded-lg border px-2 py-1 disabled:opacity-30">→</button><button type="button" disabled={columnCount <= 1} onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738] disabled:opacity-30">×</button></div>
     </div>
-    <button type="button" onClick={selectRow} className="justify-self-start text-xs font-semibold text-[#74573e] underline underline-offset-4">Select parent row</button>
-    <label className="grid gap-1.5 text-xs font-semibold">Vertical content alignment<select className={INPUT} value={column.verticalAlign ?? "row"} onChange={(event) => update((draft) => { const value = event.target.value; if (value === "row") delete draft.verticalAlign; else draft.verticalAlign = value as NonNullable<FunnelPageColumn["verticalAlign"]>; })}><option value="row">Use row default</option><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></select></label>
-    <p className="text-[10px] leading-4 text-ink/50">Top aligns this column with the top edge of the tallest column in its row. Center and bottom align it within that same row height.</p>
-    <InspectorGroup title="Grid position" open>
+    <button type="button" onClick={selectRow} className={RESET_CONTROL}>Select parent row</button>
+    <InspectorGroup title="Layout" open>
+      <SelectControl label="Vertical content alignment" value={column.verticalAlign ?? "row"} onChange={(value) => update((draft) => { if (value === "row") delete draft.verticalAlign; else draft.verticalAlign = value as NonNullable<FunnelPageColumn["verticalAlign"]>; })}><option value="row">Use row default</option><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option></SelectControl>
+      <p className="text-[10px] leading-4 text-ink/50">Top aligns this column with the top edge of the tallest column in its row. Center and bottom align it within that same row height.</p>
       <NumberControl label="Width · grid columns" value={column.span} min={1} max={12} onChange={(span) => update((draft) => { draft.span = Math.max(1, Math.min(12, span)); if (draft.offset !== undefined) draft.offset = Math.min(draft.offset, 12 - draft.span); })} />
-      <label className="grid gap-1.5 text-xs font-semibold">Placement<select className={INPUT} value={positioned ? "positioned" : "auto"} onChange={(event) => update((draft) => { if (event.target.value === "auto") delete draft.offset; else draft.offset = Math.min(draft.offset ?? 0, 12 - draft.span); })}><option value="auto">Flow after previous column</option><option value="positioned">Set grid offset manually</option></select></label>
+      <SelectControl label="Horizontal placement" value={positioned ? "positioned" : "auto"} onChange={(value) => update((draft) => { if (value === "auto") delete draft.offset; else draft.offset = Math.min(draft.offset ?? 0, 12 - draft.span); })}><option value="auto">Flow after previous column</option><option value="positioned">Set grid offset manually</option></SelectControl>
       {positioned ? <NumberControl label="Offset from left" value={column.offset ?? 0} min={0} max={maxOffset} onChange={(offset) => update((draft) => { draft.offset = Math.max(0, Math.min(12 - draft.span, offset)); })} /> : null}
       <p className="text-[10px] leading-4 text-ink/50">The page uses a twelve-column grid. Width controls how many tracks this column occupies; offset pins its starting position from the left.</p>
     </InspectorGroup>
+    <LayoutSpacingControls spacing={column.spacing} onChange={(spacing) => update((draft) => { if (spacing) draft.spacing = spacing; else delete draft.spacing; })} />
     <div className="rounded-[12px] border border-[#dfcfb7] bg-white/65 px-3 py-3 text-xs text-ink/55"><strong className="text-ink">{column.elements.length}</strong> {column.elements.length === 1 ? "element" : "elements"} in this column. Drag elements on the canvas to move them between columns.</div>
   </div>;
 }
@@ -2474,39 +2587,62 @@ function SectionInspector({
   move: (direction: -1 | 1) => void;
   remove: () => void;
 }) {
+  const marginTop = section.props.marginTop ?? 0;
+  const marginRight = section.props.marginRight ?? 0;
+  const marginBottom = section.props.marginBottom ?? 0;
+  const marginLeft = section.props.marginLeft ?? 0;
+  const paddingTop = section.props.paddingTop ?? section.props.paddingY ?? defaultPaddingY;
+  const paddingRight = section.props.paddingRight ?? section.props.paddingX ?? defaultPaddingX;
+  const paddingBottom = section.props.paddingBottom ?? section.props.paddingY ?? defaultPaddingY;
+  const paddingLeft = section.props.paddingLeft ?? section.props.paddingX ?? defaultPaddingX;
+  const sectionSpacing: FunnelElementSpacing = { marginTop, marginRight, marginBottom, marginLeft, paddingTop, paddingRight, paddingBottom, paddingLeft };
+  const hasSpacingOverrides = section.props.marginTop !== undefined || section.props.marginRight !== undefined || section.props.marginBottom !== undefined || section.props.marginLeft !== undefined || section.props.paddingX !== undefined || section.props.paddingY !== undefined || section.props.paddingTop !== undefined || section.props.paddingRight !== undefined || section.props.paddingBottom !== undefined || section.props.paddingLeft !== undefined;
+  const updateSectionSpacing = (spacing: FunnelElementSpacing | undefined) => update((draft) => {
+    delete draft.props.marginTop;
+    delete draft.props.marginRight;
+    delete draft.props.marginBottom;
+    delete draft.props.marginLeft;
+    delete draft.props.paddingX;
+    delete draft.props.paddingY;
+    delete draft.props.paddingTop;
+    delete draft.props.paddingRight;
+    delete draft.props.paddingBottom;
+    delete draft.props.paddingLeft;
+    if (!spacing) return;
+    draft.props.marginTop = spacing.marginTop;
+    draft.props.marginRight = spacing.marginRight;
+    draft.props.marginBottom = spacing.marginBottom;
+    draft.props.marginLeft = spacing.marginLeft;
+    draft.props.paddingTop = spacing.paddingTop;
+    draft.props.paddingRight = spacing.paddingRight;
+    draft.props.paddingBottom = spacing.paddingBottom;
+    draft.props.paddingLeft = spacing.paddingLeft;
+  });
+
   return <div className="grid gap-4">
     <div className="flex items-center justify-between">
       <div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Section</p><h3 className="mt-1 text-lg font-semibold">Layout</h3></div>
       <div className="flex gap-1"><button type="button" onClick={() => move(-1)} className="rounded-lg border px-2 py-1">↑</button><button type="button" onClick={() => move(1)} className="rounded-lg border px-2 py-1">↓</button><button type="button" onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738]">×</button></div>
     </div>
-    <label className="grid gap-1 text-xs font-semibold">Background tone<select className={INPUT} value={section.props.tone} onChange={(event) => update((draft) => { draft.props.tone = event.target.value as FunnelPageSection["props"]["tone"]; })}><option value="default">Default</option><option value="muted">Muted</option><option value="accent">Accent</option><option value="dark">Dark</option></select></label>
-    <div className="grid gap-2 rounded-[13px] border border-[#dfcfb7] bg-white/55 p-3">
+    <InspectorGroup title="Background" open>
+      <SelectControl label="Background tone" value={section.props.tone} onChange={(value) => update((draft) => { draft.props.tone = value as FunnelPageSection["props"]["tone"]; })}><option value="default">Default</option><option value="muted">Muted</option><option value="accent">Accent</option><option value="dark">Dark</option></SelectControl>
       <ColorControl label="Background color" value={section.props.backgroundColor ?? defaultBackgroundColor} onChange={(backgroundColor) => update((draft) => { draft.props.backgroundColor = backgroundColor; })} />
-      {section.props.backgroundColor ? <button type="button" onClick={() => update((draft) => { delete draft.props.backgroundColor; })} className="justify-self-start text-xs font-semibold text-[#74573e] underline underline-offset-4">Use tone color</button> : <p className="text-[10px] leading-4 text-ink/45">Choose a color to override the selected tone.</p>}
-    </div>
+      {section.props.backgroundColor ? <button type="button" onClick={() => update((draft) => { delete draft.props.backgroundColor; })} className={RESET_CONTROL}>Use tone color</button> : <p className="text-[10px] leading-4 text-ink/45">Choose a color to override the selected tone.</p>}
+      <button type="button" onClick={chooseMedia} className={SECONDARY_CONTROL}>{section.props.background ? "Change background image" : "Add background image"}</button>
+      {section.props.background ? <button type="button" onClick={() => update((draft) => { draft.props.background = null; })} className={RESET_CONTROL}>Remove background image</button> : null}
+    </InspectorGroup>
     <InspectorGroup title="Border" open>
       <ColorControl label="Border color" value={section.props.borderColor ?? defaultBorderColor} onChange={(borderColor) => update((draft) => { draft.props.borderColor = borderColor; })} />
       <div className="grid grid-cols-2 gap-2">
         <NumberControl label="Width" value={section.props.borderWidth ?? 1} min={0} max={20} onChange={(borderWidth) => update((draft) => { draft.props.borderWidth = borderWidth; })} />
         <NumberControl label="Corner radius" value={section.props.borderRadius ?? 30} min={0} max={200} onChange={(borderRadius) => update((draft) => { draft.props.borderRadius = borderRadius; })} />
       </div>
-      <label className="grid gap-1 text-xs font-semibold">Border style<select className={INPUT} value={section.props.borderStyle ?? "solid"} onChange={(event) => update((draft) => { draft.props.borderStyle = event.target.value as NonNullable<FunnelPageSection["props"]["borderStyle"]>; })}><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select></label>
-      {(section.props.borderColor !== undefined || section.props.borderWidth !== undefined || section.props.borderRadius !== undefined || section.props.borderStyle !== undefined) ? <button type="button" onClick={() => update((draft) => { delete draft.props.borderColor; delete draft.props.borderWidth; delete draft.props.borderRadius; delete draft.props.borderStyle; })} className="justify-self-start text-xs font-semibold text-[#74573e] underline underline-offset-4">Reset border</button> : null}
+      <SelectControl label="Border style" value={section.props.borderStyle ?? "solid"} onChange={(value) => update((draft) => { draft.props.borderStyle = value as NonNullable<FunnelPageSection["props"]["borderStyle"]>; })}><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></SelectControl>
+      {(section.props.borderColor !== undefined || section.props.borderWidth !== undefined || section.props.borderRadius !== undefined || section.props.borderStyle !== undefined) ? <button type="button" onClick={() => update((draft) => { delete draft.props.borderColor; delete draft.props.borderWidth; delete draft.props.borderRadius; delete draft.props.borderStyle; })} className={RESET_CONTROL}>Reset border</button> : null}
     </InspectorGroup>
-    <label className="grid gap-1 text-xs font-semibold">Content width<select className={INPUT} value={section.props.width} onChange={(event) => update((draft) => { draft.props.width = event.target.value as FunnelPageSection["props"]["width"]; })}><option value="narrow">Narrow</option><option value="standard">Standard</option><option value="wide">Wide</option></select></label>
-    <InspectorGroup title="Spacing" open>
-      <p className="text-xs leading-5 text-ink/50">Margin adds space outside this section. Padding adds space inside it.</p>
-      <div className="grid grid-cols-2 gap-2">
-        <NumberControl label="Margin top" value={section.props.marginTop ?? 0} min={0} max={300} onChange={(marginTop) => update((draft) => { draft.props.marginTop = marginTop; })} />
-        <NumberControl label="Margin right" value={section.props.marginRight ?? 0} min={0} max={300} onChange={(marginRight) => update((draft) => { draft.props.marginRight = marginRight; })} />
-        <NumberControl label="Margin bottom" value={section.props.marginBottom ?? 0} min={0} max={300} onChange={(marginBottom) => update((draft) => { draft.props.marginBottom = marginBottom; })} />
-        <NumberControl label="Margin left" value={section.props.marginLeft ?? 0} min={0} max={300} onChange={(marginLeft) => update((draft) => { draft.props.marginLeft = marginLeft; })} />
-        <NumberControl label="Padding sides" value={section.props.paddingX ?? defaultPaddingX} min={0} max={300} onChange={(paddingX) => update((draft) => { draft.props.paddingX = paddingX; })} />
-        <NumberControl label="Padding top/bottom" value={section.props.paddingY ?? defaultPaddingY} min={0} max={300} onChange={(paddingY) => update((draft) => { draft.props.paddingY = paddingY; })} />
-      </div>
-      {(section.props.marginTop !== undefined || section.props.marginRight !== undefined || section.props.marginBottom !== undefined || section.props.marginLeft !== undefined || section.props.paddingX !== undefined || section.props.paddingY !== undefined) ? <button type="button" onClick={() => update((draft) => { delete draft.props.marginTop; delete draft.props.marginRight; delete draft.props.marginBottom; delete draft.props.marginLeft; delete draft.props.paddingX; delete draft.props.paddingY; })} className="justify-self-start text-xs font-semibold text-[#74573e] underline underline-offset-4">Reset spacing</button> : null}
+    <InspectorGroup title="Content width" open>
+      <SelectControl label="Width" value={section.props.width} onChange={(value) => update((draft) => { draft.props.width = value as FunnelPageSection["props"]["width"]; })}><option value="narrow">Narrow</option><option value="standard">Standard</option><option value="wide">Wide</option></SelectControl>
     </InspectorGroup>
-    <button type="button" onClick={chooseMedia} className="rounded-[13px] border border-[#d8c5a8] bg-white px-4 py-3 text-sm font-semibold">{section.props.background ? "Change background image" : "Add background image"}</button>
-    {section.props.background ? <button type="button" onClick={() => update((draft) => { draft.props.background = null; })} className="text-sm font-semibold text-[#8c4536] underline underline-offset-4">Remove background image</button> : null}
+    <LayoutSpacingControls spacing={sectionSpacing} hasOverrides={hasSpacingOverrides} allowNegativeMargins={false} onChange={updateSectionSpacing} />
   </div>;
 }

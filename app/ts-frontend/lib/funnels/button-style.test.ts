@@ -33,7 +33,9 @@ describe("funnel button styles", () => {
       borderColor: "#76a456",
       borderWidth: 2,
       borderRadius: 18,
-      boxShadow: "0 8px 0 #486f34"
+      boxShadow: "0 8px 0 #486f34",
+      "--funnel-button-hover-background": "#76a456",
+      "--funnel-button-hover-scale": 1
     });
   });
 
@@ -45,7 +47,7 @@ describe("funnel button styles", () => {
       align: "center",
       typography: { fontFamily: "Georgia, serif", fontSize: 28, lineHeight: 32, fontWeight: 700, color: "#fffaf2" },
       subtextTypography: { fontSize: 14, lineHeight: 18, fontWeight: 500 },
-      appearance: { width: "full", borderColor: "#365e2d", borderWidth: 3, shadowDepth: 4 },
+      appearance: { width: "full", borderColor: "#365e2d", borderWidth: 3, shadowDepth: 4, hoverBackgroundColor: "#5d8742", hoverScale: 1.08 },
       action: { type: "next_step" }
     };
 
@@ -53,7 +55,9 @@ describe("funnel button styles", () => {
       width: "100%",
       borderColor: "#365e2d",
       borderWidth: 3,
-      boxShadow: "0 4px 0 #486f34"
+      boxShadow: "0 4px 0 #486f34",
+      "--funnel-button-hover-background": "#5d8742",
+      "--funnel-button-hover-scale": 1.08
     });
     expect(funnelButtonTextStyle(props.typography, "#ffffff")).toMatchObject({
       color: "#fffaf2",

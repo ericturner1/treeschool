@@ -14,6 +14,7 @@ import type {
   ManagedFunnelPagePayload
 } from "../lib/funnels/server";
 import {
+  FUNNEL_BUTTON_INTERACTION_CLASS,
   funnelButtonBoxStyle,
   funnelButtonDefaultTextColor,
   funnelButtonSubtextStyle,
@@ -293,7 +294,7 @@ function PageElement({
       pageBorderRadius: styles?.buttons?.borderRadius
     };
     const textColor = funnelButtonDefaultTextColor(element.props, palette);
-    const className = "inline-flex min-h-14 flex-col items-center justify-center gap-0.5 text-center transition duration-200 hover:-translate-y-0.5";
+    const className = `inline-flex min-h-14 flex-col items-center justify-center gap-0.5 text-center ${FUNNEL_BUTTON_INTERACTION_CLASS}`;
     const style = funnelButtonBoxStyle(element.props, palette);
     const icon = resolveFunnelButtonIcon(element.props);
     const iconGlyph = icon ? <FunnelButtonIconGlyph icon={icon} className="h-[1.1em] w-[1.1em] shrink-0" /> : null;
@@ -451,12 +452,13 @@ export async function ManagedFunnelPageView({
   const renderRows = (rows: FunnelPageRow[], nested = false): ReactNode => (
     <div className="grid gap-8" style={{ gap: styles?.layout?.columnGap }}>
       {rows.map((row) => (
-        <div key={row.id} className={`grid grid-cols-1 gap-7 lg:grid-cols-12 ${nested ? "lg:items-start" : "lg:items-center"}`}>
+        <div key={row.id} className={`grid grid-cols-1 gap-7 lg:grid-cols-12 ${nested ? "lg:items-start" : "lg:items-center"}`} style={funnelElementSpacingStyle(row)}>
           {row.columns.map((column) => (
             <div
               key={column.id}
               className="grid gap-5 lg:[grid-column:var(--funnel-grid-column)]"
               style={{
+                ...(funnelElementSpacingStyle(column) ?? {}),
                 alignSelf: column.verticalAlign === "top" ? "start" : column.verticalAlign === "center" ? "center" : column.verticalAlign === "bottom" ? "end" : undefined,
                 "--funnel-grid-column": column.offset !== undefined
                   ? `${column.offset + 1} / span ${column.span}`
@@ -540,6 +542,10 @@ export async function ManagedFunnelPageView({
           {document.sections.map((section) => {
             const backgroundSource = section.props.background?.publicUrl ?? section.props.background?.storagePath;
             const paddingY = section.props.paddingY ?? styles?.layout?.sectionPaddingY;
+            const paddingTop = section.props.paddingTop ?? paddingY;
+            const paddingRight = section.props.paddingRight ?? section.props.paddingX;
+            const paddingBottom = section.props.paddingBottom ?? paddingY;
+            const paddingLeft = section.props.paddingLeft ?? section.props.paddingX;
             const marginLeft = section.props.marginLeft ?? 0;
             const marginRight = section.props.marginRight ?? 0;
             const style = {
@@ -579,12 +585,10 @@ export async function ManagedFunnelPageView({
               ...(marginLeft > 0 || marginRight > 0
                 ? { width: `calc(100% - ${marginLeft + marginRight}px)` }
                 : {}),
-              ...(section.props.paddingX !== undefined
-                ? { paddingLeft: section.props.paddingX, paddingRight: section.props.paddingX }
-                : {}),
-              ...(paddingY !== undefined
-                ? { paddingTop: paddingY, paddingBottom: paddingY }
-                : {}),
+              ...(paddingTop !== undefined ? { paddingTop } : {}),
+              ...(paddingRight !== undefined ? { paddingRight } : {}),
+              ...(paddingBottom !== undefined ? { paddingBottom } : {}),
+              ...(paddingLeft !== undefined ? { paddingLeft } : {}),
               ...(styles?.layout?.contentWidth && section.props.width === "standard"
                 ? { maxWidth: styles.layout.contentWidth }
                 : {})

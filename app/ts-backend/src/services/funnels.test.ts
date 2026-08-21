@@ -174,6 +174,10 @@ describe("funnel administration normalization", () => {
           backgroundColor: "#f6ead8",
           paddingX: 32,
           paddingY: 24,
+          paddingTop: 18,
+          paddingRight: 28,
+          paddingBottom: 22,
+          paddingLeft: 30,
           marginTop: 12,
           marginRight: 16,
           marginBottom: 20,
@@ -185,9 +189,11 @@ describe("funnel administration normalization", () => {
         },
         rows: [{
           id: "row_test",
+          spacing: { marginTop: 6, marginBottom: 10, paddingLeft: 12, paddingRight: 12 },
           columns: [{
             id: "column_test",
             span: 12,
+            spacing: { marginLeft: -3, paddingTop: 9 },
             elements: [{
               id: "image_test",
               type: "image",
@@ -215,6 +221,10 @@ describe("funnel administration normalization", () => {
       backgroundColor: "#f6ead8",
       paddingX: 32,
       paddingY: 24,
+      paddingTop: 18,
+      paddingRight: 28,
+      paddingBottom: 22,
+      paddingLeft: 30,
       marginTop: 12,
       marginRight: 16,
       marginBottom: 20,
@@ -224,6 +234,8 @@ describe("funnel administration normalization", () => {
       borderRadius: 18,
       borderStyle: "dashed"
     });
+    expect(content.sections[0]?.rows[0]?.spacing).toMatchObject({ marginTop: 6, marginBottom: 10, paddingLeft: 12 });
+    expect(content.sections[0]?.rows[0]?.columns[0]?.spacing).toMatchObject({ marginLeft: -3, paddingTop: 9 });
     const element = content.sections[0]?.rows[0]?.columns[0]?.elements[0];
     expect(element?.type).toBe("image");
     if (element?.type !== "image") throw new Error("Expected an image element.");
@@ -367,11 +379,11 @@ describe("funnel administration normalization", () => {
                 subtext: "30-day guarantee",
                 variant: "primary",
                 align: "center",
-                icon: "shopping-cart",
+                icon: "lightbulb",
                 iconPosition: "left",
                 typography: { fontFamily: "Georgia, serif", fontSize: 28, lineHeight: 32, fontWeight: 700, color: "#ffffff" },
                 subtextTypography: { fontSize: 14, lineHeight: 18, fontWeight: 500, color: "#f4f8ee" },
-                appearance: { backgroundColor: "#76a456", borderColor: "#365e2d", borderWidth: 3, borderRadius: 12, paddingX: 36, paddingY: 18, width: "full", shadowColor: "#294823", shadowDepth: 7 },
+                appearance: { backgroundColor: "#76a456", borderColor: "#365e2d", borderWidth: 3, borderRadius: 12, paddingX: 36, paddingY: 18, width: "full", shadowColor: "#294823", shadowDepth: 7, hoverBackgroundColor: "#5d8742", hoverScale: 1.08 },
                 action: { type: "next_step" }
               }
             }]
@@ -387,7 +399,9 @@ describe("funnel administration normalization", () => {
     expect(button.props.typography?.fontFamily).toBe("Georgia, serif");
     expect(button.props.appearance?.borderColor).toBe("#365e2d");
     expect(button.props.appearance?.width).toBe("full");
-    expect(button.props.icon).toBe("shopping-cart");
+    expect(button.props.appearance?.hoverBackgroundColor).toBe("#5d8742");
+    expect(button.props.appearance?.hoverScale).toBe(1.08);
+    expect(button.props.icon).toBe("lightbulb");
     expect(button.props.iconPosition).toBe("left");
   });
 

@@ -36,6 +36,8 @@ describe("funnel page layout rows", () => {
 
   test("resizes rows without discarding content", () => {
     const row = createFunnelPageRow(4);
+    row.spacing = { marginTop: 8, paddingLeft: 12 };
+    row.columns[0]!.spacing = { marginRight: 6, paddingTop: 4 };
     row.columns.forEach((column, index) => {
       column.elements.push({
         id: `text_${index}`,
@@ -47,6 +49,8 @@ describe("funnel page layout rows", () => {
     const resized = resizeFunnelPageRow(row, 2);
 
     expect(resized.columns).toHaveLength(2);
+    expect(resized.spacing).toEqual({ marginTop: 8, paddingLeft: 12 });
+    expect(resized.columns[0]?.spacing).toEqual({ marginRight: 6, paddingTop: 4 });
     expect(resized.columns.map((column) => column.span)).toEqual([6, 6]);
     expect(resized.columns.flatMap((column) => column.elements).map((element) => element.id)).toEqual([
       "text_0",

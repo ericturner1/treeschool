@@ -14,7 +14,7 @@ describe("funnel button icons", () => {
 
   test("offers a useful icon library without duplicate values", () => {
     const values = FUNNEL_BUTTON_ICON_OPTIONS.map((option) => option.value);
-    expect(values.length).toBeGreaterThanOrEqual(16);
+    expect(values.length).toBeGreaterThanOrEqual(70);
     expect(new Set(values).size).toBe(values.length);
   });
 });

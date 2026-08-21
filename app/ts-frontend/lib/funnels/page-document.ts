@@ -6,8 +6,18 @@ export type FunnelButtonWidth = "fit" | "full";
 export type FunnelButtonIcon =
   | "arrow-right"
   | "arrow-left"
+  | "arrow-up"
+  | "arrow-down"
   | "chevron-right"
+  | "chevron-left"
+  | "chevron-up"
+  | "chevron-down"
   | "check"
+  | "plus"
+  | "minus"
+  | "info"
+  | "help-circle"
+  | "alert-triangle"
   | "shopping-cart"
   | "download"
   | "book-open"
@@ -19,7 +29,55 @@ export type FunnelButtonIcon =
   | "gift"
   | "heart"
   | "calendar"
-  | "external-link";
+  | "external-link"
+  | "phone"
+  | "map-pin"
+  | "clock"
+  | "user"
+  | "users"
+  | "home"
+  | "globe"
+  | "search"
+  | "settings"
+  | "wand"
+  | "rocket"
+  | "trophy"
+  | "graduation-cap"
+  | "music"
+  | "camera"
+  | "image"
+  | "file-text"
+  | "printer"
+  | "share"
+  | "refresh"
+  | "thumbs-up"
+  | "smile"
+  | "circle"
+  | "zap"
+  | "flame"
+  | "sun"
+  | "moon"
+  | "leaf"
+  | "menu"
+  | "log-in"
+  | "upload"
+  | "save"
+  | "copy"
+  | "edit"
+  | "trash"
+  | "eye"
+  | "credit-card"
+  | "tag"
+  | "percent"
+  | "dollar-sign"
+  | "package"
+  | "pencil"
+  | "lightbulb"
+  | "headphones"
+  | "video"
+  | "microphone"
+  | "bell"
+  | "message-circle";
 export type FunnelButtonIconPosition = "left" | "right";
 export type FunnelListMarker = "check" | "bullet" | "arrow" | "star";
 
@@ -61,6 +119,8 @@ export type FunnelButtonAppearance = {
   width?: FunnelButtonWidth;
   shadowColor?: string;
   shadowDepth?: number;
+  hoverBackgroundColor?: string;
+  hoverScale?: number;
 };
 
 export type FunnelListTypography = {
@@ -269,12 +329,14 @@ export type FunnelPageColumn = {
   span: number;
   offset?: number;
   verticalAlign?: "top" | "center" | "bottom";
+  spacing?: FunnelElementSpacing;
   elements: FunnelPageElement[];
   rows?: FunnelPageRow[];
 };
 
 export type FunnelPageRow = {
   id: string;
+  spacing?: FunnelElementSpacing;
   columns: FunnelPageColumn[];
 };
 export type FunnelRowColumnCount = 1 | 2 | 3 | 4;
@@ -288,6 +350,10 @@ export type FunnelPageSection = {
     backgroundColor?: string;
     paddingX?: number;
     paddingY?: number;
+    paddingTop?: number;
+    paddingRight?: number;
+    paddingBottom?: number;
+    paddingLeft?: number;
     marginTop?: number;
     marginRight?: number;
     marginBottom?: number;
