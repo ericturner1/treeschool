@@ -268,7 +268,9 @@ export type FunnelPageSection = {
     paddingX?: number;
     paddingY?: number;
     marginTop?: number;
+    marginRight?: number;
     marginBottom?: number;
+    marginLeft?: number;
     borderColor?: string;
     borderWidth?: number;
     borderRadius?: number;

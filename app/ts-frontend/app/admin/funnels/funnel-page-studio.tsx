@@ -1150,7 +1150,9 @@ function EditorCanvas({
                 borderRadius: section.props.borderRadius,
                 borderStyle: section.props.borderStyle,
                 marginTop: section.props.marginTop,
+                marginRight: section.props.marginRight,
                 marginBottom: section.props.marginBottom,
+                marginLeft: section.props.marginLeft,
                 paddingTop: sectionPaddingY,
                 paddingRight: section.props.paddingX ?? (viewport === "mobile" ? 24 : 40),
                 paddingBottom: sectionPaddingY,
@@ -2476,11 +2478,13 @@ function SectionInspector({
       <p className="text-xs leading-5 text-ink/50">Margin adds space outside this section. Padding adds space inside it.</p>
       <div className="grid grid-cols-2 gap-2">
         <NumberControl label="Margin top" value={section.props.marginTop ?? 0} min={0} max={300} onChange={(marginTop) => update((draft) => { draft.props.marginTop = marginTop; })} />
+        <NumberControl label="Margin right" value={section.props.marginRight ?? 0} min={0} max={300} onChange={(marginRight) => update((draft) => { draft.props.marginRight = marginRight; })} />
         <NumberControl label="Margin bottom" value={section.props.marginBottom ?? 0} min={0} max={300} onChange={(marginBottom) => update((draft) => { draft.props.marginBottom = marginBottom; })} />
+        <NumberControl label="Margin left" value={section.props.marginLeft ?? 0} min={0} max={300} onChange={(marginLeft) => update((draft) => { draft.props.marginLeft = marginLeft; })} />
         <NumberControl label="Padding sides" value={section.props.paddingX ?? defaultPaddingX} min={0} max={300} onChange={(paddingX) => update((draft) => { draft.props.paddingX = paddingX; })} />
         <NumberControl label="Padding top/bottom" value={section.props.paddingY ?? defaultPaddingY} min={0} max={300} onChange={(paddingY) => update((draft) => { draft.props.paddingY = paddingY; })} />
       </div>
-      {(section.props.marginTop !== undefined || section.props.marginBottom !== undefined || section.props.paddingX !== undefined || section.props.paddingY !== undefined) ? <button type="button" onClick={() => update((draft) => { delete draft.props.marginTop; delete draft.props.marginBottom; delete draft.props.paddingX; delete draft.props.paddingY; })} className="justify-self-start text-xs font-semibold text-[#74573e] underline underline-offset-4">Reset spacing</button> : null}
+      {(section.props.marginTop !== undefined || section.props.marginRight !== undefined || section.props.marginBottom !== undefined || section.props.marginLeft !== undefined || section.props.paddingX !== undefined || section.props.paddingY !== undefined) ? <button type="button" onClick={() => update((draft) => { delete draft.props.marginTop; delete draft.props.marginRight; delete draft.props.marginBottom; delete draft.props.marginLeft; delete draft.props.paddingX; delete draft.props.paddingY; })} className="justify-self-start text-xs font-semibold text-[#74573e] underline underline-offset-4">Reset spacing</button> : null}
     </InspectorGroup>
     <button type="button" onClick={chooseMedia} className="rounded-[13px] border border-[#d8c5a8] bg-white px-4 py-3 text-sm font-semibold">{section.props.background ? "Change background image" : "Add background image"}</button>
     {section.props.background ? <button type="button" onClick={() => update((draft) => { draft.props.background = null; })} className="text-sm font-semibold text-[#8c4536] underline underline-offset-4">Remove background image</button> : null}

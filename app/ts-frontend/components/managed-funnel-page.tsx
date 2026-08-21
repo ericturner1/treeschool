@@ -536,6 +536,8 @@ export async function ManagedFunnelPageView({
           {document.sections.map((section) => {
             const backgroundSource = section.props.background?.publicUrl ?? section.props.background?.storagePath;
             const paddingY = section.props.paddingY ?? styles?.layout?.sectionPaddingY;
+            const marginLeft = section.props.marginLeft ?? 0;
+            const marginRight = section.props.marginRight ?? 0;
             const style = {
               ...(backgroundSource
                 ? { backgroundImage: `linear-gradient(rgba(255,255,255,.82),rgba(255,255,255,.82)),url(${JSON.stringify(backgroundSource)})` }
@@ -561,8 +563,17 @@ export async function ManagedFunnelPageView({
               ...(section.props.marginTop !== undefined
                 ? { marginTop: section.props.marginTop }
                 : {}),
+              ...(section.props.marginRight !== undefined
+                ? { marginRight: section.props.marginRight }
+                : {}),
               ...(section.props.marginBottom !== undefined
                 ? { marginBottom: section.props.marginBottom }
+                : {}),
+              ...(section.props.marginLeft !== undefined
+                ? { marginLeft: section.props.marginLeft }
+                : {}),
+              ...(marginLeft > 0 || marginRight > 0
+                ? { width: `calc(100% - ${marginLeft + marginRight}px)` }
                 : {}),
               ...(section.props.paddingX !== undefined
                 ? { paddingLeft: section.props.paddingX, paddingRight: section.props.paddingX }
