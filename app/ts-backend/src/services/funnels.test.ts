@@ -112,6 +112,33 @@ describe("funnel administration normalization", () => {
     }
   });
 
+  test("preserves heading and text typography overrides", () => {
+    const content = funnelPageContentSchema.parse({
+      schemaVersion: 2,
+      kind: "funnel_page",
+      theme: "sage",
+      sections: [{
+        id: "section_typography",
+        props: { tone: "default", width: "standard", background: null },
+        rows: [{
+          id: "row_typography",
+          columns: [{
+            id: "column_typography",
+            span: 12,
+            elements: [
+              { id: "heading_typography", type: "heading", props: { text: "A clear headline", level: "h1", align: "center", typography: { fontFamily: "Georgia, serif", fontSize: 84 } } },
+              { id: "text_typography", type: "text", props: { text: "Readable supporting copy", style: "body", align: "left", typography: { fontFamily: "Verdana, sans-serif", fontSize: 20 } } }
+            ]
+          }]
+        }]
+      }]
+    });
+
+    const [heading, text] = content.sections[0]?.rows[0]?.columns[0]?.elements ?? [];
+    expect(heading?.type === "heading" ? heading.props.typography?.fontSize : null).toBe(84);
+    expect(text?.type === "text" ? text.props.typography?.fontFamily : null).toBe("Verdana, sans-serif");
+  });
+
   test("preserves rows nested inside funnel columns", () => {
     const content = funnelPageContentSchema.parse({
       schemaVersion: 2,
@@ -207,7 +234,7 @@ describe("funnel administration normalization", () => {
                 paddingBottom: 8,
                 paddingLeft: 14
               },
-              props: { media: asset, fit: "contain", caption: "", sizePercent: 64 }
+              props: { media: asset, fit: "contain", caption: "", sizePercent: 64, align: "right" }
             }]
           }]
         }]
@@ -241,6 +268,7 @@ describe("funnel administration normalization", () => {
     if (element?.type !== "image") throw new Error("Expected an image element.");
     expect(element.props.media.publicUrl).toBe(asset.publicUrl);
     expect(element.props.sizePercent).toBe(64);
+    expect(element.props.align).toBe("right");
     expect(element.spacing).toMatchObject({ marginTop: 10, marginRight: -4, paddingLeft: 14 });
   });
 

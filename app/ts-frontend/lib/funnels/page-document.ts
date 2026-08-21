@@ -131,6 +131,11 @@ export type FunnelListTypography = {
   color?: string;
 };
 
+export type FunnelTextTypography = {
+  fontFamily?: string;
+  fontSize?: number;
+};
+
 export type FunnelListAppearance = {
   layout?: "stacked" | "inline";
   marker?: FunnelListMarker;
@@ -236,11 +241,11 @@ export type FunnelPageElement =
     })
   | (FunnelElementBase & {
       type: "heading";
-      props: { text: string; level: "h1" | "h2" | "h3"; align: FunnelTextAlign };
+      props: { text: string; level: "h1" | "h2" | "h3"; align: FunnelTextAlign; typography?: FunnelTextTypography };
     })
   | (FunnelElementBase & {
       type: "text";
-      props: { text: string; style: "lead" | "body" | "small"; align: FunnelTextAlign };
+      props: { text: string; style: "lead" | "body" | "small"; align: FunnelTextAlign; typography?: FunnelTextTypography };
     })
   | (FunnelElementBase & {
       type: "list";
@@ -254,7 +259,7 @@ export type FunnelPageElement =
     })
   | (FunnelElementBase & {
       type: "image";
-      props: { media: FunnelMediaSnapshot; fit: "contain" | "cover"; caption: string; sizePercent?: number };
+      props: { media: FunnelMediaSnapshot; fit: "contain" | "cover"; caption: string; sizePercent?: number; align?: FunnelTextAlign };
     })
   | (FunnelElementBase & {
       type: "workbook_gallery";
@@ -385,6 +390,12 @@ export function createFunnelDocumentId(prefix: string) {
 
 export function resolveFunnelImageSizePercent(sizePercent?: number) {
   return Math.max(10, Math.min(100, Math.round(sizePercent ?? 100)));
+}
+
+export function funnelImageAlignmentStyle(align?: FunnelTextAlign) {
+  if (align === "left") return { marginLeft: 0, marginRight: "auto" } as const;
+  if (align === "right") return { marginLeft: "auto", marginRight: 0 } as const;
+  return { marginLeft: "auto", marginRight: "auto" } as const;
 }
 
 export function createFunnelPageRow(

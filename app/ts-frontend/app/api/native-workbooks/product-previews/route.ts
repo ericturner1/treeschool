@@ -9,7 +9,10 @@ export async function GET(request: Request) {
 
   try {
     const workbook = await getNativeWorkbookProduct({ slug });
-    return Response.json({ previewImages: workbook.previewImages ?? [] }, {
+    return Response.json({
+      thumbnailUrl: workbook.thumbnailUrl,
+      previewImages: workbook.previewImages ?? []
+    }, {
       headers: { "Cache-Control": "private, no-store" }
     });
   } catch {

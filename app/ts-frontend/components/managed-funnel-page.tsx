@@ -8,7 +8,7 @@ import type {
   FunnelPageSection,
   FunnelPageStyles
 } from "../lib/funnels/page-document";
-import { resolveFunnelImageSizePercent } from "../lib/funnels/page-document";
+import { funnelImageAlignmentStyle, resolveFunnelImageSizePercent } from "../lib/funnels/page-document";
 import { FunnelButtonIconGlyph, resolveFunnelButtonIcon } from "./funnel-button-icon";
 import type {
   ManagedFunnelAttribution,
@@ -185,7 +185,7 @@ function PageElement({
       : element.props.level === "h2"
         ? "text-3xl leading-tight tracking-[-0.04em] sm:text-5xl"
         : "text-2xl leading-tight tracking-[-0.03em] sm:text-3xl";
-    return <Tag style={{ fontFamily: styles?.typography?.headingFontFamily, color: styles?.typography?.headingColor }} className={`${visibility} ${size} ${alignClass(element.props.align)} font-semibold`}>{element.props.text}</Tag>;
+    return <Tag style={{ fontFamily: element.props.typography?.fontFamily || styles?.typography?.headingFontFamily, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.05 : undefined, color: styles?.typography?.headingColor }} className={`${visibility} ${size} ${alignClass(element.props.align)} font-semibold`}>{element.props.text}</Tag>;
   }
   if (element.type === "text") {
     const style = element.props.style === "lead"
@@ -193,7 +193,7 @@ function PageElement({
       : element.props.style === "small"
         ? "text-sm leading-6 text-current/60"
         : "whitespace-pre-line text-base leading-7 text-current/70 sm:text-lg sm:leading-8";
-    return <p className={`${visibility} ${style} ${alignClass(element.props.align)}`}>{element.props.text}</p>;
+    return <p style={{ fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.5 : undefined }} className={`${visibility} ${style} ${alignClass(element.props.align)}`}>{element.props.text}</p>;
   }
   if (element.type === "list") {
     if (isCustomizedFunnelList(element.props)) {
@@ -225,7 +225,7 @@ function PageElement({
     const source = element.props.media.publicUrl ?? element.props.media.storagePath;
     if (!source) return null;
     return (
-      <figure className={`${visibility} mx-auto grid gap-2`} style={{ width: `${resolveFunnelImageSizePercent(element.props.sizePercent)}%` }}>
+      <figure className={`${visibility} grid gap-2`} style={{ width: `${resolveFunnelImageSizePercent(element.props.sizePercent)}%`, ...funnelImageAlignmentStyle(element.props.align) }}>
         <Image
           src={source}
           alt={element.props.media.alt}

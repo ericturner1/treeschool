@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   createFunnelPageRow,
   emptyFunnelPageDocument,
+  funnelImageAlignmentStyle,
   funnelDocumentHasForwardAction,
   getFunnelDocumentTitle,
   removeFunnelPageColumn,
@@ -16,6 +17,9 @@ describe("funnel page layout rows", () => {
     expect(resolveFunnelImageSizePercent(64.6)).toBe(65);
     expect(resolveFunnelImageSizePercent(4)).toBe(10);
     expect(resolveFunnelImageSizePercent(140)).toBe(100);
+    expect(funnelImageAlignmentStyle()).toEqual({ marginLeft: "auto", marginRight: "auto" });
+    expect(funnelImageAlignmentStyle("left")).toEqual({ marginLeft: 0, marginRight: "auto" });
+    expect(funnelImageAlignmentStyle("right")).toEqual({ marginLeft: "auto", marginRight: 0 });
   });
 
   test("creates balanced one-to-four-column rows", () => {

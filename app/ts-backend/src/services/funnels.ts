@@ -289,6 +289,11 @@ const funnelCountdownTypographySchema = z.object({
   color: z.string().trim().max(40).optional()
 });
 
+const funnelTextTypographySchema = z.object({
+  fontFamily: z.string().trim().max(300).optional(),
+  fontSize: z.number().int().min(8).max(160).optional()
+});
+
 const funnelListTypographySchema = z.object({
   fontFamily: z.string().trim().max(300).optional(),
   fontSize: z.number().int().min(10).max(96).optional(),
@@ -335,7 +340,8 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
     props: z.object({
       text: z.string().trim().min(1).max(1000),
       level: z.enum(["h1", "h2", "h3"]).default("h2"),
-      align: z.enum(["left", "center", "right"]).default("left")
+      align: z.enum(["left", "center", "right"]).default("left"),
+      typography: funnelTextTypographySchema.optional()
     })
   }),
   funnelElementBaseSchema.extend({
@@ -343,7 +349,8 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
     props: z.object({
       text: z.string().trim().max(20_000).default(""),
       style: z.enum(["lead", "body", "small"]).default("body"),
-      align: z.enum(["left", "center", "right"]).default("left")
+      align: z.enum(["left", "center", "right"]).default("left"),
+      typography: funnelTextTypographySchema.optional()
     })
   }),
   funnelElementBaseSchema.extend({
@@ -362,7 +369,8 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
       media: funnelMediaSnapshotSchema,
       fit: z.enum(["contain", "cover"]).default("contain"),
       caption: z.string().trim().max(1000).default(""),
-      sizePercent: z.number().int().min(10).max(100).optional()
+      sizePercent: z.number().int().min(10).max(100).optional(),
+      align: z.enum(["left", "center", "right"]).optional()
     })
   }),
   funnelElementBaseSchema.extend({
@@ -3534,7 +3542,7 @@ export async function generateAdminFunnelPageDraft(
               `Allowed themes: ${FUNNEL_PAGE_THEMES.join(", ")}. Section tones: default, muted, accent, dark. Section widths: narrow, standard, wide.`,
               "Allowed element types are eyebrow, heading, text, list, image, workbook_gallery, button, lead_capture, and divider.",
               "Use this exact nesting shape: content={schemaVersion:2,kind:'funnel_page',theme,sections:[{id,props:{tone,width,background:null},rows:[{id,columns:[{id,span,elements:[]}]}]}]}.",
-              "Exact element props: eyebrow={text,align}; heading={text,level:'h1'|'h2'|'h3',align}; text={text,style:'lead'|'body'|'small',align}; list={items:string[],style:'checks'|'bullets',align}; image={media:{assetId,storagePath,publicUrl,alt,width,height},fit:'contain'|'cover',caption,sizePercent?:10..100}; workbook_gallery={title,cover:media,images:media[],fit:'contain'|'cover',caption}; button={label,variant:'primary'|'secondary'|'text',align,action}; lead_capture={heading,collectFirstName,firstNameLabel,emailLabel,submitLabel,action}; divider={}.",
+              "Exact element props: eyebrow={text,align}; heading={text,level:'h1'|'h2'|'h3',align,typography?:{fontFamily,fontSize}}; text={text,style:'lead'|'body'|'small',align,typography?:{fontFamily,fontSize}}; list={items:string[],style:'checks'|'bullets',align}; image={media:{assetId,storagePath,publicUrl,alt,width,height},fit:'contain'|'cover',caption,sizePercent?:10..100,align?:'left'|'center'|'right'}; workbook_gallery={title,cover:media,images:media[],fit:'contain'|'cover',caption}; button={label,variant:'primary'|'secondary'|'text',align,action}; lead_capture={heading,collectFirstName,firstNameLabel,emailLabel,submitLabel,action}; divider={}.",
               "Every element needs a unique stable string id. Rows, columns, and sections also need unique stable string ids. Columns use an integer span from 1 through 12.",
               "Buttons contain label, variant (primary, secondary, or text), align, and a semantic action.",
               "Use action {\"type\":\"next_step\"} to continue through the funnel. Use {\"type\":\"url\",\"target\":\"...\"} only for a deliberate external or fixed destination.",

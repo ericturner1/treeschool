@@ -22,6 +22,7 @@ import {
   createFunnelDocumentId,
   createFunnelPageRow,
   emptyFunnelPageDocument,
+  funnelImageAlignmentStyle,
   removeFunnelPageColumn,
   resolveFunnelImageSizePercent,
   resizeFunnelPageRow
@@ -241,7 +242,7 @@ function createElement(type: FunnelPageElement["type"]): FunnelPageElement {
       appearance: { marker: "check", markerSize: 22, markerColor: "#76a456", itemSpacing: 8, markerGap: 12, borderWidth: 0, borderRadius: 14, paddingX: 0, paddingY: 0 }
     }
   };
-  if (type === "image") return { id, type, props: { media: emptyMedia(), fit: "contain", caption: "", sizePercent: 100 } };
+  if (type === "image") return { id, type, props: { media: emptyMedia(), fit: "contain", caption: "", sizePercent: 100, align: "center" } };
   if (type === "workbook_gallery") return { id, type, props: { title: "Workbook preview", cover: emptyMedia(), images: [], fit: "contain", caption: "" } };
   if (type === "button") return { id, type, props: { label: "Continue", variant: "primary", align: "left", action: { type: "next_step" } } };
   if (type === "countdown") return {
@@ -393,6 +394,105 @@ function AssetLibrary({
   );
 }
 
+type FunnelWorkbookGalleryPreviewElement = Extract<FunnelPageElement, { type: "workbook_gallery" }>;
+
+function PreviewWorkbookGallery({ element, onSelect, selected }: { element: FunnelWorkbookGalleryPreviewElement; onSelect: () => void; selected: boolean }) {
+  const embeddedPreview = element.props.cover.publicUrl
+    ?? element.props.cover.storagePath
+    ?? element.props.images.find((image) => image.publicUrl ?? image.storagePath)?.publicUrl
+    ?? element.props.images.find((image) => image.storagePath)?.storagePath;
+  const [generatedPreview, setGeneratedPreview] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  useEffect(() => {
+    const previewSlug = element.props.previewSlug?.trim();
+    if (!previewSlug) {
+      setGeneratedPreview(null);
+      setPreviewLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setPreviewLoading(true);
+    void fetch(`/api/native-workbooks/product-previews?slug=${encodeURIComponent(previewSlug)}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Generated workbook previews could not be loaded.");
+        return response.json() as Promise<{
+          thumbnailUrl?: unknown;
+          previewImages?: Array<{ url?: unknown }>;
+        }>;
+      })
+      .then((payload) => {
+        const sampleSource = payload.previewImages?.find((image) => typeof image.url === "string" && image.url)?.url;
+        const source = typeof payload.thumbnailUrl === "string" && payload.thumbnailUrl
+          ? payload.thumbnailUrl
+          : sampleSource;
+        setGeneratedPreview(typeof source === "string" ? source : null);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setGeneratedPreview(null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setPreviewLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [element.props.previewSlug]);
+
+  const preview = embeddedPreview ?? generatedPreview;
+  const appearance = resolveFunnelWorkbookGalleryAppearance(element.props.appearance);
+  const baseScale = Math.max(0.8, Math.min(1.6, appearance.imageScale / 100));
+  const hoverScale = appearance.zoomOnHover ? baseScale * 1.04 : baseScale;
+  const imageStyle = {
+    padding: appearance.framePadding,
+    "--workbook-gallery-base-scale": baseScale,
+    "--workbook-gallery-hover-scale": hoverScale,
+    "--workbook-gallery-hover-brightness": `${appearance.hoverBrightness}%`
+  } as CSSProperties;
+  const imageInteraction = [
+    "transition-[filter,transform] duration-200 [transform:scale(var(--workbook-gallery-base-scale))]",
+    appearance.zoomOnHover ? "group-hover:[transform:scale(var(--workbook-gallery-hover-scale))]" : "",
+    appearance.darkenOnHover ? "group-hover:[filter:brightness(var(--workbook-gallery-hover-brightness))]" : ""
+  ].filter(Boolean).join(" ");
+  const selection = selected ? "ring-4 ring-[#739655]/35 ring-offset-2" : "";
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect();
+      }}
+      className={`relative rounded-[8px] cursor-pointer transition ${selection} group mx-auto w-full max-w-sm overflow-hidden ${funnelWorkbookGalleryAspectClass(appearance.aspectRatio)} ${appearance.restingShadow ? "shadow-[0_10px_26px_rgba(60,45,32,.12)]" : ""} ${appearance.hoverLift ? "hover:-translate-y-1" : ""} ${appearance.hoverShadow ? "hover:shadow-[0_14px_28px_rgba(80,58,39,.18)]" : ""}`}
+      style={{
+        backgroundColor: appearance.frameBackgroundColor,
+        borderColor: appearance.frameBorderColor,
+        borderRadius: appearance.frameBorderRadius,
+        borderStyle: appearance.frameBorderWidth > 0 ? "solid" : undefined,
+        borderWidth: appearance.frameBorderWidth
+      }}
+    >
+      {preview ? (
+        <Image
+          src={preview}
+          alt={element.props.cover.alt || element.props.title || "Workbook cover"}
+          fill
+          unoptimized
+          className={`${element.props.fit === "cover" ? "object-cover" : "object-contain"} ${imageInteraction}`}
+          style={imageStyle}
+        />
+      ) : (
+        <span className="absolute inset-0 grid place-items-center px-4 text-sm text-ink/45">
+          {previewLoading ? "Loading workbook cover…" : "Choose a cover and sample pages in the inspector"}
+        </span>
+      )}
+      {appearance.showOverlay ? <span className="absolute inset-x-2 bottom-2 translate-y-2 rounded-full px-2 py-1.5 text-center text-[10px] font-bold opacity-0 shadow-lg transition group-hover:translate-y-0 group-hover:opacity-100" style={{ backgroundColor: appearance.overlayBackgroundColor, color: appearance.overlayTextColor }}>{appearance.overlayText}</span> : null}
+      <span className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold text-ink/65 shadow-sm">Gallery · {element.props.previewSlug ? "generated previews" : element.props.images.length + (element.props.cover.publicUrl ? 1 : 0)}</span>
+    </button>
+  );
+}
+
 function PreviewElement({ element, palette, onSelect, selected }: { element: FunnelPageElement; palette: FunnelButtonPalette; onSelect: () => void; selected: boolean }) {
   const align = "align" in element.props ? element.props.align : "left";
   const selection = selected ? "ring-4 ring-[#739655]/35 ring-offset-2" : "";
@@ -400,34 +500,17 @@ function PreviewElement({ element, palette, onSelect, selected }: { element: Fun
   if (element.type === "eyebrow") return <p onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} text-xs font-black uppercase tracking-[.12em]`} style={{ textAlign: align }}>{element.props.text}</p>;
   if (element.type === "heading") {
     const Tag = element.props.level;
-    return <Tag onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} font-semibold leading-[1.05] tracking-[-.045em] ${element.props.level === "h1" ? "text-5xl" : element.props.level === "h2" ? "text-4xl" : "text-2xl"}`} style={{ textAlign: align }}>{element.props.text}</Tag>;
+    return <Tag onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} font-semibold leading-[1.05] tracking-[-.045em] ${element.props.level === "h1" ? "text-5xl" : element.props.level === "h2" ? "text-4xl" : "text-2xl"}`} style={{ textAlign: align, fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.05 : undefined }}>{element.props.text}</Tag>;
   }
-  if (element.type === "text") return <p onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} whitespace-pre-line ${element.props.style === "lead" ? "text-xl leading-8" : element.props.style === "small" ? "text-sm" : "text-base leading-7"}`} style={{ textAlign: align }}>{element.props.text}</p>;
+  if (element.type === "text") return <p onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} whitespace-pre-line ${element.props.style === "lead" ? "text-xl leading-8" : element.props.style === "small" ? "text-sm" : "text-base leading-7"}`} style={{ textAlign: align, fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.5 : undefined }}>{element.props.text}</p>;
   if (element.type === "list") {
     if (!isCustomizedFunnelList(element.props)) {
       return <ul onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} grid gap-2`}>{element.props.items.map((item, index) => <li key={index} className="flex gap-2 rounded-[12px] bg-white/70 px-3 py-2"><span style={{ color: palette.primary }}>{element.props.style === "checks" ? "✓" : "•"}</span>{item}</li>)}</ul>;
     }
     return <ul onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} grid`} style={funnelListContainerStyle(element.props)}>{element.props.items.map((item, index) => <li key={index} className="flex" style={funnelListItemStyle(element.props)}><span className="shrink-0 font-black" aria-hidden="true" style={funnelListMarkerStyle(element.props, palette.primary)}>{funnelListMarker(element.props)}</span><span style={funnelListTextStyle(element.props)}>{item}</span></li>)}</ul>;
   }
-  if (element.type === "image") return <button type="button" onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} mx-auto min-h-28 overflow-hidden border border-dashed border-ink/20 bg-white/40`} style={{ width: `${resolveFunnelImageSizePercent(element.props.sizePercent)}%` }}>{element.props.media.publicUrl ? <Image src={element.props.media.publicUrl} alt={element.props.media.alt} width={1000} height={700} unoptimized className={`max-h-96 w-full ${element.props.fit === "cover" ? "object-cover" : "object-contain"}`} /> : <span className="text-sm text-ink/45">Choose an image in the inspector</span>}</button>;
-  if (element.type === "workbook_gallery") {
-    const preview = element.props.cover.publicUrl ?? element.props.images.find((image) => image.publicUrl)?.publicUrl;
-    const appearance = resolveFunnelWorkbookGalleryAppearance(element.props.appearance);
-    const baseScale = Math.max(0.8, Math.min(1.6, appearance.imageScale / 100));
-    const hoverScale = appearance.zoomOnHover ? baseScale * 1.04 : baseScale;
-    const imageStyle = {
-      padding: appearance.framePadding,
-      "--workbook-gallery-base-scale": baseScale,
-      "--workbook-gallery-hover-scale": hoverScale,
-      "--workbook-gallery-hover-brightness": `${appearance.hoverBrightness}%`
-    } as CSSProperties;
-    const imageInteraction = [
-      "transition-[filter,transform] duration-200 [transform:scale(var(--workbook-gallery-base-scale))]",
-      appearance.zoomOnHover ? "group-hover:[transform:scale(var(--workbook-gallery-hover-scale))]" : "",
-      appearance.darkenOnHover ? "group-hover:[filter:brightness(var(--workbook-gallery-hover-brightness))]" : ""
-    ].filter(Boolean).join(" ");
-    return <button type="button" onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} group relative mx-auto w-full max-w-sm overflow-hidden ${funnelWorkbookGalleryAspectClass(appearance.aspectRatio)} ${appearance.restingShadow ? "shadow-[0_10px_26px_rgba(60,45,32,.12)]" : ""} ${appearance.hoverLift ? "hover:-translate-y-1" : ""} ${appearance.hoverShadow ? "hover:shadow-[0_14px_28px_rgba(80,58,39,.18)]" : ""}`} style={{ backgroundColor: appearance.frameBackgroundColor, borderColor: appearance.frameBorderColor, borderRadius: appearance.frameBorderRadius, borderStyle: appearance.frameBorderWidth > 0 ? "solid" : undefined, borderWidth: appearance.frameBorderWidth }}>{preview ? <Image src={preview} alt={element.props.cover.alt} fill unoptimized className={`${element.props.fit === "cover" ? "object-cover" : "object-contain"} ${imageInteraction}`} style={imageStyle} /> : <span className="absolute inset-0 grid place-items-center px-4 text-sm text-ink/45">Choose a cover and sample pages in the inspector</span>}{appearance.showOverlay ? <span className="absolute inset-x-2 bottom-2 translate-y-2 rounded-full px-2 py-1.5 text-center text-[10px] font-bold opacity-0 shadow-lg transition group-hover:translate-y-0 group-hover:opacity-100" style={{ backgroundColor: appearance.overlayBackgroundColor, color: appearance.overlayTextColor }}>{appearance.overlayText}</span> : null}<span className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold text-ink/65 shadow-sm">Gallery · {element.props.previewSlug ? "generated previews" : element.props.images.length + (element.props.cover.publicUrl ? 1 : 0)}</span></button>;
-  }
+  if (element.type === "image") return <button type="button" onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} block min-h-28 overflow-hidden border border-dashed border-ink/20 bg-white/40`} style={{ width: `${resolveFunnelImageSizePercent(element.props.sizePercent)}%`, ...funnelImageAlignmentStyle(element.props.align) }}>{element.props.media.publicUrl ? <Image src={element.props.media.publicUrl} alt={element.props.media.alt} width={1000} height={700} unoptimized className={`max-h-96 w-full ${element.props.fit === "cover" ? "object-cover" : "object-contain"}`} /> : <span className="text-sm text-ink/45">Choose an image in the inspector</span>}</button>;
+  if (element.type === "workbook_gallery") return <PreviewWorkbookGallery element={element} onSelect={onSelect} selected={selected} />;
   if (element.type === "button") {
     const textColor = funnelButtonDefaultTextColor(element.props, palette);
     const icon = resolveFunnelButtonIcon(element.props);
@@ -1603,6 +1686,30 @@ function ElementSpacingInspector({ element, update }: { element: FunnelPageEleme
   }} />;
 }
 
+type FunnelHeadingOrTextElement = Extract<FunnelPageElement, { type: "heading" | "text" }>;
+
+function HeadingTextTypographyInspector({ element, update }: { element: FunnelHeadingOrTextElement; update: (next: FunnelPageElement) => void }) {
+  const typography = element.props.typography ?? {};
+  const defaultFontSize = element.type === "heading"
+    ? element.props.level === "h1" ? 72 : element.props.level === "h2" ? 48 : 30
+    : element.props.style === "lead" ? 24 : element.props.style === "small" ? 14 : 18;
+  const updateTypography = (next: Partial<NonNullable<FunnelHeadingOrTextElement["props"]["typography"]>>) => update({
+    ...element,
+    props: { ...element.props, typography: { ...typography, ...next } }
+  } as FunnelPageElement);
+  const resetTypography = () => {
+    const next = structuredClone(element);
+    delete next.props.typography;
+    update(next);
+  };
+
+  return <InspectorGroup title="Typography" open>
+    <FontFamilyControl label="Font" value={typography.fontFamily ?? ""} onChange={(fontFamily) => updateTypography({ fontFamily: fontFamily || undefined })} />
+    <RangeControl label="Font size" value={typography.fontSize ?? defaultFontSize} min={element.type === "heading" ? 12 : 8} max={element.type === "heading" ? 160 : 72} step={1} formatValue={(value) => `${Math.round(value)}px`} onChange={(fontSize) => updateTypography({ fontSize })} />
+    {element.props.typography ? <button type="button" onClick={resetTypography} className={RESET_CONTROL}>Use page typography</button> : <p className="text-[10px] leading-4 text-ink/45">This element currently follows the page typography.</p>}
+  </InspectorGroup>;
+}
+
 function ElementInspector({ element, update, chooseMedia, chooseGalleryMedia, move, remove, buttonPalette }: { element: FunnelPageElement; update: (next: FunnelPageElement) => void; chooseMedia: () => void; chooseGalleryMedia: (slot: "cover" | "append" | number) => void; move: (direction: -1 | 1) => void; remove: () => void; buttonPalette: FunnelButtonPalette }) {
   const align = "align" in element.props ? element.props.align : null;
   return <div className="grid gap-4">
@@ -1612,8 +1719,9 @@ function ElementInspector({ element, update, chooseMedia, chooseGalleryMedia, mo
       {element.type === "heading" ? <SelectControl label="Heading size" value={element.props.level} onChange={(value) => update({ ...element, props: { ...element.props, level: value as "h1" | "h2" | "h3" } })}><option value="h1">Page headline</option><option value="h2">Section heading</option><option value="h3">Small heading</option></SelectControl> : null}
       {element.type === "text" ? <SelectControl label="Text style" value={element.props.style} onChange={(value) => update({ ...element, props: { ...element.props, style: value as "lead" | "body" | "small" } })}><option value="lead">Lead</option><option value="body">Body</option><option value="small">Small</option></SelectControl> : null}
     </InspectorGroup> : null}
+    {element.type === "heading" || element.type === "text" ? <HeadingTextTypographyInspector element={element} update={update} /> : null}
     {element.type === "list" ? <ListInspector element={element} palette={buttonPalette} update={update} /> : null}
-    {element.type === "image" ? <InspectorGroup title="Image" open><button type="button" onClick={chooseMedia} className={SECONDARY_CONTROL}>Choose from media manager</button><RangeControl label="Size" value={resolveFunnelImageSizePercent(element.props.sizePercent)} min={10} max={100} step={1} formatValue={(value) => `${Math.round(value)}%`} onChange={(sizePercent) => update({ ...element, props: { ...element.props, sizePercent } })} /><label className={CONTROL_LABEL}>Alternative text<input className={INPUT} value={element.props.media.alt} onChange={(event) => update({ ...element, props: { ...element.props, media: { ...element.props.media, alt: event.target.value } } })} /></label><SelectControl label="Image fit" value={element.props.fit} onChange={(value) => update({ ...element, props: { ...element.props, fit: value as "contain" | "cover" } })}><option value="contain">Show whole image</option><option value="cover">Fill and crop</option></SelectControl></InspectorGroup> : null}
+    {element.type === "image" ? <InspectorGroup title="Image" open><button type="button" onClick={chooseMedia} className={SECONDARY_CONTROL}>Choose from media manager</button><RangeControl label="Size" value={resolveFunnelImageSizePercent(element.props.sizePercent)} min={10} max={100} step={1} formatValue={(value) => `${Math.round(value)}%`} onChange={(sizePercent) => update({ ...element, props: { ...element.props, sizePercent } })} /><SelectControl label="Horizontal alignment" value={element.props.align ?? "center"} onChange={(value) => update({ ...element, props: { ...element.props, align: value as "left" | "center" | "right" } })}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></SelectControl><label className={CONTROL_LABEL}>Alternative text<input className={INPUT} value={element.props.media.alt} onChange={(event) => update({ ...element, props: { ...element.props, media: { ...element.props.media, alt: event.target.value } } })} /></label><SelectControl label="Image fit" value={element.props.fit} onChange={(value) => update({ ...element, props: { ...element.props, fit: value as "contain" | "cover" } })}><option value="contain">Show whole image</option><option value="cover">Fill and crop</option></SelectControl></InspectorGroup> : null}
     {element.type === "workbook_gallery" ? <WorkbookGalleryInspector element={element} update={update} chooseMedia={chooseGalleryMedia} /> : null}
     {element.type === "button" ? <ButtonInspector element={element} palette={buttonPalette} update={update} /> : null}
     {element.type === "countdown" ? <CountdownInspector element={element} palette={buttonPalette} update={update} /> : null}
