@@ -488,7 +488,6 @@ function PreviewWorkbookGallery({ element, onSelect, selected }: { element: Funn
         </span>
       )}
       {appearance.showOverlay ? <span className="absolute inset-x-2 bottom-2 translate-y-2 rounded-full px-2 py-1.5 text-center text-[10px] font-bold opacity-0 shadow-lg transition group-hover:translate-y-0 group-hover:opacity-100" style={{ backgroundColor: appearance.overlayBackgroundColor, color: appearance.overlayTextColor }}>{appearance.overlayText}</span> : null}
-      <span className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold text-ink/65 shadow-sm">Gallery · {element.props.previewSlug ? "generated previews" : element.props.images.length + (element.props.cover.publicUrl ? 1 : 0)}</span>
     </button>
   );
 }
