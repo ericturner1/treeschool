@@ -73,53 +73,56 @@ export function BlogArticle({
       ) : null}
       <article>
         <header className="border-b border-[#d5e0ca] bg-[#edf4e7]">
-          <div className="mx-auto max-w-[1040px] px-6 py-12 sm:px-10 sm:py-16 lg:px-14 lg:py-20">
-            <p className="label-font text-sm text-[#567b40]">Treeschool journal</p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              {post.categories.map((category) => (
-                <Link
-                  key={category.slug}
-                  href={`/blog?category=${category.slug}`}
-                  className="rounded-full border border-[#a9c497] bg-white/75 px-3.5 py-1.5 text-xs font-bold text-[#486338] transition hover:border-[#719359] hover:bg-white"
-                >
-                  {category.name}
-                </Link>
-              ))}
-            </div>
-          <h1 className="mt-6 max-w-[900px] text-4xl font-semibold leading-[1.08] tracking-[-0.055em] sm:text-6xl lg:text-[68px]">
-              {post.revision.title}
-            </h1>
-            {post.revision.excerpt ? (
-              <p className="mt-7 max-w-[780px] text-lg leading-8 text-ink/68 sm:text-[21px] sm:leading-9">
-                {post.revision.excerpt}
-              </p>
-            ) : null}
-            {post.revision.featuredImageUrl ? (
-              <div className="relative mt-8 aspect-[2/1] w-full max-w-[680px] overflow-hidden rounded-[20px] border border-black/5 bg-white shadow-[0_16px_40px_rgba(67,50,34,.1)] sm:rounded-[24px]">
-                <img
-                  src={post.revision.featuredImageUrl}
-                  alt={post.revision.featuredImageAlt || ""}
-                  className="h-full w-full object-cover"
-                />
+          <div className="mx-auto max-w-[1160px] px-6 py-8 sm:px-10 sm:py-10 lg:px-12 lg:py-12">
+            <div className={`grid items-center gap-x-12 ${post.revision.featuredImageUrl ? "lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]" : ""}`}>
+              <div className="lg:col-start-1 lg:row-start-1">
+                <div className="flex flex-wrap gap-2">
+                  {post.categories.map((category) => (
+                    <Link
+                      key={category.slug}
+                      href={`/blog?category=${category.slug}`}
+                      className="rounded-full border border-[#a9c497] bg-white/75 px-3.5 py-1.5 text-xs font-bold text-[#486338] transition hover:border-[#719359] hover:bg-white"
+                    >
+                      {category.name}
+                    </Link>
+                  ))}
+                </div>
+                <h1 className="mt-4 max-w-[760px] text-4xl font-semibold leading-[1.06] tracking-[-0.055em] sm:text-[52px] lg:text-[60px]">
+                  {post.revision.title}
+                </h1>
+                {post.revision.excerpt ? (
+                  <p className="mt-5 max-w-[720px] text-lg leading-8 text-ink/68 sm:text-xl sm:leading-8">
+                    {post.revision.excerpt}
+                  </p>
+                ) : null}
               </div>
-            ) : null}
-            <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-ink/55">
-              {post.revision.showAuthor ? (
-                <>
-                  <span>By {post.authorName}</span>
-                  <span aria-hidden="true">·</span>
-                </>
+              {post.revision.featuredImageUrl ? (
+                <div className="relative mt-7 aspect-[16/10] w-full max-w-[680px] overflow-hidden rounded-[20px] border border-black/5 bg-white shadow-[0_14px_34px_rgba(67,50,34,.1)] sm:rounded-[24px] lg:col-start-2 lg:row-start-1 lg:mt-0 lg:max-w-[420px]">
+                  <img
+                    src={post.revision.featuredImageUrl}
+                    alt={post.revision.featuredImageAlt || ""}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
               ) : null}
-              <time dateTime={post.publishedAt ?? post.updatedAt}>
-                {displayDate(post.publishedAt)}
-              </time>
-              <span aria-hidden="true">·</span>
-              <span>{post.revision.readingMinutes} min read</span>
+              <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-ink/55 lg:col-start-1 lg:row-start-2">
+                {post.revision.showAuthor ? (
+                  <>
+                    <span>By {post.authorName}</span>
+                    <span aria-hidden="true">·</span>
+                  </>
+                ) : null}
+                <time dateTime={post.publishedAt ?? post.updatedAt}>
+                  {displayDate(post.publishedAt)}
+                </time>
+                <span aria-hidden="true">·</span>
+                <span>{post.revision.readingMinutes} min read</span>
+              </div>
             </div>
           </div>
         </header>
         <div
-          className={`mx-auto grid gap-8 px-4 py-10 sm:px-8 sm:py-14 lg:gap-12 lg:px-10 lg:py-16 ${showTableOfContents ? "max-w-[1200px] lg:grid-cols-[220px_minmax(0,820px)] lg:justify-center" : "max-w-[940px]"}`}
+          className={`mx-auto grid gap-8 px-4 py-6 sm:px-8 sm:py-8 lg:gap-12 lg:px-10 lg:py-10 ${showTableOfContents ? "max-w-[1200px] lg:grid-cols-[220px_minmax(0,820px)] lg:justify-center" : "max-w-[940px]"}`}
         >
           {showTableOfContents ? (
             <aside className="hidden lg:block">
@@ -145,7 +148,7 @@ export function BlogArticle({
               </nav>
             </aside>
           ) : null}
-          <div className="min-w-0 rounded-[26px] border border-[#e6ded2] bg-white px-5 py-8 shadow-[0_20px_60px_rgba(67,50,34,.07)] sm:rounded-[32px] sm:px-10 sm:py-12 lg:px-14 lg:py-14">
+          <div className="min-w-0 rounded-[26px] border border-[#e6ded2] bg-white px-5 py-7 shadow-[0_20px_60px_rgba(67,50,34,.07)] sm:rounded-[32px] sm:px-10 sm:py-9 lg:px-14 lg:py-10">
             {showTableOfContents ? (
               <details className="mb-9 rounded-[16px] border border-[#dce7d3] bg-[#f6faf2] p-4 lg:hidden">
                 <summary className="label-font cursor-pointer text-[#567b40]">On this page</summary>

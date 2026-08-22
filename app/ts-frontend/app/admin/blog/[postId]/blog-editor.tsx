@@ -16,9 +16,15 @@ import { DeleteBlogPostButton } from "./delete-blog-post-button";
  * disappear on save, which is exactly the paste-then-save mismatch this guards against.
  */
 const EDITOR_ALLOWED_TAGS = new Set([
-  "P", "H2", "H3", "H4", "UL", "OL", "LI", "STRONG", "EM", "A",
-  "BLOCKQUOTE", "CODE", "PRE", "HR", "BR", "FIGURE", "FIGCAPTION", "IMG", "SPAN",
+  "P", "H2", "H3", "H4", "UL", "OL", "LI", "STRONG", "EM", "U", "A",
+  "BLOCKQUOTE", "CODE", "PRE", "HR", "BR", "FIGURE", "FIGCAPTION", "IMG", "SPAN", "ASIDE",
 ]);
+
+const EDITOR_ALLOWED_CLASSES: Record<string, Set<string>> = {
+  ASIDE: new Set(["blog-cta", "blog-cta--sage", "blog-cta--earth", "blog-cta--sunny"]),
+  P: new Set(["blog-cta__message"]),
+  A: new Set(["blog-cta__button"]),
+};
 
 const BLOG_FONT_OPTIONS = [
   { label: "Page default", marker: "treeschool-default", className: "blog-font-default" },
@@ -39,6 +45,18 @@ const DEFAULT_BLOG_FONT_SIZE_PX = 17.25;
 const DEFAULT_BLOG_LINE_HEIGHT = 1.85;
 
 type BlogBlockStyle = "p" | "h2" | "h3" | "blockquote";
+type BlogCtaTheme = "sage" | "earth" | "sunny";
+
+function isSafeCtaHref(value: string) {
+  const href = value.trim();
+  if ((href.startsWith("/") && !href.startsWith("//")) || href.startsWith("#")) return true;
+  try {
+    const url = new URL(href);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
 
 function blockStyleAtSelectionStart(editor: HTMLDivElement, range: Range): BlogBlockStyle {
   let node: Node | null = range.startContainer;
@@ -72,9 +90,11 @@ const EDITOR_TAG_REMAP: Record<string, string> = {
 };
 
 const EDITOR_KEEP_ATTRS: Record<string, string[]> = {
-  A: ["href", "title", "target", "rel"],
+  A: ["href", "title", "target", "rel", "class"],
   IMG: ["src", "alt", "title", "width", "height", "loading"],
   SPAN: ["class"],
+  ASIDE: ["class"],
+  P: ["class"],
 };
 
 /**
@@ -123,6 +143,12 @@ export function normalizePastedHtml(dirty: string): string {
           continue;
         }
         target.setAttribute("class", fontClass);
+      } else if (EDITOR_ALLOWED_CLASSES[target.tagName]) {
+        const allowedClasses = [...target.classList].filter((className) =>
+          EDITOR_ALLOWED_CLASSES[target.tagName].has(className),
+        );
+        if (allowedClasses.length) target.setAttribute("class", allowedClasses.join(" "));
+        else target.removeAttribute("class");
       }
     }
   };
@@ -217,6 +243,23 @@ function ImageIcon() {
       <rect x="2.5" y="3" width="15" height="14" rx="2" />
       <circle cx="7" cy="8" r="1.5" />
       <path d="m4.5 15 4-4 2.5 2.5 1.8-1.8 2.7 3.3" />
+    </svg>
+  );
+}
+
+function CtaIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 20 20"
+      className="h-[18px] w-[18px] fill-none stroke-current"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="2.5" y="3.5" width="15" height="13" rx="2.5" />
+      <path d="M6 7.5h8M6 11h5M12.5 13.5h2.5" />
+      <path d="m13.5 12.5 1.5 1-1.5 1" />
     </svg>
   );
 }
@@ -745,6 +788,12 @@ export function BlogEditor({
   );
   const [uploadingInlineImage, setUploadingInlineImage] = useState(false);
   const [inlineImageError, setInlineImageError] = useState<string | null>(null);
+  const [ctaComposerOpen, setCtaComposerOpen] = useState(false);
+  const [ctaMessage, setCtaMessage] = useState("Ready to make homeschooling simpler?");
+  const [ctaButtonText, setCtaButtonText] = useState("See how Treeschool works");
+  const [ctaHref, setCtaHref] = useState("/pricing");
+  const [ctaTheme, setCtaTheme] = useState<BlogCtaTheme>("sage");
+  const [ctaError, setCtaError] = useState<string | null>(null);
   const selectedCategories = useMemo(
     () => new Set(post.categories.map((category) => category.name)),
     [post.categories],
@@ -843,6 +892,62 @@ export function BlogEditor({
   const addLink = () => {
     const href = window.prompt("Paste an internal path or a complete URL");
     if (href) command("createLink", href);
+  };
+  const openCtaComposer = () => {
+    rememberEditorSelection();
+    setCtaError(null);
+    setCtaComposerOpen(true);
+  };
+  const insertCta = () => {
+    const editor = editorRef.current;
+    const message = ctaMessage.trim();
+    const buttonText = ctaButtonText.trim();
+    const href = ctaHref.trim();
+    if (!editor || !message || !buttonText) {
+      setCtaError("Add a message and button label.");
+      return;
+    }
+    if (!isSafeCtaHref(href)) {
+      setCtaError("Use an internal path such as /pricing or a complete http/https URL.");
+      return;
+    }
+
+    const cta = document.createElement("aside");
+    cta.className = `blog-cta blog-cta--${ctaTheme}`;
+    const messageElement = document.createElement("p");
+    messageElement.className = "blog-cta__message";
+    messageElement.textContent = message;
+    const link = document.createElement("a");
+    link.className = "blog-cta__button";
+    link.href = href;
+    link.textContent = buttonText;
+    cta.append(messageElement, link);
+
+    const nextParagraph = document.createElement("p");
+    nextParagraph.appendChild(document.createElement("br"));
+    const range = savedSelectionRef.current;
+    let selectedBlock: Element | null = null;
+    if (range && editor.contains(range.commonAncestorContainer)) {
+      const selectionNode = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+        ? range.commonAncestorContainer as Element
+        : range.commonAncestorContainer.parentElement;
+      selectedBlock = selectionNode?.closest("p,h2,h3,h4,ul,ol,blockquote,pre,figure,aside") ?? null;
+      if (selectedBlock && !editor.contains(selectedBlock)) selectedBlock = null;
+    }
+    if (selectedBlock) selectedBlock.after(cta, nextParagraph);
+    else editor.append(cta, nextParagraph);
+
+    const caret = document.createRange();
+    caret.selectNodeContents(nextParagraph);
+    caret.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(caret);
+    savedSelectionRef.current = caret.cloneRange();
+    syncEditorHtml();
+    setCtaError(null);
+    setCtaComposerOpen(false);
+    editor.focus();
   };
   const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
     const html = event.clipboardData.getData("text/html");
@@ -1092,6 +1197,16 @@ export function BlogEditor({
             />
             <ToolbarButton
               label={
+                <span aria-hidden="true" className="font-serif text-lg underline underline-offset-2">
+                  U
+                </span>
+              }
+              title="Underline"
+              onClick={() => command("underline")}
+              disabled={editorMode === "source"}
+            />
+            <ToolbarButton
+              label={
                 <>
                   <BulletedListIcon /> Bullets
                 </>
@@ -1118,6 +1233,16 @@ export function BlogEditor({
               }
               title="Add link"
               onClick={addLink}
+              disabled={editorMode === "source"}
+            />
+            <ToolbarButton
+              label={
+                <>
+                  <CtaIcon /> CTA
+                </>
+              }
+              title="Insert call to action"
+              onClick={openCtaComposer}
               disabled={editorMode === "source"}
             />
             <ToolbarButton
@@ -1230,6 +1355,117 @@ export function BlogEditor({
               </div>
             </details>
           </div>
+          {ctaComposerOpen ? (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="blog-cta-composer-title"
+              onClick={(event) => {
+                if (event.target === event.currentTarget) setCtaComposerOpen(false);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setCtaComposerOpen(false);
+              }}
+              className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-[#172033]/45 p-4 backdrop-blur-sm"
+            >
+              <div className="w-full max-w-[560px] rounded-[24px] border border-[#d8c7ad] bg-[#fffaf2] p-5 shadow-[0_28px_80px_rgba(23,32,51,.28)] sm:p-7">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="label-font text-xs text-[#567b40]">Article conversion</p>
+                    <h2 id="blog-cta-composer-title" className="mt-1 text-2xl font-semibold tracking-[-0.035em]">
+                      Insert a call to action
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Close call to action composer"
+                    onClick={() => setCtaComposerOpen(false)}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8c7ad] bg-white text-xl hover:bg-[#f4ecdf]"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="mt-6 grid gap-4">
+                  <label className="grid gap-2 text-sm font-semibold">
+                    Message
+                    <input
+                      autoFocus
+                      value={ctaMessage}
+                      maxLength={180}
+                      onChange={(event) => setCtaMessage(event.target.value)}
+                      className="min-h-12 rounded-[12px] border border-[#d7c3a3] bg-white px-4 font-normal"
+                    />
+                  </label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="grid gap-2 text-sm font-semibold">
+                      Button text
+                      <input
+                        value={ctaButtonText}
+                        maxLength={80}
+                        onChange={(event) => setCtaButtonText(event.target.value)}
+                        className="min-h-12 rounded-[12px] border border-[#d7c3a3] bg-white px-4 font-normal"
+                      />
+                    </label>
+                    <label className="grid gap-2 text-sm font-semibold">
+                      Link
+                      <input
+                        value={ctaHref}
+                        onChange={(event) => setCtaHref(event.target.value)}
+                        placeholder="/pricing"
+                        className="min-h-12 rounded-[12px] border border-[#d7c3a3] bg-white px-4 font-normal"
+                      />
+                    </label>
+                  </div>
+                  <fieldset>
+                    <legend className="text-sm font-semibold">Color scheme</legend>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                      {([
+                        ["sage", "Sage", "border-[#a9c497] bg-[#edf4e7] text-[#39552d]"],
+                        ["earth", "Earth", "border-[#b89170] bg-[#f1e2d5] text-[#67452f]"],
+                        ["sunny", "Sunny", "border-[#e1bd65] bg-[#fff2bd] text-[#654f17]"],
+                      ] as const).map(([value, label, previewClass]) => (
+                        <label
+                          key={value}
+                          className={`flex cursor-pointer items-center gap-2 rounded-[12px] border px-3 py-3 text-sm font-semibold transition ${previewClass} ${ctaTheme === value ? "ring-2 ring-[#172033]/25 ring-offset-2" : "opacity-75 hover:opacity-100"}`}
+                        >
+                          <input
+                            type="radio"
+                            name="blogCtaTheme"
+                            value={value}
+                            checked={ctaTheme === value}
+                            onChange={() => setCtaTheme(value)}
+                            className="accent-[#567b40]"
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                </div>
+                {ctaError ? (
+                  <p role="alert" className="mt-4 rounded-[12px] bg-[#fff1ec] px-4 py-3 text-sm font-semibold text-[#8b3e2f]">
+                    {ctaError}
+                  </p>
+                ) : null}
+                <div className="mt-6 flex flex-wrap justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCtaComposerOpen(false)}
+                    className="cta-button cta-button--outline cta-button--small"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={insertCta}
+                    className="cta-button cta-button--light cta-button--small"
+                  >
+                    Insert CTA
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
           {inlineImageError ? (
             <p
               role="alert"

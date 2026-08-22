@@ -108,20 +108,25 @@ function normalizeOptionalNumber(
 export function sanitizeBlogHtml(value: string) {
   return sanitizeHtml(value, {
     allowedTags: [
-      "p", "h2", "h3", "h4", "ul", "ol", "li", "strong", "em", "a",
-      "blockquote", "code", "pre", "hr", "br", "figure", "figcaption", "img", "span"
+      "p", "h2", "h3", "h4", "ul", "ol", "li", "strong", "em", "u", "a",
+      "blockquote", "code", "pre", "hr", "br", "figure", "figcaption", "img", "span", "aside"
     ],
     allowedAttributes: {
-      a: ["href", "title", "target", "rel"],
+      a: ["href", "title", "target", "rel", "class"],
       img: ["src", "alt", "title", "width", "height", "loading"],
-      span: ["class"]
+      span: ["class"],
+      aside: ["class"],
+      p: ["class"]
     },
     allowedClasses: {
       span: [
         "blog-font-default", "blog-font-sans", "blog-font-comic", "blog-font-georgia",
         "blog-font-arial", "blog-font-verdana", "blog-font-times", "blog-font-open-sans",
         "blog-font-source-sans", "blog-font-lato", "blog-font-merriweather"
-      ]
+      ],
+      aside: ["blog-cta", "blog-cta--sage", "blog-cta--earth", "blog-cta--sunny"],
+      p: ["blog-cta__message"],
+      a: ["blog-cta__button"]
     },
     allowedSchemes: ["http", "https", "mailto"],
     allowedSchemesByTag: { img: ["http", "https"] },

@@ -35,3 +35,28 @@ test("keeps only approved blog font classes", () => {
   expect(sanitized).not.toContain("untrusted-font");
   expect(sanitized).not.toContain("font-family:evil");
 });
+
+test("keeps underline formatting in stored blog HTML", () => {
+  expect(sanitizeBlogHtml("<p>Read the <u>important part</u>.</p>"))
+    .toBe("<p>Read the <u>important part</u>.</p>");
+});
+
+test("keeps branded blog CTAs while removing unapproved CTA markup", () => {
+  const sanitized = sanitizeBlogHtml([
+    '<aside class="blog-cta blog-cta--sage evil-class" onclick="alert(1)">',
+    '<p class="blog-cta__message">Ready to begin?</p>',
+    '<a class="blog-cta__button evil-button" href="/pricing">See plans</a>',
+    '</aside>',
+    '<aside class="unknown-callout"><a class="unknown-button" href="javascript:alert(2)">Bad</a></aside>'
+  ].join(""));
+
+  expect(sanitized).toContain('<aside class="blog-cta blog-cta--sage">');
+  expect(sanitized).toContain('<p class="blog-cta__message">Ready to begin?</p>');
+  expect(sanitized).toContain('<a class="blog-cta__button" href="/pricing">See plans</a>');
+  expect(sanitized).not.toContain("onclick");
+  expect(sanitized).not.toContain("evil-class");
+  expect(sanitized).not.toContain("evil-button");
+  expect(sanitized).not.toContain("javascript:");
+  expect(sanitized).not.toContain("unknown-callout");
+  expect(sanitized).not.toContain("unknown-button");
+});
