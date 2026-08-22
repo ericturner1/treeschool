@@ -19,6 +19,13 @@ function values(formData: FormData, key: string) {
   return formData.getAll(key).map(String).map((item) => item.trim()).filter(Boolean);
 }
 
+function optionalNumber(formData: FormData, key: string) {
+  const raw = value(formData, key);
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function redirectWithError(path: string, error: unknown): never {
   const message = error instanceof Error ? error.message : "Something went wrong.";
   redirect(`${path}?error=${encodeURIComponent(message)}`);
@@ -75,6 +82,8 @@ export async function saveBlogPostAction(formData: FormData) {
       slug: value(formData, "slug"),
       excerpt: value(formData, "excerpt"),
       contentHtml: value(formData, "contentHtml"),
+      bodyFontSizePx: optionalNumber(formData, "bodyFontSizePx"),
+      bodyLineHeight: optionalNumber(formData, "bodyLineHeight"),
       seoTitle: value(formData, "seoTitle"),
       metaDescription: value(formData, "metaDescription"),
       canonicalUrl: value(formData, "canonicalUrl"),

@@ -42,6 +42,8 @@ type BlogRevisionInput = BlogTaxonomy & {
   slug: string;
   excerpt: string;
   contentHtml: string;
+  bodyFontSizePx?: number | null;
+  bodyLineHeight?: number | null;
   seoTitle?: string | null;
   metaDescription?: string | null;
   canonicalUrl?: string | null;
@@ -89,15 +91,36 @@ function normalizeList(values: string[] | undefined, maxItems: number) {
   ).values()).slice(0, maxItems);
 }
 
+function normalizeOptionalNumber(
+  value: unknown,
+  label: string,
+  min: number,
+  max: number
+) {
+  if (value === undefined || value === null || value === "") return null;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < min || number > max) {
+    throw new Error(`${label} must be between ${min} and ${max}.`);
+  }
+  return Math.round(number * 100) / 100;
+}
+
 export function sanitizeBlogHtml(value: string) {
   return sanitizeHtml(value, {
     allowedTags: [
       "p", "h2", "h3", "h4", "ul", "ol", "li", "strong", "em", "a",
-      "blockquote", "code", "pre", "hr", "br", "figure", "figcaption", "img"
+      "blockquote", "code", "pre", "hr", "br", "figure", "figcaption", "img", "span"
     ],
     allowedAttributes: {
       a: ["href", "title", "target", "rel"],
-      img: ["src", "alt", "title", "width", "height", "loading"]
+      img: ["src", "alt", "title", "width", "height", "loading"],
+      span: ["class"]
+    },
+    allowedClasses: {
+      span: [
+        "blog-font-default", "blog-font-sans", "blog-font-comic", "blog-font-georgia",
+        "blog-font-arial", "blog-font-verdana", "blog-font-times"
+      ]
     },
     allowedSchemes: ["http", "https", "mailto"],
     allowedSchemesByTag: { img: ["http", "https"] },
@@ -421,6 +444,18 @@ export async function saveBlogPostRevision(input: BlogRevisionInput) {
   const featuredImageAlt = cleanText(input.featuredImageAlt, 180) || null;
   const showAuthor = input.showAuthor ?? false;
   const primaryKeyword = cleanText(input.primaryKeyword, 120) || null;
+  const bodyFontSizePx = normalizeOptionalNumber(
+    input.bodyFontSizePx,
+    "Article font size",
+    12,
+    32
+  );
+  const bodyLineHeight = normalizeOptionalNumber(
+    input.bodyLineHeight,
+    "Article line height",
+    1.2,
+    2.5
+  );
   const saved = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.postId}))`);
     const [latest] = await tx.select({ value: max(blogPostRevisions.revisionNumber) })
@@ -446,6 +481,8 @@ export async function saveBlogPostRevision(input: BlogRevisionInput) {
       excerpt,
       contentHtml,
       contentText,
+      bodyFontSizePx,
+      bodyLineHeight,
       contentSchemaVersion: CONTENT_SCHEMA_VERSION,
       seoTitle,
       metaDescription,
@@ -571,6 +608,8 @@ export async function generateBlogDraft(input: {
       slug: draft.slug || draft.title,
       excerpt: draft.excerpt,
       contentHtml: draft.contentHtml,
+      bodyFontSizePx: currentRevision?.bodyFontSizePx ?? null,
+      bodyLineHeight: currentRevision?.bodyLineHeight ?? null,
       seoTitle: draft.seoTitle,
       metaDescription: draft.metaDescription,
       showAuthor: currentRevision?.showAuthor ?? false,

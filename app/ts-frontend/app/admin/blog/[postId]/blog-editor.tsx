@@ -17,8 +17,22 @@ import { DeleteBlogPostButton } from "./delete-blog-post-button";
  */
 const EDITOR_ALLOWED_TAGS = new Set([
   "P", "H2", "H3", "H4", "UL", "OL", "LI", "STRONG", "EM", "A",
-  "BLOCKQUOTE", "CODE", "PRE", "HR", "BR", "FIGURE", "FIGCAPTION", "IMG",
+  "BLOCKQUOTE", "CODE", "PRE", "HR", "BR", "FIGURE", "FIGCAPTION", "IMG", "SPAN",
 ]);
+
+const BLOG_FONT_OPTIONS = [
+  { label: "Page default", marker: "treeschool-default", className: "blog-font-default" },
+  { label: "Treeschool Sans", marker: "treeschool-sans", className: "blog-font-sans" },
+  { label: "Comic Neue", marker: "treeschool-comic", className: "blog-font-comic" },
+  { label: "Georgia", marker: "treeschool-georgia", className: "blog-font-georgia" },
+  { label: "Arial", marker: "treeschool-arial", className: "blog-font-arial" },
+  { label: "Verdana", marker: "treeschool-verdana", className: "blog-font-verdana" },
+  { label: "Times New Roman", marker: "treeschool-times", className: "blog-font-times" },
+] as const;
+
+const BLOG_FONT_CLASSES = new Set<string>(BLOG_FONT_OPTIONS.map((option) => option.className));
+const DEFAULT_BLOG_FONT_SIZE_PX = 17.25;
+const DEFAULT_BLOG_LINE_HEIGHT = 1.85;
 
 /**
  * h1 -> h2 because the article template already renders the post title as the page's
@@ -34,6 +48,7 @@ const EDITOR_TAG_REMAP: Record<string, string> = {
 const EDITOR_KEEP_ATTRS: Record<string, string[]> = {
   A: ["href", "title", "target", "rel"],
   IMG: ["src", "alt", "title", "width", "height", "loading"],
+  SPAN: ["class"],
 };
 
 /**
@@ -74,6 +89,15 @@ export function normalizePastedHtml(dirty: string): string {
       for (const attribute of [...target.attributes]) {
         if (!keep.includes(attribute.name)) target.removeAttribute(attribute.name);
       }
+
+      if (target.tagName === "SPAN") {
+        const fontClass = [...target.classList].find((className) => BLOG_FONT_CLASSES.has(className));
+        if (!fontClass) {
+          target.replaceWith(...target.childNodes);
+          continue;
+        }
+        target.setAttribute("class", fontClass);
+      }
     }
   };
 
@@ -100,7 +124,7 @@ function ToolbarButton({
       disabled={disabled}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
-      className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-[9px] border border-[#d8c7ad] bg-white px-3 py-2 text-sm font-semibold hover:bg-[#f4ecdf] disabled:cursor-wait disabled:opacity-60"
+      className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-[9px] border border-[#d8c7ad] bg-white px-3 py-2 text-sm font-semibold hover:bg-[#f4ecdf] disabled:cursor-not-allowed disabled:opacity-45"
     >
       {label}
     </button>
@@ -199,6 +223,21 @@ function RedoIcon() {
     >
       <path d="m13 6 3 3-3 3" />
       <path d="M16 9H9a5 5 0 0 0-5 5v1" />
+    </svg>
+  );
+}
+
+function CodeIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 20 20"
+      className="h-[18px] w-[18px] fill-none stroke-current"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m7 5-5 5 5 5M13 5l5 5-5 5M11.5 3 8.5 17" />
     </svg>
   );
 }
@@ -446,6 +485,14 @@ export function BlogEditor({
   const [metaDescription, setMetaDescription] = useState(
     post.revision.metaDescription ?? "",
   );
+  const [editorMode, setEditorMode] = useState<"visual" | "source">("visual");
+  const [sourceHtml, setSourceHtml] = useState(post.revision.contentHtml);
+  const [bodyFontSizePx, setBodyFontSizePx] = useState<number | null>(
+    post.revision.bodyFontSizePx,
+  );
+  const [bodyLineHeight, setBodyLineHeight] = useState<number | null>(
+    post.revision.bodyLineHeight,
+  );
   const [uploadingInlineImage, setUploadingInlineImage] = useState(false);
   const [inlineImageError, setInlineImageError] = useState<string | null>(null);
   const selectedCategories = useMemo(
@@ -456,6 +503,15 @@ export function BlogEditor({
   const syncEditorHtml = () => {
     if (htmlInputRef.current)
       htmlInputRef.current.value = editorRef.current?.innerHTML ?? "";
+  };
+
+  const restoreEditorSelection = () => {
+    const range = savedSelectionRef.current;
+    const editor = editorRef.current;
+    if (!range || !editor || !editor.contains(range.commonAncestorContainer)) return;
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
   };
 
   const attachEditor = useCallback(
@@ -476,8 +532,47 @@ export function BlogEditor({
 
   const command = (name: string, value?: string) => {
     editorRef.current?.focus();
+    restoreEditorSelection();
     document.execCommand(name, false, value);
     syncEditorHtml();
+    rememberEditorSelection();
+  };
+
+  const applyFont = (marker: string) => {
+    const option = BLOG_FONT_OPTIONS.find((candidate) => candidate.marker === marker);
+    const editor = editorRef.current;
+    if (!option || !editor) return;
+    editor.focus();
+    restoreEditorSelection();
+    document.execCommand("styleWithCSS", false, "false");
+    document.execCommand("fontName", false, option.marker);
+    for (const font of editor.querySelectorAll("font[face]")) {
+      const matched = BLOG_FONT_OPTIONS.find((candidate) => candidate.marker === font.getAttribute("face"));
+      if (!matched) continue;
+      const span = document.createElement("span");
+      span.className = matched.className;
+      span.replaceChildren(...font.childNodes);
+      font.replaceWith(span);
+    }
+    syncEditorHtml();
+    rememberEditorSelection();
+  };
+
+  const toggleSourceMode = () => {
+    if (editorMode === "visual") {
+      const currentHtml = editorRef.current?.innerHTML ?? "";
+      setSourceHtml(currentHtml);
+      if (htmlInputRef.current) htmlInputRef.current.value = currentHtml;
+      setEditorMode("source");
+      return;
+    }
+
+    const cleanHtml = normalizePastedHtml(sourceHtml);
+    if (editorRef.current) editorRef.current.innerHTML = cleanHtml;
+    if (htmlInputRef.current) htmlInputRef.current.value = cleanHtml;
+    setSourceHtml(cleanHtml);
+    setEditorMode("visual");
+    requestAnimationFrame(() => editorRef.current?.focus());
   };
   const addLink = () => {
     const href = window.prompt("Paste an internal path or a complete URL");
@@ -565,7 +660,10 @@ export function BlogEditor({
   const searchDescription =
     metaDescription || excerpt || "Your article description will appear here.";
   const submitBlogPost = async (formData: FormData) => {
-    formData.set("contentHtml", editorRef.current?.innerHTML ?? "");
+    const contentHtml = editorMode === "source"
+      ? normalizePastedHtml(sourceHtml)
+      : editorRef.current?.innerHTML ?? "";
+    formData.set("contentHtml", contentHtml);
     await saveBlogPostAction(formData);
   };
 
@@ -578,6 +676,16 @@ export function BlogEditor({
           type="hidden"
           name="contentHtml"
           defaultValue={post.revision.contentHtml}
+        />
+        <input
+          type="hidden"
+          name="bodyFontSizePx"
+          value={bodyFontSizePx ?? ""}
+        />
+        <input
+          type="hidden"
+          name="bodyLineHeight"
+          value={bodyLineHeight ?? ""}
         />
         <section className="rounded-[28px] border border-[#dcc8aa] bg-[#fffaf2] p-5 sm:p-7">
           <div className="grid gap-5">
@@ -635,7 +743,7 @@ export function BlogEditor({
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-[28px] border border-[#dcc8aa] bg-white">
+        <section className="rounded-[28px] border border-[#dcc8aa] bg-white">
           <input
             ref={inlineImageInputRef}
             type="file"
@@ -646,22 +754,39 @@ export function BlogEditor({
               if (file) void uploadInlineImage(file);
             }}
           />
-          <div className="flex flex-wrap items-center gap-2 border-b border-[#e5d7c1] bg-[#f7efe3] px-4 py-3">
+          <div className="sticky top-0 z-30 flex flex-wrap items-center gap-2 rounded-t-[27px] border-b border-[#e5d7c1] bg-[#f7efe3]/95 px-4 py-3 shadow-[0_8px_20px_rgba(67,50,34,.1)] backdrop-blur-md">
             <select
               aria-label="Text style"
               defaultValue="p"
+              disabled={editorMode === "source"}
+              onMouseDown={rememberEditorSelection}
               onChange={(event) => command("formatBlock", event.target.value)}
-              className="rounded-[9px] border border-[#d8c7ad] bg-white px-3 py-2 pr-9 text-sm font-semibold"
+              className="rounded-[9px] border border-[#d8c7ad] bg-white px-3 py-2 pr-9 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45"
             >
               <option value="p">Paragraph</option>
               <option value="h2">Heading 2</option>
               <option value="h3">Heading 3</option>
               <option value="blockquote">Quote</option>
             </select>
+            <select
+              aria-label="Font family"
+              defaultValue=""
+              disabled={editorMode === "source"}
+              onMouseDown={rememberEditorSelection}
+              onChange={(event) => {
+                if (event.target.value) applyFont(event.target.value);
+                event.currentTarget.value = "";
+              }}
+              className="rounded-[9px] border border-[#d8c7ad] bg-white px-3 py-2 pr-9 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <option value="" disabled>Font</option>
+              {BLOG_FONT_OPTIONS.map((option) => <option key={option.marker} value={option.marker}>{option.label}</option>)}
+            </select>
             <ToolbarButton
               label="B"
               title="Bold"
               onClick={() => command("bold")}
+              disabled={editorMode === "source"}
             />
             <ToolbarButton
               label={
@@ -671,6 +796,7 @@ export function BlogEditor({
               }
               title="Italic"
               onClick={() => command("italic")}
+              disabled={editorMode === "source"}
             />
             <ToolbarButton
               label={
@@ -680,6 +806,7 @@ export function BlogEditor({
               }
               title="Bulleted list"
               onClick={() => command("insertUnorderedList")}
+              disabled={editorMode === "source"}
             />
             <ToolbarButton
               label={
@@ -689,6 +816,7 @@ export function BlogEditor({
               }
               title="Numbered list"
               onClick={() => command("insertOrderedList")}
+              disabled={editorMode === "source"}
             />
             <ToolbarButton
               label={
@@ -698,6 +826,7 @@ export function BlogEditor({
               }
               title="Add link"
               onClick={addLink}
+              disabled={editorMode === "source"}
             />
             <ToolbarButton
               label={
@@ -714,7 +843,7 @@ export function BlogEditor({
               }
               title="Upload and insert image"
               onClick={chooseInlineImage}
-              disabled={uploadingInlineImage}
+              disabled={uploadingInlineImage || editorMode === "source"}
             />
             <ToolbarButton
               label={
@@ -724,6 +853,7 @@ export function BlogEditor({
               }
               title="Undo"
               onClick={() => command("undo")}
+              disabled={editorMode === "source"}
             />
             <ToolbarButton
               label={
@@ -733,7 +863,79 @@ export function BlogEditor({
               }
               title="Redo"
               onClick={() => command("redo")}
+              disabled={editorMode === "source"}
             />
+            <span className="min-w-0 flex-1" aria-hidden="true" />
+            <ToolbarButton
+              label={<><CodeIcon /> {editorMode === "visual" ? "HTML" : "Visual"}</>}
+              title={editorMode === "visual" ? "Edit HTML source" : "Return to visual editor"}
+              onClick={toggleSourceMode}
+            />
+            <details className="group relative">
+              <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-[9px] border border-[#d8c7ad] bg-white px-3 py-2 text-sm font-semibold marker:hidden hover:bg-[#fbf7ef]">
+                Reading
+                <span className="text-xs font-normal text-ink/48">
+                  {bodyFontSizePx ?? DEFAULT_BLOG_FONT_SIZE_PX}px · {bodyLineHeight ?? DEFAULT_BLOG_LINE_HEIGHT}
+                </span>
+              </summary>
+              <div className="absolute right-0 top-[calc(100%+.55rem)] z-50 w-[min(320px,calc(100vw-2rem))] rounded-[16px] border border-[#d8c7ad] bg-[#fffdf8] p-4 shadow-[0_14px_36px_rgba(67,50,34,.2)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-bold">Article typography</p>
+                    <p className="mt-1 text-xs leading-5 text-ink/50">
+                      Applies to the full article body in the editor, preview, and published page.
+                    </p>
+                  </div>
+                  {bodyFontSizePx !== null || bodyLineHeight !== null ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBodyFontSizePx(null);
+                        setBodyLineHeight(null);
+                      }}
+                      className="shrink-0 text-xs font-semibold text-[#567b40] underline underline-offset-4"
+                    >
+                      Reset
+                    </button>
+                  ) : null}
+                </div>
+                <label className="mt-4 grid gap-2 text-xs font-semibold">
+                  <span className="flex items-center justify-between gap-3">
+                    Font size
+                    <output>{bodyFontSizePx ?? DEFAULT_BLOG_FONT_SIZE_PX}px</output>
+                  </span>
+                  <input
+                    type="range"
+                    min="14"
+                    max="24"
+                    step="0.25"
+                    value={bodyFontSizePx ?? DEFAULT_BLOG_FONT_SIZE_PX}
+                    onChange={(event) => setBodyFontSizePx(Number(event.target.value))}
+                    className="w-full accent-[#6f994f]"
+                  />
+                </label>
+                <label className="mt-4 grid gap-2 text-xs font-semibold">
+                  <span className="flex items-center justify-between gap-3">
+                    Line height
+                    <output>{bodyLineHeight ?? DEFAULT_BLOG_LINE_HEIGHT}</output>
+                  </span>
+                  <input
+                    type="range"
+                    min="1.35"
+                    max="2.25"
+                    step="0.05"
+                    value={bodyLineHeight ?? DEFAULT_BLOG_LINE_HEIGHT}
+                    onChange={(event) => setBodyLineHeight(Number(event.target.value))}
+                    className="w-full accent-[#6f994f]"
+                  />
+                </label>
+                {bodyFontSizePx === null && bodyLineHeight === null ? (
+                  <p className="mt-3 text-xs font-medium text-[#567b40]">
+                    Using the site defaults. Move either slider to customize this revision.
+                  </p>
+                ) : null}
+              </div>
+            </details>
           </div>
           {inlineImageError ? (
             <p
@@ -757,8 +959,30 @@ export function BlogEditor({
             role="textbox"
             aria-label="Article body"
             aria-multiline="true"
-            className="blog-editor min-h-[560px] px-6 py-7 text-[18px] leading-8 outline-none sm:px-10 sm:py-10"
+            style={{
+              fontSize: bodyFontSizePx ? `${bodyFontSizePx}px` : undefined,
+              lineHeight: bodyLineHeight ?? undefined,
+            }}
+            className={`blog-editor min-h-[560px] px-6 py-7 text-[18px] leading-8 outline-none sm:px-10 sm:py-10 ${editorMode === "source" ? "hidden" : ""}`}
           />
+          {editorMode === "source" ? (
+            <div className="grid gap-3 px-5 py-5 sm:px-7 sm:py-7">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-black uppercase tracking-[.11em] text-[#567b40]">HTML source</p>
+                <p className="text-xs text-ink/48">Unsupported tags and attributes are removed when you return to Visual mode or save.</p>
+              </div>
+              <textarea
+                aria-label="Article HTML source"
+                value={sourceHtml}
+                onChange={(event) => {
+                  setSourceHtml(event.target.value);
+                  if (htmlInputRef.current) htmlInputRef.current.value = event.target.value;
+                }}
+                spellCheck={false}
+                className="min-h-[560px] w-full resize-y rounded-[16px] border border-[#cdb996] bg-[#20261d] p-5 font-mono text-[14px] leading-6 text-[#f6f2e9] outline-none focus:border-[#7fa460] focus:ring-4 focus:ring-[#7fa460]/15"
+              />
+            </div>
+          ) : null}
         </section>
 
         <section className="grid gap-6 xl:grid-cols-2">

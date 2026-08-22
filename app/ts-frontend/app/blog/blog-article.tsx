@@ -150,6 +150,12 @@ export function BlogArticle({
           <div>
             <div
               className="blog-prose"
+              style={{
+                fontSize: post.revision.bodyFontSizePx
+                  ? `${post.revision.bodyFontSizePx}px`
+                  : undefined,
+                lineHeight: post.revision.bodyLineHeight ?? undefined,
+              }}
               dangerouslySetInnerHTML={{ __html: rendered.html }}
             />
             <aside className="mt-12 rounded-[26px] border border-[#a9c194] bg-[#eef5e4] p-6 sm:p-8">

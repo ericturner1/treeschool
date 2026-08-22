@@ -48,6 +48,8 @@ export type BlogPost = {
     excerpt: string;
     contentHtml: string;
     contentText: string;
+    bodyFontSizePx: number | null;
+    bodyLineHeight: number | null;
     contentSchemaVersion: number;
     seoTitle: string | null;
     metaDescription: string | null;

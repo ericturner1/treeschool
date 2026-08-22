@@ -16,3 +16,14 @@ test("removes executable markup from stored blog HTML", () => {
   expect(sanitized).not.toContain("onerror");
   expect(sanitized).not.toContain("data:text/html");
 });
+
+test("keeps only approved blog font classes", () => {
+  const sanitized = sanitizeBlogHtml([
+    '<p><span class="blog-font-comic">Friendly type</span></p>',
+    '<p><span class="untrusted-font" style="font-family:evil">Untrusted type</span></p>'
+  ].join(""));
+
+  expect(sanitized).toContain('<span class="blog-font-comic">Friendly type</span>');
+  expect(sanitized).not.toContain("untrusted-font");
+  expect(sanitized).not.toContain("font-family:evil");
+});

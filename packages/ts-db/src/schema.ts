@@ -2871,6 +2871,8 @@ export const blogPostRevisions = pgTable(
     excerpt: text("excerpt").notNull(),
     contentHtml: text("content_html").notNull(),
     contentText: text("content_text").notNull(),
+    bodyFontSizePx: real("body_font_size_px"),
+    bodyLineHeight: real("body_line_height"),
     contentSchemaVersion: integer("content_schema_version").notNull().default(1),
     seoTitle: text("seo_title"),
     metaDescription: text("meta_description"),
