@@ -1,6 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const STRIPE_CHECKOUT_HOST = "checkout.stripe.com";
+const ANALYTICS_CONSENT_STORAGE_KEY = "treeschool:analytics-consent:v1";
+
+test.beforeEach(async ({ context }) => {
+  // Production smoke checks must not appear as visitors in GA or Meta. The
+  // consent value is installed before any Treeschool page JavaScript runs.
+  await context.addInitScript((storageKey) => {
+    window.localStorage.setItem(storageKey, "denied");
+  }, ANALYTICS_CONSENT_STORAGE_KEY);
+});
 
 async function expectStripeCheckout(page: Page, click: () => Promise<void>) {
   await Promise.all([
