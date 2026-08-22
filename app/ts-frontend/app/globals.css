@@ -109,7 +109,7 @@
   margin: 0;
   color: inherit;
   font-size: 1.2em;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -119,6 +119,7 @@
   min-height: 3rem;
   align-items: center;
   justify-content: center;
+  gap: 0.55rem;
   margin-top: 1rem;
   border-radius: 12px;
   background: var(--blog-cta-button);
@@ -126,7 +127,7 @@
   padding: 0.7rem 1.15rem;
   color: #fff;
   font-size: 0.92em;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.25;
   text-decoration: none;
   transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
@@ -137,6 +138,29 @@
   filter: brightness(1.06);
   transform: translateY(-1px);
   box-shadow: 0 6px 0 var(--blog-cta-button-shadow);
+}
+
+.blog-editor .blog-cta--button-only,
+.blog-prose .blog-cta--button-only {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.blog-editor .blog-cta--button-only .blog-cta__button,
+.blog-prose .blog-cta--button-only .blog-cta__button {
+  margin-top: 0;
+}
+
+.blog-editor .blog-cta__icon,
+.blog-prose .blog-cta__icon {
+  display: inline-grid;
+  min-width: 1.1em;
+  place-items: center;
+  font-family: "Avenir Next", "Nunito", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: 1.05em;
+  font-weight: 500;
+  line-height: 1;
 }
 
 .blog-editor pre,

@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent, KeyboardEvent, ReactNode, UIEvent } from "react";
+import { FUNNEL_BUTTON_ICON_OPTIONS, FunnelButtonIconGlyph } from "../../../../components/funnel-button-icon";
 import type { BlogCategory, BlogPost } from "../../../../lib/blog/server";
+import type { FunnelButtonIcon } from "../../../../lib/funnels/page-document";
 import {
   generateBlogDraftAction,
   saveBlogPostAction,
@@ -20,12 +22,6 @@ const EDITOR_ALLOWED_TAGS = new Set([
   "BLOCKQUOTE", "CODE", "PRE", "HR", "BR", "FIGURE", "FIGCAPTION", "IMG", "SPAN", "ASIDE",
 ]);
 
-const EDITOR_ALLOWED_CLASSES: Record<string, Set<string>> = {
-  ASIDE: new Set(["blog-cta", "blog-cta--sage", "blog-cta--earth", "blog-cta--sunny"]),
-  P: new Set(["blog-cta__message"]),
-  A: new Set(["blog-cta__button"]),
-};
-
 const BLOG_FONT_OPTIONS = [
   { label: "Page default", marker: "treeschool-default", className: "blog-font-default" },
   { label: "Treeschool Sans", marker: "treeschool-sans", className: "blog-font-sans" },
@@ -41,11 +37,78 @@ const BLOG_FONT_OPTIONS = [
 ] as const;
 
 const BLOG_FONT_CLASSES = new Set<string>(BLOG_FONT_OPTIONS.map((option) => option.className));
+const BLOG_CTA_ICON_CLASSES = new Set<string>(
+  FUNNEL_BUTTON_ICON_OPTIONS
+    .filter((option) => option.value !== "none")
+    .map((option) => `blog-cta__icon--${option.value}`),
+);
+const BLOG_CTA_ICON_POSITION_CLASSES = new Set([
+  "blog-cta__icon-left",
+  "blog-cta__icon-right",
+]);
+
+const EDITOR_ALLOWED_CLASSES: Record<string, Set<string>> = {
+  ASIDE: new Set([
+    "blog-cta",
+    "blog-cta--sage",
+    "blog-cta--earth",
+    "blog-cta--sunny",
+    "blog-cta--button-only",
+  ]),
+  P: new Set(["blog-cta__message", ...BLOG_FONT_CLASSES]),
+  A: new Set(["blog-cta__button", ...BLOG_FONT_CLASSES, ...BLOG_CTA_ICON_POSITION_CLASSES]),
+  SPAN: new Set([...BLOG_FONT_CLASSES, "blog-cta__icon", ...BLOG_CTA_ICON_CLASSES]),
+};
+
 const DEFAULT_BLOG_FONT_SIZE_PX = 17.25;
 const DEFAULT_BLOG_LINE_HEIGHT = 1.85;
 
+type BlogFontMarker = (typeof BLOG_FONT_OPTIONS)[number]["marker"];
 type BlogBlockStyle = "p" | "h2" | "h3" | "blockquote";
 type BlogCtaTheme = "sage" | "earth" | "sunny";
+type BlogCtaIcon = FunnelButtonIcon | "none";
+type BlogCtaIconPosition = "left" | "right";
+
+const BLOG_CTA_ICON_GLYPHS: Partial<Record<FunnelButtonIcon, string>> = {
+  "arrow-right": "→", "arrow-left": "←", "arrow-up": "↑", "arrow-down": "↓",
+  "chevron-right": "›", "chevron-left": "‹", "chevron-up": "⌃", "chevron-down": "⌄",
+  check: "✓", plus: "+", minus: "−", info: "ⓘ", "help-circle": "?", "alert-triangle": "⚠",
+  "shopping-cart": "🛒", download: "↓", "book-open": "📖", star: "★", sparkles: "✨",
+  lock: "🔒", play: "▶", mail: "✉", gift: "🎁", heart: "♥", calendar: "▣",
+  "external-link": "↗", phone: "☎", "map-pin": "⌖", clock: "◷", user: "●", users: "●●",
+  home: "⌂", globe: "◎", search: "⌕", settings: "⚙", wand: "✦", rocket: "🚀",
+  trophy: "🏆", "graduation-cap": "🎓", music: "♪", camera: "📷", image: "▧",
+  "file-text": "▤", printer: "▣", share: "↗", refresh: "↻", "thumbs-up": "👍",
+  smile: "☺", circle: "●", zap: "⚡", flame: "🔥", sun: "☀", moon: "☾", leaf: "◆",
+  menu: "☰", "log-in": "↪", upload: "↑", save: "▣", copy: "⧉", edit: "✎", trash: "⌫",
+  eye: "◉", "credit-card": "▭", tag: "◇", percent: "%", "dollar-sign": "$", package: "□",
+  pencil: "✎", lightbulb: "💡", headphones: "🎧", video: "▶", microphone: "🎙", bell: "🔔",
+  "message-circle": "💬",
+};
+
+function blogFontClass(marker: string) {
+  return BLOG_FONT_OPTIONS.find((option) => option.marker === marker)?.className
+    ?? BLOG_FONT_OPTIONS[0].className;
+}
+
+function blogFontMarker(element: Element | null) {
+  if (!element) return BLOG_FONT_OPTIONS[0].marker;
+  return BLOG_FONT_OPTIONS.find((option) => element.classList.contains(option.className))?.marker
+    ?? BLOG_FONT_OPTIONS[0].marker;
+}
+
+function blogCtaIconGlyph(icon: FunnelButtonIcon) {
+  return BLOG_CTA_ICON_GLYPHS[icon] ?? "•";
+}
+
+function blogCtaIconFromLink(link: Element | null): BlogCtaIcon {
+  const icon = link?.querySelector(".blog-cta__icon");
+  if (!icon) return "none";
+  const option = FUNNEL_BUTTON_ICON_OPTIONS.find(
+    (candidate) => candidate.value !== "none" && icon.classList.contains(`blog-cta__icon--${candidate.value}`),
+  );
+  return option?.value ?? "none";
+}
 
 function isSafeCtaHref(value: string) {
   const href = value.trim();
@@ -92,7 +155,7 @@ const EDITOR_TAG_REMAP: Record<string, string> = {
 const EDITOR_KEEP_ATTRS: Record<string, string[]> = {
   A: ["href", "title", "target", "rel", "class"],
   IMG: ["src", "alt", "title", "width", "height", "loading"],
-  SPAN: ["class"],
+  SPAN: ["class", "aria-hidden"],
   ASIDE: ["class"],
   P: ["class"],
 };
@@ -136,19 +199,18 @@ export function normalizePastedHtml(dirty: string): string {
         if (!keep.includes(attribute.name)) target.removeAttribute(attribute.name);
       }
 
-      if (target.tagName === "SPAN") {
-        const fontClass = [...target.classList].find((className) => BLOG_FONT_CLASSES.has(className));
-        if (!fontClass) {
-          target.replaceWith(...target.childNodes);
-          continue;
-        }
-        target.setAttribute("class", fontClass);
-      } else if (EDITOR_ALLOWED_CLASSES[target.tagName]) {
+      if (EDITOR_ALLOWED_CLASSES[target.tagName]) {
         const allowedClasses = [...target.classList].filter((className) =>
           EDITOR_ALLOWED_CLASSES[target.tagName].has(className),
         );
-        if (allowedClasses.length) target.setAttribute("class", allowedClasses.join(" "));
-        else target.removeAttribute("class");
+        if (allowedClasses.length) {
+          target.setAttribute("class", allowedClasses.join(" "));
+        } else if (target.tagName === "SPAN") {
+          target.replaceWith(...target.childNodes);
+          continue;
+        } else {
+          target.removeAttribute("class");
+        }
       }
     }
   };
@@ -770,6 +832,7 @@ export function BlogEditor({
   const htmlInputRef = useRef<HTMLInputElement>(null);
   const inlineImageInputRef = useRef<HTMLInputElement>(null);
   const savedSelectionRef = useRef<Range | null>(null);
+  const editingCtaRef = useRef<HTMLElement | null>(null);
   const initializedRevisionRef = useRef<number | null>(null);
   const [title, setTitle] = useState(post.revision.title);
   const [excerpt, setExcerpt] = useState(post.revision.excerpt);
@@ -793,6 +856,12 @@ export function BlogEditor({
   const [ctaButtonText, setCtaButtonText] = useState("See how Treeschool works");
   const [ctaHref, setCtaHref] = useState("/pricing");
   const [ctaTheme, setCtaTheme] = useState<BlogCtaTheme>("sage");
+  const [ctaMessageFont, setCtaMessageFont] = useState<BlogFontMarker>(BLOG_FONT_OPTIONS[0].marker);
+  const [ctaButtonFont, setCtaButtonFont] = useState<BlogFontMarker>(BLOG_FONT_OPTIONS[0].marker);
+  const [ctaIcon, setCtaIcon] = useState<BlogCtaIcon>("none");
+  const [ctaIconPosition, setCtaIconPosition] = useState<BlogCtaIconPosition>("right");
+  const [ctaIconPickerOpen, setCtaIconPickerOpen] = useState(false);
+  const [ctaIconSearch, setCtaIconSearch] = useState("");
   const [ctaError, setCtaError] = useState<string | null>(null);
   const selectedCategories = useMemo(
     () => new Set(post.categories.map((category) => category.name)),
@@ -893,18 +962,61 @@ export function BlogEditor({
     const href = window.prompt("Paste an internal path or a complete URL");
     if (href) command("createLink", href);
   };
+  const closeCtaComposer = () => {
+    editingCtaRef.current = null;
+    setCtaIconPickerOpen(false);
+    setCtaComposerOpen(false);
+    setCtaError(null);
+  };
   const openCtaComposer = () => {
     rememberEditorSelection();
+    editingCtaRef.current = null;
+    setCtaMessage("Ready to make homeschooling simpler?");
+    setCtaButtonText("See how Treeschool works");
+    setCtaHref("/pricing");
+    setCtaTheme("sage");
+    setCtaMessageFont(BLOG_FONT_OPTIONS[0].marker);
+    setCtaButtonFont(BLOG_FONT_OPTIONS[0].marker);
+    setCtaIcon("none");
+    setCtaIconPosition("right");
+    setCtaIconSearch("");
     setCtaError(null);
     setCtaComposerOpen(true);
   };
-  const insertCta = () => {
+  const editCta = (cta: HTMLElement) => {
+    const message = cta.querySelector(".blog-cta__message");
+    const link = cta.querySelector<HTMLAnchorElement>(".blog-cta__button");
+    const theme = cta.classList.contains("blog-cta--earth")
+      ? "earth"
+      : cta.classList.contains("blog-cta--sunny")
+        ? "sunny"
+        : "sage";
+    editingCtaRef.current = cta;
+    setCtaMessage(message?.textContent?.trim() ?? "");
+    setCtaButtonText(
+      [...(link?.childNodes ?? [])]
+        .filter((node) => !(node.nodeType === Node.ELEMENT_NODE && (node as Element).classList.contains("blog-cta__icon")))
+        .map((node) => node.textContent ?? "")
+        .join("")
+        .trim(),
+    );
+    setCtaHref(link?.getAttribute("href") ?? "/pricing");
+    setCtaTheme(theme);
+    setCtaMessageFont(blogFontMarker(message));
+    setCtaButtonFont(blogFontMarker(link));
+    setCtaIcon(blogCtaIconFromLink(link));
+    setCtaIconPosition(link?.classList.contains("blog-cta__icon-left") ? "left" : "right");
+    setCtaIconSearch("");
+    setCtaError(null);
+    setCtaComposerOpen(true);
+  };
+  const saveCta = () => {
     const editor = editorRef.current;
     const message = ctaMessage.trim();
     const buttonText = ctaButtonText.trim();
     const href = ctaHref.trim();
-    if (!editor || !message || !buttonText) {
-      setCtaError("Add a message and button label.");
+    if (!editor || !buttonText) {
+      setCtaError("Add a button label.");
       return;
     }
     if (!isSafeCtaHref(href)) {
@@ -912,41 +1024,61 @@ export function BlogEditor({
       return;
     }
 
-    const cta = document.createElement("aside");
-    cta.className = `blog-cta blog-cta--${ctaTheme}`;
-    const messageElement = document.createElement("p");
-    messageElement.className = "blog-cta__message";
-    messageElement.textContent = message;
-    const link = document.createElement("a");
-    link.className = "blog-cta__button";
-    link.href = href;
-    link.textContent = buttonText;
-    cta.append(messageElement, link);
-
-    const nextParagraph = document.createElement("p");
-    nextParagraph.appendChild(document.createElement("br"));
-    const range = savedSelectionRef.current;
-    let selectedBlock: Element | null = null;
-    if (range && editor.contains(range.commonAncestorContainer)) {
-      const selectionNode = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
-        ? range.commonAncestorContainer as Element
-        : range.commonAncestorContainer.parentElement;
-      selectedBlock = selectionNode?.closest("p,h2,h3,h4,ul,ol,blockquote,pre,figure,aside") ?? null;
-      if (selectedBlock && !editor.contains(selectedBlock)) selectedBlock = null;
+    const existingCta = editingCtaRef.current;
+    const cta = existingCta ?? document.createElement("aside");
+    cta.className = `blog-cta blog-cta--${ctaTheme}${message ? "" : " blog-cta--button-only"}`;
+    cta.replaceChildren();
+    if (message) {
+      const messageElement = document.createElement("p");
+      messageElement.className = `blog-cta__message ${blogFontClass(ctaMessageFont)}`;
+      messageElement.textContent = message;
+      cta.appendChild(messageElement);
     }
-    if (selectedBlock) selectedBlock.after(cta, nextParagraph);
-    else editor.append(cta, nextParagraph);
+    const link = document.createElement("a");
+    link.className = [
+      "blog-cta__button",
+      blogFontClass(ctaButtonFont),
+      ...(ctaIcon === "none" ? [] : [`blog-cta__icon-${ctaIconPosition}`]),
+    ].join(" ");
+    link.href = href;
+    const buttonLabel = document.createTextNode(buttonText);
+    if (ctaIcon === "none") {
+      link.appendChild(buttonLabel);
+    } else {
+      const icon = document.createElement("span");
+      icon.className = `blog-cta__icon blog-cta__icon--${ctaIcon}`;
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = blogCtaIconGlyph(ctaIcon);
+      if (ctaIconPosition === "left") link.append(icon, buttonLabel);
+      else link.append(buttonLabel, icon);
+    }
+    cta.appendChild(link);
 
-    const caret = document.createRange();
-    caret.selectNodeContents(nextParagraph);
-    caret.collapse(true);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(caret);
-    savedSelectionRef.current = caret.cloneRange();
+    if (!existingCta) {
+      const nextParagraph = document.createElement("p");
+      nextParagraph.appendChild(document.createElement("br"));
+      const range = savedSelectionRef.current;
+      let selectedBlock: Element | null = null;
+      if (range && editor.contains(range.commonAncestorContainer)) {
+        const selectionNode = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+          ? range.commonAncestorContainer as Element
+          : range.commonAncestorContainer.parentElement;
+        selectedBlock = selectionNode?.closest("p,h2,h3,h4,ul,ol,blockquote,pre,figure,aside") ?? null;
+        if (selectedBlock && !editor.contains(selectedBlock)) selectedBlock = null;
+      }
+      if (selectedBlock) selectedBlock.after(cta, nextParagraph);
+      else editor.append(cta, nextParagraph);
+
+      const caret = document.createRange();
+      caret.selectNodeContents(nextParagraph);
+      caret.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(caret);
+      savedSelectionRef.current = caret.cloneRange();
+    }
     syncEditorHtml();
-    setCtaError(null);
-    setCtaComposerOpen(false);
+    closeCtaComposer();
     editor.focus();
   };
   const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
@@ -1023,6 +1155,12 @@ export function BlogEditor({
   const searchTitle = seoTitle || title || "Article title";
   const searchDescription =
     metaDescription || excerpt || "Your article description will appear here.";
+  const selectedCtaIconOption = FUNNEL_BUTTON_ICON_OPTIONS.find((option) => option.value === ctaIcon)
+    ?? FUNNEL_BUTTON_ICON_OPTIONS[0];
+  const matchingCtaIconOptions = FUNNEL_BUTTON_ICON_OPTIONS.filter((option) =>
+    `${option.label} ${option.category}`.toLowerCase().includes(ctaIconSearch.trim().toLowerCase()),
+  );
+  const ctaIconCategories = ["General", "Navigation", "Actions", "Commerce", "Learning", "People"] as const;
   const submitBlogPost = async (formData: FormData) => {
     const contentHtml = editorMode === "source"
       ? normalizePastedHtml(sourceHtml)
@@ -1361,25 +1499,28 @@ export function BlogEditor({
               aria-modal="true"
               aria-labelledby="blog-cta-composer-title"
               onClick={(event) => {
-                if (event.target === event.currentTarget) setCtaComposerOpen(false);
+                if (event.target === event.currentTarget) closeCtaComposer();
               }}
               onKeyDown={(event) => {
-                if (event.key === "Escape") setCtaComposerOpen(false);
+                if (event.key === "Escape" && !ctaIconPickerOpen) closeCtaComposer();
               }}
               className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-[#172033]/45 p-4 backdrop-blur-sm"
             >
-              <div className="w-full max-w-[560px] rounded-[24px] border border-[#d8c7ad] bg-[#fffaf2] p-5 shadow-[0_28px_80px_rgba(23,32,51,.28)] sm:p-7">
+              <div className="my-6 w-full max-w-[640px] rounded-[24px] border border-[#d8c7ad] bg-[#fffaf2] p-5 shadow-[0_28px_80px_rgba(23,32,51,.28)] sm:p-7">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="label-font text-xs text-[#567b40]">Article conversion</p>
                     <h2 id="blog-cta-composer-title" className="mt-1 text-2xl font-semibold tracking-[-0.035em]">
-                      Insert a call to action
+                      {editingCtaRef.current ? "Edit call to action" : "Insert a call to action"}
                     </h2>
+                    <p className="mt-1 text-xs leading-5 text-ink/50">
+                      {editingCtaRef.current ? "Update this CTA without removing and reinserting it." : "Add a branded next step inside the article."}
+                    </p>
                   </div>
                   <button
                     type="button"
                     aria-label="Close call to action composer"
-                    onClick={() => setCtaComposerOpen(false)}
+                    onClick={closeCtaComposer}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8c7ad] bg-white text-xl hover:bg-[#f4ecdf]"
                   >
                     ×
@@ -1387,12 +1528,13 @@ export function BlogEditor({
                 </div>
                 <div className="mt-6 grid gap-4">
                   <label className="grid gap-2 text-sm font-semibold">
-                    Message
+                    <span>Message <span className="font-normal text-ink/48">(optional)</span></span>
                     <input
                       autoFocus
                       value={ctaMessage}
                       maxLength={180}
                       onChange={(event) => setCtaMessage(event.target.value)}
+                      placeholder="Leave blank to show the button without a card"
                       className="min-h-12 rounded-[12px] border border-[#d7c3a3] bg-white px-4 font-normal"
                     />
                   </label>
@@ -1416,6 +1558,63 @@ export function BlogEditor({
                       />
                     </label>
                   </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="grid gap-2 text-sm font-semibold">
+                      Message font
+                      <select
+                        value={ctaMessageFont}
+                        onChange={(event) => setCtaMessageFont(event.target.value as BlogFontMarker)}
+                        disabled={!ctaMessage.trim()}
+                        className="min-h-12 rounded-[12px] border border-[#d7c3a3] bg-white px-4 pr-10 font-normal disabled:opacity-45"
+                      >
+                        {BLOG_FONT_OPTIONS.map((option) => <option key={option.marker} value={option.marker}>{option.label}</option>)}
+                      </select>
+                    </label>
+                    <label className="grid gap-2 text-sm font-semibold">
+                      Button font
+                      <select
+                        value={ctaButtonFont}
+                        onChange={(event) => setCtaButtonFont(event.target.value as BlogFontMarker)}
+                        className="min-h-12 rounded-[12px] border border-[#d7c3a3] bg-white px-4 pr-10 font-normal"
+                      >
+                        {BLOG_FONT_OPTIONS.map((option) => <option key={option.marker} value={option.marker}>{option.label}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <fieldset className="rounded-[14px] border border-[#dfcfb7] bg-white/65 p-4">
+                    <legend className="px-1 text-sm font-semibold">Button icon</legend>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] bg-[#edf5e7] text-[#4e7139]">
+                        {selectedCtaIconOption.value === "none" ? <span className="text-xl font-light" aria-hidden="true">—</span> : <FunnelButtonIconGlyph icon={selectedCtaIconOption.value} className="h-6 w-6" />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <strong className="block truncate text-sm">{selectedCtaIconOption.label}</strong>
+                        <span className="text-xs text-ink/45">{selectedCtaIconOption.category}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCtaIconPickerOpen(true)}
+                        className="rounded-[10px] border border-[#b8cba7] bg-[#f5faef] px-4 py-2.5 text-sm font-semibold text-[#4d6a39]"
+                      >
+                        Choose icon
+                      </button>
+                    </div>
+                    {ctaIcon !== "none" ? (
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        {(["left", "right"] as const).map((position) => (
+                          <button
+                            key={position}
+                            type="button"
+                            aria-pressed={ctaIconPosition === position}
+                            onClick={() => setCtaIconPosition(position)}
+                            className={`rounded-[10px] border px-3 py-2.5 text-xs font-semibold ${ctaIconPosition === position ? "border-[#5f8546] bg-[#e5f0dc] text-[#466333]" : "border-[#dfcfb7] bg-white"}`}
+                          >
+                            Icon on {position}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </fieldset>
                   <fieldset>
                     <legend className="text-sm font-semibold">Color scheme</legend>
                     <div className="mt-2 grid gap-2 sm:grid-cols-3">
@@ -1450,20 +1649,92 @@ export function BlogEditor({
                 <div className="mt-6 flex flex-wrap justify-end gap-3">
                   <button
                     type="button"
-                    onClick={() => setCtaComposerOpen(false)}
+                    onClick={closeCtaComposer}
                     className="cta-button cta-button--outline cta-button--small"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
-                    onClick={insertCta}
+                    onClick={saveCta}
                     className="cta-button cta-button--light cta-button--small"
                   >
-                    Insert CTA
+                    {editingCtaRef.current ? "Save CTA" : "Insert CTA"}
                   </button>
                 </div>
               </div>
+              {ctaIconPickerOpen ? (
+                <div
+                  className="fixed inset-0 z-[90] grid place-items-center bg-[#172033]/55 p-4 backdrop-blur-sm"
+                  onMouseDown={() => setCtaIconPickerOpen(false)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.stopPropagation();
+                      setCtaIconPickerOpen(false);
+                    }
+                  }}
+                >
+                  <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="blog-cta-icon-picker-title"
+                    className="flex max-h-[86vh] w-full max-w-[860px] flex-col overflow-hidden rounded-[24px] border border-[#cdbb9f] bg-[#fffaf2] shadow-2xl"
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-between gap-4 border-b border-[#e3d6c2] px-5 py-4 sm:px-6">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Blog CTA</p>
+                        <h3 id="blog-cta-icon-picker-title" className="mt-1 text-xl font-semibold">Choose an icon</h3>
+                      </div>
+                      <button type="button" onClick={() => setCtaIconPickerOpen(false)} className="grid h-10 w-10 place-items-center rounded-full border border-[#d7c6ad] bg-white text-xl text-ink/60" aria-label="Close icon picker">×</button>
+                    </div>
+                    <div className="border-b border-[#e3d6c2] px-5 py-3 sm:px-6">
+                      <label className="grid gap-1.5 text-xs font-semibold">
+                        Search icons
+                        <input autoFocus value={ctaIconSearch} onChange={(event) => setCtaIconSearch(event.target.value)} placeholder="Try cart, book, arrow, person…" className="min-h-11 rounded-[11px] border border-[#d7c3a3] bg-white px-4 font-normal" />
+                      </label>
+                    </div>
+                    <div className="overflow-y-auto px-5 py-5 sm:px-6">
+                      {matchingCtaIconOptions.length ? (
+                        <div className="grid gap-6">
+                          {ctaIconCategories.map((category) => {
+                            const options = matchingCtaIconOptions.filter((option) => option.category === category);
+                            if (!options.length) return null;
+                            return (
+                              <section key={category}>
+                                <h4 className="mb-2 text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">{category}</h4>
+                                <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
+                                  {options.map((option) => {
+                                    const selected = ctaIcon === option.value;
+                                    return (
+                                      <button
+                                        key={option.value}
+                                        type="button"
+                                        aria-pressed={selected}
+                                        title={option.label}
+                                        onClick={() => {
+                                          setCtaIcon(option.value);
+                                          setCtaIconPickerOpen(false);
+                                        }}
+                                        className={`grid min-h-[76px] place-items-center gap-1 rounded-[12px] border px-1.5 py-2 text-center transition ${selected ? "border-[#5f8546] bg-[#e5f0dc] text-[#466333] ring-2 ring-[#739655]/25" : "border-[#dfcfb7] bg-white text-ink/65 hover:border-[#9bb586] hover:bg-[#f6faf2]"}`}
+                                      >
+                                        {option.value === "none" ? <span className="grid h-7 w-7 place-items-center text-xl font-light" aria-hidden="true">—</span> : <FunnelButtonIconGlyph icon={option.value} className="h-7 w-7" />}
+                                        <span className="text-[9px] font-semibold leading-3">{option.label}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </section>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="py-16 text-center text-sm text-ink/50">No icons match “{ctaIconSearch}”.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
           {inlineImageError ? (
@@ -1478,6 +1749,13 @@ export function BlogEditor({
             ref={attachEditor}
             contentEditable
             suppressContentEditableWarning
+            onClick={(event) => {
+              const target = event.target instanceof Element ? event.target : null;
+              const cta = target?.closest("aside.blog-cta");
+              if (!cta || !event.currentTarget.contains(cta)) return;
+              event.preventDefault();
+              editCta(cta as HTMLElement);
+            }}
             onPaste={handlePaste}
             onInput={() => {
               syncEditorHtml();

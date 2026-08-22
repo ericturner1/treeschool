@@ -105,6 +105,25 @@ function normalizeOptionalNumber(
   return Math.round(number * 100) / 100;
 }
 
+const BLOG_FONT_CLASSES = [
+  "blog-font-default", "blog-font-sans", "blog-font-comic", "blog-font-georgia",
+  "blog-font-arial", "blog-font-verdana", "blog-font-times", "blog-font-open-sans",
+  "blog-font-source-sans", "blog-font-lato", "blog-font-merriweather"
+];
+
+const BLOG_CTA_ICON_CLASSES = [
+  "arrow-right", "arrow-left", "arrow-up", "arrow-down", "chevron-right", "chevron-left",
+  "chevron-up", "chevron-down", "check", "plus", "minus", "info", "help-circle",
+  "alert-triangle", "shopping-cart", "download", "book-open", "star", "sparkles", "lock",
+  "play", "mail", "gift", "heart", "calendar", "external-link", "phone", "map-pin", "clock",
+  "user", "users", "home", "globe", "search", "settings", "wand", "rocket", "trophy",
+  "graduation-cap", "music", "camera", "image", "file-text", "printer", "share", "refresh",
+  "thumbs-up", "smile", "circle", "zap", "flame", "sun", "moon", "leaf", "menu", "log-in",
+  "upload", "save", "copy", "edit", "trash", "eye", "credit-card", "tag", "percent",
+  "dollar-sign", "package", "pencil", "lightbulb", "headphones", "video", "microphone",
+  "bell", "message-circle"
+].map((icon) => `blog-cta__icon--${icon}`);
+
 export function sanitizeBlogHtml(value: string) {
   return sanitizeHtml(value, {
     allowedTags: [
@@ -114,19 +133,15 @@ export function sanitizeBlogHtml(value: string) {
     allowedAttributes: {
       a: ["href", "title", "target", "rel", "class"],
       img: ["src", "alt", "title", "width", "height", "loading"],
-      span: ["class"],
+      span: ["class", "aria-hidden"],
       aside: ["class"],
       p: ["class"]
     },
     allowedClasses: {
-      span: [
-        "blog-font-default", "blog-font-sans", "blog-font-comic", "blog-font-georgia",
-        "blog-font-arial", "blog-font-verdana", "blog-font-times", "blog-font-open-sans",
-        "blog-font-source-sans", "blog-font-lato", "blog-font-merriweather"
-      ],
-      aside: ["blog-cta", "blog-cta--sage", "blog-cta--earth", "blog-cta--sunny"],
-      p: ["blog-cta__message"],
-      a: ["blog-cta__button"]
+      span: [...BLOG_FONT_CLASSES, "blog-cta__icon", ...BLOG_CTA_ICON_CLASSES],
+      aside: ["blog-cta", "blog-cta--sage", "blog-cta--earth", "blog-cta--sunny", "blog-cta--button-only"],
+      p: ["blog-cta__message", ...BLOG_FONT_CLASSES],
+      a: ["blog-cta__button", ...BLOG_FONT_CLASSES, "blog-cta__icon-left", "blog-cta__icon-right"]
     },
     allowedSchemes: ["http", "https", "mailto"],
     allowedSchemesByTag: { img: ["http", "https"] },

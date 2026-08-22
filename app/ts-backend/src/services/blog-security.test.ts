@@ -44,19 +44,25 @@ test("keeps underline formatting in stored blog HTML", () => {
 test("keeps branded blog CTAs while removing unapproved CTA markup", () => {
   const sanitized = sanitizeBlogHtml([
     '<aside class="blog-cta blog-cta--sage evil-class" onclick="alert(1)">',
-    '<p class="blog-cta__message">Ready to begin?</p>',
-    '<a class="blog-cta__button evil-button" href="/pricing">See plans</a>',
+    '<p class="blog-cta__message blog-font-merriweather">Ready to begin?</p>',
+    '<a class="blog-cta__button blog-font-open-sans blog-cta__icon-right evil-button" href="/pricing">See plans<span class="blog-cta__icon blog-cta__icon--arrow-right evil-icon" aria-hidden="true">→</span></a>',
+    '</aside>',
+    '<aside class="blog-cta blog-cta--earth blog-cta--button-only">',
+    '<a class="blog-cta__button blog-font-lato" href="/bookstore">Browse workbooks</a>',
     '</aside>',
     '<aside class="unknown-callout"><a class="unknown-button" href="javascript:alert(2)">Bad</a></aside>'
   ].join(""));
 
   expect(sanitized).toContain('<aside class="blog-cta blog-cta--sage">');
-  expect(sanitized).toContain('<p class="blog-cta__message">Ready to begin?</p>');
-  expect(sanitized).toContain('<a class="blog-cta__button" href="/pricing">See plans</a>');
+  expect(sanitized).toContain('<p class="blog-cta__message blog-font-merriweather">Ready to begin?</p>');
+  expect(sanitized).toContain('<a class="blog-cta__button blog-font-open-sans blog-cta__icon-right" href="/pricing">See plans<span class="blog-cta__icon blog-cta__icon--arrow-right" aria-hidden="true">→</span></a>');
+  expect(sanitized).toContain('<aside class="blog-cta blog-cta--earth blog-cta--button-only">');
+  expect(sanitized).toContain('<a class="blog-cta__button blog-font-lato" href="/bookstore">Browse workbooks</a>');
   expect(sanitized).not.toContain("onclick");
   expect(sanitized).not.toContain("evil-class");
   expect(sanitized).not.toContain("evil-button");
   expect(sanitized).not.toContain("javascript:");
   expect(sanitized).not.toContain("unknown-callout");
   expect(sanitized).not.toContain("unknown-button");
+  expect(sanitized).not.toContain("evil-icon");
 });
