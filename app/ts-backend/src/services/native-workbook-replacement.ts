@@ -17,10 +17,20 @@ export type WorkbookReplacementCompatibility = {
 };
 
 function normalizeLessonTitle(value: unknown) {
-  return String(value ?? "")
+  const normalized = String(value ?? "")
     .normalize("NFKD")
-    .toLowerCase()
-    .replace(/^(?:lesson|unit|chapter)\s+\d+(?:\.\d+)*\s*[-–—:.)]?\s*/i, "")
+    .toLowerCase();
+  const withoutNumberedPrefix = normalized.replace(
+    /^(?:lesson|unit|chapter)\s+\d+(?:\.\d+)*\s*[-–—:.)]?\s*/i,
+    ""
+  );
+  // A title such as "Chapter 1.1" consists entirely of the prefix above.
+  // Preserve its numeric identity instead of turning a valid manifest entry
+  // into an empty title and rejecting the whole published manifest.
+  const comparableTitle = withoutNumberedPrefix.trim()
+    ? withoutNumberedPrefix
+    : normalized.replace(/^(?:lesson|unit|chapter)\s+/i, "");
+  return comparableTitle
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
     .replace(/\s+/g, " ");

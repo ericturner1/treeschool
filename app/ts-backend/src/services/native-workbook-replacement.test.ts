@@ -77,6 +77,30 @@ describe("workbook PDF replacement compatibility", () => {
     expect(result.reasons).toEqual([]);
   });
 
+  test("accepts numbered-only chapter titles as complete manifest entries", () => {
+    const result = checkWorkbookReplacementCompatibility({
+      currentPageCount: 12,
+      replacementPageCount: 13,
+      currentAnalysis: analysis([
+        {
+          title: "Chapter 1.1",
+          components: [{ pdfPageStart: 5, pdfPageEnd: 7 }]
+        }
+      ]),
+      replacementAnalysis: analysis([
+        {
+          title: "Lesson 1.1",
+          components: [{ pdfPageStart: 6, pdfPageEnd: 9 }]
+        }
+      ])
+    });
+
+    expect(result.compatible).toBe(true);
+    expect(result.currentLessonCount).toBe(1);
+    expect(result.replacementLessonCount).toBe(1);
+    expect(result.reasons).toEqual([]);
+  });
+
   test("rejects reordered or renamed lessons", () => {
     const result = checkWorkbookReplacementCompatibility({
       currentPageCount: 12,
