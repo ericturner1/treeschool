@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ClipboardEvent, ReactNode } from "react";
+import type { ClipboardEvent, KeyboardEvent, ReactNode, UIEvent } from "react";
 import type { BlogCategory, BlogPost } from "../../../../lib/blog/server";
 import {
   generateBlogDraftAction,
@@ -268,6 +268,230 @@ function CodeIcon() {
   );
 }
 
+function ReadingGlassesIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 20 20"
+      className="h-[18px] w-[18px] fill-none stroke-current"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M2.5 7.5 4 5.5M17.5 7.5 16 5.5" />
+      <circle cx="6" cy="10.5" r="3.25" />
+      <circle cx="14" cy="10.5" r="3.25" />
+      <path d="M9.25 10.25c.5-.45 1-.45 1.5 0" />
+    </svg>
+  );
+}
+
+type HtmlSyntaxKind = "plain" | "punctuation" | "tag" | "attribute" | "value" | "comment" | "entity";
+
+type HtmlSyntaxToken = {
+  kind: HtmlSyntaxKind;
+  text: string;
+};
+
+const HTML_SYNTAX_COLORS: Record<HtmlSyntaxKind, string> = {
+  plain: "#d8e2dc",
+  punctuation: "#91a398",
+  tag: "#ff9b72",
+  attribute: "#82cfff",
+  value: "#a8d882",
+  comment: "#7f9287",
+  entity: "#e7c66b",
+};
+
+function tokenizeHtmlTag(tag: string): HtmlSyntaxToken[] {
+  if (tag.startsWith("<!--")) return [{ kind: "comment", text: tag }];
+  if (/^<!/i.test(tag)) return [{ kind: "tag", text: tag }];
+
+  const tokens: HtmlSyntaxToken[] = [];
+  let cursor = 0;
+  let foundTagName = false;
+  while (cursor < tag.length) {
+    const remainder = tag.slice(cursor);
+    const punctuation = remainder.match(/^(?:<\/?|\/?>|=)/);
+    if (punctuation) {
+      tokens.push({ kind: "punctuation", text: punctuation[0] });
+      cursor += punctuation[0].length;
+      continue;
+    }
+    const whitespace = remainder.match(/^\s+/);
+    if (whitespace) {
+      tokens.push({ kind: "plain", text: whitespace[0] });
+      cursor += whitespace[0].length;
+      continue;
+    }
+    const quotedValue = remainder.match(/^(?:"[^"]*"|'[^']*')/);
+    if (quotedValue) {
+      tokens.push({ kind: "value", text: quotedValue[0] });
+      cursor += quotedValue[0].length;
+      continue;
+    }
+    const word = remainder.match(/^[A-Za-z_:][\w:.-]*/);
+    if (word) {
+      tokens.push({
+        kind: foundTagName ? "attribute" : "tag",
+        text: word[0],
+      });
+      foundTagName = true;
+      cursor += word[0].length;
+      continue;
+    }
+    tokens.push({ kind: "plain", text: remainder[0] });
+    cursor += 1;
+  }
+  return tokens;
+}
+
+function tokenizeHtmlSource(source: string): HtmlSyntaxToken[] {
+  const tokens: HtmlSyntaxToken[] = [];
+  const markup = /<!--[\s\S]*?-->|<![^>]*>|<\/?[A-Za-z][^>]*>/g;
+  let cursor = 0;
+  for (const match of source.matchAll(markup)) {
+    const index = match.index ?? 0;
+    if (index > cursor) {
+      const text = source.slice(cursor, index);
+      const textParts = text.split(/(&(?:#\d+|#x[\da-f]+|[a-z][\w-]*);)/gi);
+      for (const part of textParts) {
+        if (!part) continue;
+        tokens.push({
+          kind: /^&(?:#\d+|#x[\da-f]+|[a-z][\w-]*);$/i.test(part) ? "entity" : "plain",
+          text: part,
+        });
+      }
+    }
+    tokens.push(...tokenizeHtmlTag(match[0]));
+    cursor = index + match[0].length;
+  }
+  if (cursor < source.length) tokens.push({ kind: "plain", text: source.slice(cursor) });
+  return tokens;
+}
+
+const HTML_BLOCK_TAGS = new Set([
+  "blockquote", "figcaption", "figure", "h1", "h2", "h3", "h4", "hr", "li", "ol", "p", "pre", "ul",
+]);
+
+function formatHtmlSource(source: string) {
+  let formatted = source.trim();
+  const adjacentTags = /(<\/?([a-z][\w-]*)\b[^>]*>)\s*(<\/?([a-z][\w-]*)\b[^>]*>)/gi;
+
+  // Add line breaks only at block-element boundaries. Inline elements retain
+  // their exact spacing, so formatting source does not change prose such as
+  // </strong><em> into a visible extra space.
+  for (let pass = 0; pass < 4; pass += 1) {
+    const next = formatted.replace(adjacentTags, (boundary, left, leftName, right, rightName) => (
+      HTML_BLOCK_TAGS.has(String(leftName).toLowerCase()) || HTML_BLOCK_TAGS.has(String(rightName).toLowerCase())
+        ? `${left}\n${right}`
+        : boundary
+    ));
+    if (next === formatted) break;
+    formatted = next;
+  }
+
+  let depth = 0;
+  return formatted.split("\n").map((rawLine) => {
+    const line = rawLine.trim();
+    if (/^<\//.test(line)) depth = Math.max(0, depth - 1);
+    const indented = `${"  ".repeat(depth)}${line}`;
+    const opening = line.match(/^<([a-z][\w-]*)\b[^>]*>$/i);
+    if (opening && HTML_BLOCK_TAGS.has(opening[1].toLowerCase()) && !/^<(?:hr)\b/i.test(line)) {
+      depth += 1;
+    }
+    return indented;
+  }).join("\n");
+}
+
+function HtmlSourceEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const highlightRef = useRef<HTMLPreElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const tokens = useMemo(() => tokenizeHtmlSource(value), [value]);
+  const lineCount = value ? value.split("\n").length : 1;
+
+  const syncScroll = (event: UIEvent<HTMLTextAreaElement>) => {
+    if (!highlightRef.current) return;
+    highlightRef.current.scrollTop = event.currentTarget.scrollTop;
+    highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Tab") return;
+    event.preventDefault();
+    const input = event.currentTarget;
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const nextValue = `${value.slice(0, start)}  ${value.slice(end)}`;
+    onChange(nextValue);
+    requestAnimationFrame(() => {
+      input.selectionStart = start + 2;
+      input.selectionEnd = start + 2;
+    });
+  };
+
+  return (
+    <div className="overflow-hidden rounded-[16px] border border-[#4d6254] bg-[#18211b] shadow-inner focus-within:border-[#8bb76b] focus-within:ring-4 focus-within:ring-[#7fa460]/20">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#202c24] px-4 py-2.5">
+        <p className="font-mono text-xs text-[#9fb0a5]">
+          Syntax highlighted · {lineCount} {lineCount === 1 ? "line" : "lines"}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            const formatted = formatHtmlSource(value);
+            onChange(formatted);
+            requestAnimationFrame(() => textareaRef.current?.focus());
+          }}
+          className="rounded-[8px] border border-[#62786a] bg-[#29372e] px-3 py-1.5 text-xs font-bold text-[#dce8df] transition hover:border-[#9bc37e] hover:bg-[#344638]"
+        >
+          Format HTML
+        </button>
+      </div>
+      <div className="grid min-h-[560px]">
+        <pre
+          ref={highlightRef}
+          aria-hidden="true"
+          className="pointer-events-none col-start-1 row-start-1 m-0 min-h-[560px] overflow-hidden whitespace-pre p-5 font-mono text-[14px] leading-6"
+          style={{ tabSize: 2 }}
+        >
+          <code>
+            {tokens.map((token, index) => (
+              <span key={`${index}:${token.kind}`} style={{ color: HTML_SYNTAX_COLORS[token.kind] }}>
+                {token.text}
+              </span>
+            ))}
+            {"\n"}
+          </code>
+        </pre>
+        <textarea
+          ref={textareaRef}
+          aria-label="Article HTML source"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onScroll={syncScroll}
+          onKeyDown={handleKeyDown}
+          wrap="off"
+          spellCheck={false}
+          className="z-10 col-start-1 row-start-1 min-h-[560px] w-full resize-y overflow-auto whitespace-pre border-0 bg-transparent p-5 font-mono text-[14px] leading-6 outline-none selection:bg-[#54765d]/75"
+          style={{
+            color: "transparent",
+            caretColor: "#f6f2e9",
+            tabSize: 2,
+            WebkitTextFillColor: "transparent",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 async function uploadError(response: Response, fallback: string) {
   const payload = (await response.json().catch(() => null)) as {
     error?: string;
@@ -431,7 +655,7 @@ function BlogFeaturedImageField({
           const file = event.dataTransfer.files?.[0];
           if (file && !uploading) void upload(file);
         }}
-        className={`group relative flex min-h-[230px] cursor-pointer items-center justify-center overflow-hidden rounded-[20px] border-2 border-dashed transition ${dragging ? "border-[#6f994f] bg-[#eef5e4]" : "border-[#cdb996] bg-white hover:border-[#7fa460] hover:bg-[#fbfdf8]"} ${uploading ? "cursor-wait opacity-80" : ""}`}
+        className={`group relative flex aspect-[16/9] min-h-[120px] max-h-[170px] cursor-pointer items-center justify-center overflow-hidden rounded-[16px] border-2 border-dashed transition ${dragging ? "border-[#6f994f] bg-[#eef5e4]" : "border-[#cdb996] bg-white hover:border-[#7fa460] hover:bg-[#fbfdf8]"} ${uploading ? "cursor-wait opacity-80" : ""}`}
       >
         {imageUrl ? (
           <img
@@ -440,14 +664,14 @@ function BlogFeaturedImageField({
             className="absolute inset-0 h-full w-full object-cover"
           />
         ) : (
-          <div className="px-6 text-center">
+          <div className="px-4 text-center">
             <span
               aria-hidden="true"
-              className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#eaf2e1] text-2xl text-[#567b40]"
+              className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-[#eaf2e1] text-xl text-[#567b40]"
             >
               ↑
             </span>
-            <p className="mt-4 font-semibold">Drop a featured image here</p>
+            <p className="mt-2 text-sm font-semibold">Drop a featured image here</p>
             <p className="mt-1 text-sm text-ink/52">
               or click to choose a file
             </p>
@@ -465,10 +689,9 @@ function BlogFeaturedImageField({
           </div>
         ) : null}
       </div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs leading-5 text-ink/50">
-          JPEG, PNG, or WebP · up to 10 MB · stored in the{" "}
-          <strong>blog-images</strong> library.
+          JPEG, PNG, or WebP · up to 10 MB
         </p>
         {imageUrl ? (
           <button
@@ -603,8 +826,9 @@ export function BlogEditor({
   const toggleSourceMode = () => {
     if (editorMode === "visual") {
       const currentHtml = editorRef.current?.innerHTML ?? "";
-      setSourceHtml(currentHtml);
-      if (htmlInputRef.current) htmlInputRef.current.value = currentHtml;
+      const formattedHtml = formatHtmlSource(currentHtml);
+      setSourceHtml(formattedHtml);
+      if (htmlInputRef.current) htmlInputRef.current.value = formattedHtml;
       setEditorMode("source");
       return;
     }
@@ -775,6 +999,35 @@ export function BlogEditor({
                 className="rounded-[15px] border border-[#d7c3a3] bg-white px-4 py-3 leading-7"
               />
             </label>
+            <div className="border-t border-[#e3d4bd] pt-5">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="text-base font-semibold">Featured image</h2>
+                  <p className="mt-1 text-xs leading-5 text-ink/50">
+                    Used on the article, blog cards, and social link previews.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid items-start gap-4 md:grid-cols-[240px_minmax(0,1fr)]">
+                <BlogFeaturedImageField
+                  postId={post.id}
+                  initialUrl={post.revision.featuredImageUrl}
+                />
+                <label className="grid gap-2 text-sm font-semibold">
+                  Image alt text{" "}
+                  <span className="text-xs font-normal leading-5 text-ink/48">
+                    Briefly describe the image for readers who use assistive technology.
+                  </span>
+                  <textarea
+                    name="featuredImageAlt"
+                    defaultValue={post.revision.featuredImageAlt ?? ""}
+                    maxLength={180}
+                    rows={3}
+                    className="rounded-[14px] border border-[#d7c3a3] bg-white px-4 py-3 leading-6"
+                  />
+                </label>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -912,6 +1165,7 @@ export function BlogEditor({
             />
             <details className="group relative">
               <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-[9px] border border-[#d8c7ad] bg-white px-3 py-2 text-sm font-semibold marker:hidden hover:bg-[#fbf7ef]">
+                <ReadingGlassesIcon />
                 Reading
                 <span className="text-xs font-normal text-ink/48">
                   {bodyFontSizePx ?? DEFAULT_BLOG_FONT_SIZE_PX}px · {bodyLineHeight ?? DEFAULT_BLOG_LINE_HEIGHT}
@@ -1010,15 +1264,12 @@ export function BlogEditor({
                 <p className="text-xs font-black uppercase tracking-[.11em] text-[#567b40]">HTML source</p>
                 <p className="text-xs text-ink/48">Unsupported tags and attributes are removed when you return to Visual mode or save.</p>
               </div>
-              <textarea
-                aria-label="Article HTML source"
+              <HtmlSourceEditor
                 value={sourceHtml}
-                onChange={(event) => {
-                  setSourceHtml(event.target.value);
-                  if (htmlInputRef.current) htmlInputRef.current.value = event.target.value;
+                onChange={(nextHtml) => {
+                  setSourceHtml(nextHtml);
+                  if (htmlInputRef.current) htmlInputRef.current.value = nextHtml;
                 }}
-                spellCheck={false}
-                className="min-h-[560px] w-full resize-y rounded-[16px] border border-[#cdb996] bg-[#20261d] p-5 font-mono text-[14px] leading-6 text-[#f6f2e9] outline-none focus:border-[#7fa460] focus:ring-4 focus:ring-[#7fa460]/15"
               />
             </div>
           ) : null}
@@ -1137,36 +1388,6 @@ export function BlogEditor({
                 type="url"
                 defaultValue={post.revision.canonicalUrl ?? ""}
                 className="min-h-12 rounded-[14px] border border-[#c5d7b2] bg-white px-4"
-              />
-            </label>
-          </div>
-        </section>
-
-        <section className="rounded-[28px] border border-[#dcc8aa] bg-[#fffaf2] p-5 sm:p-7">
-          <h2 className="text-2xl font-semibold tracking-[-0.04em]">
-            Social and featured image
-          </h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-ink/55">
-            This image appears on the blog, in link previews, and when the
-            article is shared.
-          </p>
-          <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
-            <BlogFeaturedImageField
-              postId={post.id}
-              initialUrl={post.revision.featuredImageUrl}
-            />
-            <label className="grid content-start gap-2 text-sm font-semibold">
-              Image alt text{" "}
-              <span className="text-xs font-normal leading-5 text-ink/48">
-                Briefly describe the image for readers who use assistive
-                technology.
-              </span>
-              <textarea
-                name="featuredImageAlt"
-                defaultValue={post.revision.featuredImageAlt ?? ""}
-                maxLength={180}
-                rows={5}
-                className="rounded-[14px] border border-[#d7c3a3] bg-white px-4 py-3 leading-6"
               />
             </label>
           </div>
