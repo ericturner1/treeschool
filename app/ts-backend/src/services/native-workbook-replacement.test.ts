@@ -85,6 +85,51 @@ function replacementKokugoAnalysis(lessonCount = kokugoLessonNumbers.length) {
   return fragmentAnalysis(fragments);
 }
 
+function japaneseReplacementKokugoAnalysis() {
+  const fragments: Array<{ title: string; roles: string[] }> = [];
+  let lessonIndex = 0;
+  for (const chapter of [1, 2, 3, 4, 5, 6]) {
+    fragments.push({ title: `だい${chapter}しょう`, roles: ["reference"] });
+    for (const lessonNumber of kokugoLessonNumbers.filter((number) =>
+      number.startsWith(`${chapter}.`)
+    )) {
+      const subject = `学習内容${lessonNumber.replace(".", "・")}`;
+      if (lessonIndex < 7) {
+        fragments.push({ title: `漢字導入: ${subject}`, roles: ["instruction"] });
+        fragments.push({ title: `漢字練習: ${subject}`, roles: ["practice"] });
+        fragments.push({ title: `解答: ${subject}`, roles: ["answer_key"] });
+      } else {
+        fragments.push({ title: subject, roles: [lessonIndex === 7 ? "instruction" : "practice"] });
+        fragments.push({ title: `解答: ${subject}`, roles: ["answer_key"] });
+      }
+      lessonIndex += 1;
+    }
+  }
+  return fragmentAnalysis(fragments);
+}
+
+function overcountedReplacementKokugoAnalysis() {
+  const fragments: Array<{ title: string; roles: string[] }> = [];
+  kokugoLessonNumbers.forEach((lessonNumber, lessonIndex) => {
+    const subject = `Topic ${lessonNumber}`;
+    fragments.push({ title: `Lesson material: ${subject}`, roles: ["instruction"] });
+    if (lessonIndex < 7) {
+      // Simulates an AI run that gives the practice page a different title,
+      // causing title-based grouping to incorrectly count it as a new lesson.
+      fragments.push({ title: `Independent worksheet ${lessonIndex + 1}`, roles: ["practice"] });
+    }
+    fragments.push({ title: `Answers for ${subject}`, roles: ["answer_key"] });
+  });
+  return fragmentAnalysis(fragments);
+}
+
+function kokugoPageTexts(numbers = kokugoLessonNumbers) {
+  return [
+    `もくじ ${numbers.map((number) => `${number} — title`).join(" ")}`,
+    ...numbers.map((number) => `だい ${number.split(".")[0]} しょう ${number} — lesson title`)
+  ];
+}
+
 const published = analysis([
   {
     title: "Lesson 1.1 — What Makes Sound?",
@@ -198,6 +243,60 @@ describe("workbook PDF replacement compatibility", () => {
     expect(result.currentLessonCount).toBe(10);
     expect(result.replacementLessonCount).toBe(10);
     expect(result.reasons).toEqual([]);
+  });
+
+  test("groups Japanese instruction, practice, and answer labels into lessons", () => {
+    const replacementAnalysis = japaneseReplacementKokugoAnalysis();
+    expect(replacementAnalysis.learningUnits).toHaveLength(33);
+    expect(readLessonManifest(replacementAnalysis)).toHaveLength(10);
+
+    const result = checkWorkbookReplacementCompatibility({
+      currentPageCount: 60,
+      replacementPageCount: 60,
+      currentAnalysis: publishedKokugoAnalysis(),
+      replacementAnalysis
+    });
+
+    expect(result.compatible).toBe(true);
+    expect(result.currentLessonCount).toBe(10);
+    expect(result.replacementLessonCount).toBe(10);
+  });
+
+  test("uses stable printed lesson ids when AI splits practice into extra logical lessons", () => {
+    const replacementAnalysis = overcountedReplacementKokugoAnalysis();
+    expect(readLessonManifest(replacementAnalysis)).toHaveLength(17);
+
+    const result = checkWorkbookReplacementCompatibility({
+      currentPageCount: 60,
+      replacementPageCount: 60,
+      currentAnalysis: publishedKokugoAnalysis(),
+      replacementAnalysis,
+      currentPageTexts: kokugoPageTexts(),
+      replacementPageTexts: kokugoPageTexts()
+    });
+
+    expect(result.compatible).toBe(true);
+    expect(result.currentLessonCount).toBe(10);
+    expect(result.replacementLessonCount).toBe(10);
+    expect(result.reasons).toEqual([]);
+  });
+
+  test("still rejects a deleted lesson when printed ids establish the published contract", () => {
+    const result = checkWorkbookReplacementCompatibility({
+      currentPageCount: 60,
+      replacementPageCount: 58,
+      currentAnalysis: publishedKokugoAnalysis(),
+      replacementAnalysis: overcountedReplacementKokugoAnalysis(),
+      currentPageTexts: kokugoPageTexts(),
+      replacementPageTexts: kokugoPageTexts(kokugoLessonNumbers.slice(0, -1))
+    });
+
+    expect(result.compatible).toBe(false);
+    expect(result.currentLessonCount).toBe(10);
+    expect(result.replacementLessonCount).toBe(9);
+    expect(result.reasons).toContain(
+      "The replacement contains 9 printed lessons; the published workbook contains 10."
+    );
   });
 
   test("still rejects a deleted logical lesson when page-fragment counts differ", () => {

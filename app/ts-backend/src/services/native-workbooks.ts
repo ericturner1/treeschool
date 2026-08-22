@@ -50,6 +50,7 @@ import {
 import {
   analyzePdf,
   applyNativeWorkbookCoverageToLearningYearCache,
+  extractPdfPageTexts,
   generateNativeWorkbookCatalogDescription,
   getPdfPageCount,
   startLearningYearPlanning
@@ -3381,12 +3382,30 @@ async function promoteCompatibleWorkbookReplacement(input: {
           : ["A lesson was added, removed, or replaced; publish this change as a new edition."]
       };
     })()
-    : checkWorkbookReplacementCompatibility({
+    : await (async () => {
+      let currentPageTexts: string[] | undefined;
+      let replacementPageTexts: string[] | undefined;
+      try {
+        const publishedBytes = await downloadPrivateFile(publishedVersion.objectPath);
+        [currentPageTexts, replacementPageTexts] = await Promise.all([
+          extractPdfPageTexts(publishedBytes),
+          extractPdfPageTexts(input.bytes)
+        ]);
+      } catch (error) {
+        console.warn(
+          `Could not extract stable printed lesson ids while comparing workbook versions ${publishedVersion.id} and ${input.version.id}; falling back to logical manifest comparison.`,
+          error
+        );
+      }
+      return checkWorkbookReplacementCompatibility({
         currentPageCount: publishedVersion.pageCount,
         replacementPageCount: input.pageCount,
         currentAnalysis: publishedVersion.analysisJson,
-        replacementAnalysis: input.candidateAnalysis
+        replacementAnalysis: input.candidateAnalysis,
+        currentPageTexts,
+        replacementPageTexts
       });
+    })();
   if (!compatibility.compatible) {
     throw new WorkbookReplacementCompatibilityError(
       `Replacement rejected: ${compatibility.reasons.join(" ")} The published PDF and all customer data were left unchanged.`

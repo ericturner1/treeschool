@@ -88,9 +88,54 @@ function normalizeLessonSubject(value: unknown) {
     /^(?:lesson|unit|chapter|ch\.?)\s*(?:#\s*)?\d+(?:\.\d+)*\s*[-–—:.)]?\s*/i,
     ""
   );
-  const genericRole = /^(?:(?:answer\s*key|answers?|practice|exercises?|questions?|worksheet|kanji\s+introduction|concept\s+introduction|lesson\s+introduction|introduction)\s*[-–—:]?\s*)/i;
+  const genericRole = /^(?:(?:answer\s*key|answers?|practice|exercises?|questions?|worksheet|kanji\s+introduction|concept\s+introduction|lesson\s+introduction|introduction|漢字(?:導入|練習)|解答|答え|練習|れんしゅう|学習|がくしゅう)\s*[-–—:：]?\s*)/iu;
   while (genericRole.test(subject)) subject = subject.replace(genericRole, "");
   return canonicalizeTitle(subject);
+}
+
+function normalizePrintedLessonNumber(value: string) {
+  return value
+    .split(".")
+    .map((part) => String(Number(part)))
+    .join(".");
+}
+
+function printedLessonNumbersOnPage(value: string) {
+  const source = value.normalize("NFKC");
+  const numbers: string[] = [];
+  const addMatches = (pattern: RegExp) => {
+    for (const match of source.matchAll(pattern)) {
+      if (match[1]) numbers.push(normalizePrintedLessonNumber(match[1]));
+    }
+  };
+
+  // Labeled integer lessons are useful in workbooks that do not use a
+  // chapter.lesson hierarchy. A bare number is only treated as a lesson id
+  // when it is hierarchical and followed by title punctuation, which avoids
+  // mistaking prices and ordinary decimal values for lesson numbers.
+  addMatches(/\b(?:lesson|unit)\s*(?:#\s*)?(\d{1,3}(?:\.\d{1,3})*)\b/gi);
+  addMatches(/\b(?:chapter|ch\.?)\s*(?:#\s*)?(\d{1,3}\.\d{1,3}(?:\.\d{1,3})*)\b/gi);
+  addMatches(/(?:^|[\s(【])(?<![\d.])(\d{1,3}\.\d{1,3}(?:\.\d{1,3})*)\s*(?:[-–—:：)]|$)/gmu);
+
+  return Array.from(new Set(numbers));
+}
+
+function printedLessonSequence(pageTexts: string[] | undefined) {
+  if (!pageTexts?.length) return [];
+  const sequence: string[] = [];
+  const seen = new Set<string>();
+  for (const pageText of pageTexts) {
+    const pageNumbers = printedLessonNumbersOnPage(pageText);
+    const normalized = normalizedSourceTitle(pageText);
+    const isContentsPage = /\btable\s+of\s+contents\b|\bcontents\b|もくじ|目次/u.test(normalized);
+    if (isContentsPage && pageNumbers.length > 1) continue;
+    for (const number of pageNumbers) {
+      if (seen.has(number)) continue;
+      seen.add(number);
+      sequence.push(number);
+    }
+  }
+  return sequence;
 }
 
 function readComponents(value: unknown): LessonComponent[] {
@@ -286,6 +331,36 @@ export function checkWorkbookReplacementCompatibility(input: {
   const replacementManifest = replacementRaw
     ? useLogicalLessons ? buildLogicalLessonManifest(replacementRaw) : replacementRaw.entries
     : null;
+
+  const currentPrintedLessons = printedLessonSequence(input.currentPageTexts);
+  const replacementPrintedLessons = printedLessonSequence(input.replacementPageTexts);
+  const hasEstablishedPrintedLessonContract = Boolean(
+    currentManifest &&
+    currentPrintedLessons.length > 0 &&
+    currentPrintedLessons.length === currentManifest.length &&
+    replacementPrintedLessons.length > 0
+  );
+
+  if (hasEstablishedPrintedLessonContract) {
+    if (currentPrintedLessons.length !== replacementPrintedLessons.length) {
+      reasons.push(
+        `The replacement contains ${replacementPrintedLessons.length} printed lessons; the published workbook contains ${currentPrintedLessons.length}.`
+      );
+    } else {
+      for (let index = 0; index < currentPrintedLessons.length; index += 1) {
+        if (currentPrintedLessons[index] !== replacementPrintedLessons[index]) {
+          reasons.push(`Printed lesson ${index + 1} no longer has the same stable number or sequence position.`);
+        }
+        if (reasons.length >= 5) break;
+      }
+    }
+    return {
+      compatible: reasons.length === 0,
+      reasons,
+      currentLessonCount: currentPrintedLessons.length,
+      replacementLessonCount: replacementPrintedLessons.length
+    };
+  }
 
   if (!currentManifest) {
     reasons.push("The published workbook does not have a complete logical lesson manifest to compare.");
