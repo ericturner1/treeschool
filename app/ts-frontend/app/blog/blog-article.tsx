@@ -94,7 +94,16 @@ export function BlogArticle({
                 {post.revision.excerpt}
               </p>
             ) : null}
-            <div className="mt-8 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-ink/55">
+            {post.revision.featuredImageUrl ? (
+              <div className="relative mt-8 aspect-[2/1] w-full max-w-[680px] overflow-hidden rounded-[20px] border border-black/5 bg-white shadow-[0_16px_40px_rgba(67,50,34,.1)] sm:rounded-[24px]">
+                <img
+                  src={post.revision.featuredImageUrl}
+                  alt={post.revision.featuredImageAlt || ""}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            ) : null}
+            <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-ink/55">
               {post.revision.showAuthor ? (
                 <>
                   <span>By {post.authorName}</span>
@@ -109,17 +118,6 @@ export function BlogArticle({
             </div>
           </div>
         </header>
-        {post.revision.featuredImageUrl ? (
-          <div className="mx-auto max-w-[1160px] px-5 pt-10 sm:px-8 sm:pt-12 lg:px-10">
-            <div className="relative aspect-[16/8] overflow-hidden rounded-[24px] border border-black/5 bg-white shadow-[0_20px_50px_rgba(67,50,34,.1)] sm:rounded-[30px]">
-              <img
-                src={post.revision.featuredImageUrl}
-                alt={post.revision.featuredImageAlt || ""}
-                className="h-full w-full object-cover"
-              />
-            </div>
-          </div>
-        ) : null}
         <div
           className={`mx-auto grid gap-8 px-4 py-10 sm:px-8 sm:py-14 lg:gap-12 lg:px-10 lg:py-16 ${showTableOfContents ? "max-w-[1200px] lg:grid-cols-[220px_minmax(0,820px)] lg:justify-center" : "max-w-[940px]"}`}
         >
