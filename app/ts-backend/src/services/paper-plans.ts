@@ -7600,7 +7600,7 @@ export async function getPaperPlan(parentUserId: string, profileId: string) {
           .select()
           .from(weeklyPlanItems)
           .where(inArray(weeklyPlanItems.weeklyPlanId, weekIds))
-          .orderBy(asc(weeklyPlanItems.sortOrder));
+          .orderBy(asc(weeklyPlanItems.sortOrder), asc(weeklyPlanItems.id));
   const [todayAttendance, planDayAttendance, subjectGrades, daySubjectGrades] = await Promise.all([
     db.select({
       weeklyPlanId: attendanceEntries.weeklyPlanId,
@@ -7829,7 +7829,6 @@ export async function getPaperPlan(parentUserId: string, profileId: string) {
               .map((entry) => entry.attendanceDate)
           )).sort(),
           subjects: Array.from(daySubjects.values())
-            .sort((left, right) => left.subjectLabel.localeCompare(right.subjectLabel))
             .map((subject) => {
               const saved = savedDayGrades.find((grade) =>
                 grade.dayNumber === dayNumber && grade.subjectKey === subject.subjectKey
@@ -7897,7 +7896,7 @@ export async function getWeeklyPlanManifest(parentUserId: string, weeklyPlanId: 
       .from(weeklyPlanItems)
       .innerJoin(contentDocuments, eq(contentDocuments.id, weeklyPlanItems.documentId))
       .where(eq(weeklyPlanItems.weeklyPlanId, week.id))
-      .orderBy(asc(weeklyPlanItems.sortOrder)),
+      .orderBy(asc(weeklyPlanItems.sortOrder), asc(weeklyPlanItems.id)),
     db.select().from(weeklyPlanSubjectGrades)
       .where(eq(weeklyPlanSubjectGrades.weeklyPlanId, week.id)),
     db.select().from(learningYearSubjectPreferences)
@@ -9668,7 +9667,7 @@ async function buildLegacyWeeklyPacket(
     .from(weeklyPlanItems)
     .innerJoin(contentDocuments, eq(contentDocuments.id, weeklyPlanItems.documentId))
     .where(eq(weeklyPlanItems.weeklyPlanId, week.id))
-    .orderBy(asc(weeklyPlanItems.sortOrder));
+    .orderBy(asc(weeklyPlanItems.sortOrder), asc(weeklyPlanItems.id));
   const includedItems = items.filter(({ item }) => item.includedInPacket);
   const excludedItems = items.filter(({ item }) => !item.includedInPacket);
   if (excludedItems.some(({ item }) =>
@@ -9881,7 +9880,7 @@ async function loadWeeklyPacketContext(
     .from(weeklyPlanItems)
     .innerJoin(contentDocuments, eq(contentDocuments.id, weeklyPlanItems.documentId))
     .where(eq(weeklyPlanItems.weeklyPlanId, week.id))
-    .orderBy(asc(weeklyPlanItems.sortOrder));
+    .orderBy(asc(weeklyPlanItems.sortOrder), asc(weeklyPlanItems.id));
   const includedItems = rows.filter(({ item }) => item.includedInPacket);
   const excludedItems = rows.filter(({ item }) => !item.includedInPacket);
   if (excludedItems.some(({ item }) =>

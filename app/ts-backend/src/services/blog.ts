@@ -119,7 +119,8 @@ export function sanitizeBlogHtml(value: string) {
     allowedClasses: {
       span: [
         "blog-font-default", "blog-font-sans", "blog-font-comic", "blog-font-georgia",
-        "blog-font-arial", "blog-font-verdana", "blog-font-times"
+        "blog-font-arial", "blog-font-verdana", "blog-font-times", "blog-font-open-sans",
+        "blog-font-source-sans", "blog-font-lato", "blog-font-merriweather"
       ]
     },
     allowedSchemes: ["http", "https", "mailto"],

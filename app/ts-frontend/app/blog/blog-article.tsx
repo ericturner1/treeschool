@@ -54,8 +54,10 @@ export function BlogArticle({
   preview?: boolean;
 }) {
   const rendered = articleHtml(post.revision.contentHtml);
+  const sectionHeadings = rendered.headings.filter((heading) => heading.level === 2);
+  const showTableOfContents = sectionHeadings.length >= 3;
   return (
-    <main className="min-h-screen bg-[#f8f1e4] text-ink">
+    <main className="min-h-screen bg-[#f3eee6] text-ink">
       <BlogHeader />
       {preview ? (
         <div className="sticky top-0 z-30 border-b border-[#c7b6d7] bg-[#f1edf6] px-4 py-3 text-center text-sm font-semibold text-[#655777]">
@@ -70,28 +72,29 @@ export function BlogArticle({
         </div>
       ) : null}
       <article>
-        <header className="border-b border-[#d8c7ad] bg-[#e8f0e1]">
-          <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 sm:py-16">
-            <div className="mt-7 flex flex-wrap gap-2">
+        <header className="border-b border-[#d5e0ca] bg-[#edf4e7]">
+          <div className="mx-auto max-w-[1040px] px-6 py-12 sm:px-10 sm:py-16 lg:px-14 lg:py-20">
+            <p className="label-font text-sm text-[#567b40]">Treeschool journal</p>
+            <div className="mt-5 flex flex-wrap gap-2">
               {post.categories.map((category) => (
                 <Link
                   key={category.slug}
                   href={`/blog?category=${category.slug}`}
-                  className="rounded-full border border-[#9eb889] bg-[#f7fbf1] px-3 py-1.5 text-xs font-bold text-[#486338]"
+                  className="rounded-full border border-[#a9c497] bg-white/75 px-3.5 py-1.5 text-xs font-bold text-[#486338] transition hover:border-[#719359] hover:bg-white"
                 >
                   {category.name}
                 </Link>
               ))}
             </div>
-          <h1 className="mt-5 text-4xl font-semibold leading-[1.12] tracking-[-0.055em] sm:text-6xl">
+          <h1 className="mt-6 max-w-[900px] text-4xl font-semibold leading-[1.08] tracking-[-0.055em] sm:text-6xl lg:text-[68px]">
               {post.revision.title}
             </h1>
             {post.revision.excerpt ? (
-              <p className="mt-6 max-w-3xl text-lg leading-8 text-ink/72 sm:text-xl">
+              <p className="mt-7 max-w-[780px] text-lg leading-8 text-ink/68 sm:text-[21px] sm:leading-9">
                 {post.revision.excerpt}
               </p>
             ) : null}
-            <div className="mt-7 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink/55">
+            <div className="mt-8 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-ink/55">
               {post.revision.showAuthor ? (
                 <>
                   <span>By {post.authorName}</span>
@@ -107,8 +110,8 @@ export function BlogArticle({
           </div>
         </header>
         {post.revision.featuredImageUrl ? (
-          <div className="mx-auto max-w-5xl px-4 pt-10 sm:px-6">
-            <div className="relative aspect-[16/8] overflow-hidden rounded-[26px] border border-[#d8c7ad] bg-white">
+          <div className="mx-auto max-w-[1160px] px-5 pt-10 sm:px-8 sm:pt-12 lg:px-10">
+            <div className="relative aspect-[16/8] overflow-hidden rounded-[24px] border border-black/5 bg-white shadow-[0_20px_50px_rgba(67,50,34,.1)] sm:rounded-[30px]">
               <img
                 src={post.revision.featuredImageUrl}
                 alt={post.revision.featuredImageAlt || ""}
@@ -118,26 +121,23 @@ export function BlogArticle({
           </div>
         ) : null}
         <div
-          className={`mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 lg:py-16 ${rendered.headings.filter((heading) => heading.level === 2).length >= 3 ? "lg:grid-cols-[220px_minmax(0,760px)] lg:justify-center" : "max-w-3xl"}`}
+          className={`mx-auto grid gap-8 px-4 py-10 sm:px-8 sm:py-14 lg:gap-12 lg:px-10 lg:py-16 ${showTableOfContents ? "max-w-[1200px] lg:grid-cols-[220px_minmax(0,820px)] lg:justify-center" : "max-w-[940px]"}`}
         >
-          {rendered.headings.filter((heading) => heading.level === 2).length >=
-          3 ? (
+          {showTableOfContents ? (
             <aside className="hidden lg:block">
               <nav
                 aria-label="On this page"
-                className="sticky top-6 rounded-[18px] border border-[#dcc8aa] bg-[#fffaf2] p-4"
+                className="sticky top-6 rounded-[20px] border border-[#dfe5d8] bg-white/80 p-5 shadow-[0_10px_30px_rgba(67,50,34,.06)] backdrop-blur"
               >
-                <p className="text-xs font-black uppercase tracking-[0.12em] text-earth">
+                <p className="label-font text-sm text-[#567b40]">
                   On this page
                 </p>
-                <ol className="mt-3 space-y-2">
-                  {rendered.headings
-                    .filter((heading) => heading.level === 2)
-                    .map((heading) => (
+                <ol className="mt-4 space-y-3 border-l border-[#dce7d3] pl-4">
+                  {sectionHeadings.map((heading) => (
                       <li key={heading.id}>
                         <a
                           href={`#${heading.id}`}
-                          className="text-sm leading-5 text-ink/60 hover:text-[#486338]"
+                          className="block text-sm leading-5 text-ink/58 transition hover:translate-x-0.5 hover:text-[#486338]"
                         >
                           {heading.text}
                         </a>
@@ -147,9 +147,23 @@ export function BlogArticle({
               </nav>
             </aside>
           ) : null}
-          <div>
+          <div className="min-w-0 rounded-[26px] border border-[#e6ded2] bg-white px-5 py-8 shadow-[0_20px_60px_rgba(67,50,34,.07)] sm:rounded-[32px] sm:px-10 sm:py-12 lg:px-14 lg:py-14">
+            {showTableOfContents ? (
+              <details className="mb-9 rounded-[16px] border border-[#dce7d3] bg-[#f6faf2] p-4 lg:hidden">
+                <summary className="label-font cursor-pointer text-[#567b40]">On this page</summary>
+                <ol className="mt-4 space-y-2.5 border-l border-[#cfddc4] pl-4">
+                  {sectionHeadings.map((heading) => (
+                    <li key={heading.id}>
+                      <a href={`#${heading.id}`} className="text-sm leading-5 text-ink/62 underline decoration-[#a8bf96] underline-offset-4">
+                        {heading.text}
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            ) : null}
             <div
-              className="blog-prose"
+              className="blog-prose mx-auto max-w-[68ch]"
               style={{
                 fontSize: post.revision.bodyFontSizePx
                   ? `${post.revision.bodyFontSizePx}px`
@@ -158,44 +172,45 @@ export function BlogArticle({
               }}
               dangerouslySetInnerHTML={{ __html: rendered.html }}
             />
-            <aside className="mt-12 rounded-[26px] border border-[#a9c194] bg-[#eef5e4] p-6 sm:p-8">
-              <Image
-                src="/tree-icon.png"
-                alt=""
-                width={56}
-                height={56}
-                className="h-12 w-12"
-              />
-              <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-                Turn the curriculum you chose into a plan you can teach.
-              </h2>
-              <p className="mt-3 leading-7 text-ink/65">
-                Treeschool is an elementary homeschooling program for grades
-                K–4 that organizes PDF workbooks into printable, day-by-day
-                weekly lesson plans—without putting your child on another
-                screen.
-              </p>
-              <div className="mt-5 flex flex-wrap gap-3">
-                <Link
-                  href="/pricing"
-                  className="cta-button cta-button--light cta-button--small"
-                >
-                  View membership plans
-                </Link>
-                <Link
-                  href="/homeschool-lesson-plan-generator"
-                  className="cta-button cta-button--outline cta-button--small"
-                >
-                  Generate a lesson plan
-                </Link>
+            <aside className="mx-auto mt-14 max-w-[68ch] border-t border-[#e5ded2] pt-10">
+              <div className="rounded-[24px] border border-[#b9cca9] bg-[#eff6e9] p-6 sm:p-8">
+                <Image
+                  src="/tree-icon.png"
+                  alt=""
+                  width={56}
+                  height={56}
+                  className="h-12 w-12"
+                />
+                <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
+                  Turn the curriculum you chose into a plan you can teach.
+                </h2>
+                <p className="mt-3 max-w-[58ch] leading-7 text-ink/65">
+                  Treeschool organizes PDF workbooks into printable, day-by-day
+                  weekly lesson plans—without putting your child on another
+                  screen.
+                </p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link
+                    href="/pricing"
+                    className="cta-button cta-button--light cta-button--small"
+                  >
+                    View membership plans
+                  </Link>
+                  <Link
+                    href="/homeschool-lesson-plan-generator"
+                    className="cta-button cta-button--outline cta-button--small"
+                  >
+                    Try the planning tool
+                  </Link>
+                </div>
               </div>
             </aside>
           </div>
         </div>
       </article>
       {related.length ? (
-        <section className="border-t border-[#d8c7ad] bg-[#fffaf2]">
-          <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+        <section className="border-t border-[#e0d8cc] bg-[#faf7f1]">
+          <div className="mx-auto max-w-6xl px-6 py-14 sm:px-10 lg:px-12 lg:py-16">
             <h2 className="text-3xl font-semibold tracking-[-0.045em]">
               Keep reading
             </h2>
@@ -204,7 +219,7 @@ export function BlogArticle({
                 <Link
                   key={item.id}
                   href={`/blog/${item.slug}`}
-                  className="rounded-[22px] border border-[#dcc8aa] bg-white p-5 transition hover:-translate-y-1 hover:border-[#9eb889]"
+                  className="rounded-[22px] border border-[#e2d9cc] bg-white p-6 shadow-[0_10px_30px_rgba(67,50,34,.05)] transition hover:-translate-y-1 hover:border-[#9eb889] hover:shadow-[0_16px_35px_rgba(67,50,34,.09)]"
                 >
                   <p className="text-xs font-bold uppercase tracking-[0.1em] text-[#567b40]">
                     {item.categories[0]?.name ?? "Homeschool resources"}

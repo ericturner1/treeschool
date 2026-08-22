@@ -24,7 +24,11 @@ import { listNativeWorkbookCatalog } from "../../../../../lib/native-workbooks/s
 import { LessonPlanEmptyState } from "./lesson-plan-empty-state";
 import { PlanDayCard } from "./plan-day-card";
 import { PlanDaySubjectCard } from "./plan-day-subject-card";
-import { weekSubjectSummaries, workbookLessonSummary } from "./week-subject-summaries";
+import {
+  groupWeekLessons,
+  weekSubjectSummaries,
+  workbookLessonSummary
+} from "./week-subject-summaries";
 import {
   QUALITY_CONTROL_FAILURE_LABEL,
   qualityControlFailureDetail
@@ -96,36 +100,6 @@ function fileKindLabel(document: { sourceKind?: string; mimeType?: string; pageC
 
 function languageFamily(value: string | null | undefined) {
   return value?.trim().toLowerCase().split(/[-_]/)[0] ?? "";
-}
-
-function groupWeekLessons(items: PaperPlanWeek["items"]) {
-  const lessons = new Map<string, PaperPlanWeek["items"]>();
-  for (const item of items.filter((candidate) => candidate.baseIncludedInPacket)) {
-    const key = item.sourceUnitId
-      ? `${item.documentId}:unit:${item.sourceUnitId}`
-      : `${item.documentId}:legacy:${item.label}:${item.dayNumber ?? "none"}`;
-    const group = lessons.get(key) ?? [];
-    group.push(item);
-    lessons.set(key, group);
-  }
-  return Array.from(lessons.entries()).map(([key, lessonItems]) => {
-    const ordered = lessonItems.slice().sort((left, right) =>
-      left.firstPageIndex - right.firstPageIndex || left.sortOrder - right.sortOrder
-    );
-    const first = ordered[0];
-    return {
-      key,
-      first,
-      subjectLabel: first.subjectLabel || "Uncategorized",
-      pageStart: Math.min(...ordered.map((item) => item.firstPageIndex)) + 1,
-      pageEnd: Math.max(...ordered.map((item) => item.lastPageIndex)) + 1,
-      days: Array.from(new Set(ordered.map((item) => item.dayNumber).filter((day): day is number => day != null))).sort((a, b) => a - b)
-    };
-  }).sort((left, right) =>
-    (left.days[0] ?? 999) - (right.days[0] ?? 999) ||
-    left.subjectLabel.localeCompare(right.subjectLabel) ||
-    left.pageStart - right.pageStart
-  );
 }
 
 function lessonDispositionPresentation(

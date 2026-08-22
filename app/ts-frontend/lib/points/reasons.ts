@@ -9,6 +9,7 @@ export const COMMON_AWARD_REASONS = [
 
 export const COMMON_REDEMPTION_REASONS = [
   "Chose a reward",
+  "To buy a book",
   "Chose tonight's dessert",
   "Extra play time",
   "Picked a family activity",

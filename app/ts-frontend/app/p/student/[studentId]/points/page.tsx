@@ -25,6 +25,7 @@ import {
 import { PointAwardSuccessSound } from "./point-award-success-sound";
 import { PointsBalanceAllocation } from "./points-balance-allocation";
 import { PointsBalanceChart } from "./points-balance-chart";
+import { ExplicitPointsSubmitForm } from "./explicit-points-submit-form";
 import { PointsSubmitButton } from "./points-submit-button";
 
 type Props = {
@@ -179,9 +180,10 @@ export default async function StudentPointsPage(props: Props) {
                 </div>
                 </form>
 
-                <form
+                <ExplicitPointsSubmitForm
                   key={`redeem-${searchParams?.resetForm === "redeem" ? searchParams.resetToken : "initial"}`}
                   action={redeemStudentPointsAction}
+                  confirmationValue="redeem-points"
                   className={`site-panel rounded-[28px] px-6 py-7 transition ${
                     canRedeemPoints
                       ? ""
@@ -226,9 +228,10 @@ export default async function StudentPointsPage(props: Props) {
                     pendingLabel="Using…"
                     disabled={!canRedeemPoints}
                     tone="outline"
+                    requireExplicitActivation
                   />
                 </div>
-                </form>
+                </ExplicitPointsSubmitForm>
             </section>
           ) : null}
 

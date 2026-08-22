@@ -68,15 +68,19 @@ export async function awardStudentPointsAction(formData: FormData) {
 export async function redeemStudentPointsAction(formData: FormData) {
   const returnPath = safeReturnPath(formData);
   let error: string | null = null;
-  try {
-    await redeemStudentPoints({
-      parentUserId: await currentUserId(),
-      profileId: field(formData, "profileId"),
-      amount: Number(field(formData, "amount")),
-      reason: field(formData, "reason")
-    });
-  } catch (caught) {
-    error = caught instanceof Error ? caught.message : "Could not use points.";
+  if (field(formData, "explicitSubmitIntent") !== "redeem-points") {
+    error = "Press the Use points button when the amount and reason are ready.";
+  } else {
+    try {
+      await redeemStudentPoints({
+        parentUserId: await currentUserId(),
+        profileId: field(formData, "profileId"),
+        amount: Number(field(formData, "amount")),
+        reason: field(formData, "reason")
+      });
+    } catch (caught) {
+      error = caught instanceof Error ? caught.message : "Could not use points.";
+    }
   }
   if (error) redirect(withMessage(returnPath, "error", error));
   revalidatePath(returnPath);

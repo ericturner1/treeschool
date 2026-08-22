@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent, ReactNode } from "react";
 import type { BlogCategory, BlogPost } from "../../../../lib/blog/server";
 import {
@@ -24,6 +24,10 @@ const BLOG_FONT_OPTIONS = [
   { label: "Page default", marker: "treeschool-default", className: "blog-font-default" },
   { label: "Treeschool Sans", marker: "treeschool-sans", className: "blog-font-sans" },
   { label: "Comic Neue", marker: "treeschool-comic", className: "blog-font-comic" },
+  { label: "Open Sans", marker: "treeschool-open-sans", className: "blog-font-open-sans" },
+  { label: "Source Sans 3", marker: "treeschool-source-sans", className: "blog-font-source-sans" },
+  { label: "Lato", marker: "treeschool-lato", className: "blog-font-lato" },
+  { label: "Merriweather", marker: "treeschool-merriweather", className: "blog-font-merriweather" },
   { label: "Georgia", marker: "treeschool-georgia", className: "blog-font-georgia" },
   { label: "Arial", marker: "treeschool-arial", className: "blog-font-arial" },
   { label: "Verdana", marker: "treeschool-verdana", className: "blog-font-verdana" },
@@ -33,6 +37,28 @@ const BLOG_FONT_OPTIONS = [
 const BLOG_FONT_CLASSES = new Set<string>(BLOG_FONT_OPTIONS.map((option) => option.className));
 const DEFAULT_BLOG_FONT_SIZE_PX = 17.25;
 const DEFAULT_BLOG_LINE_HEIGHT = 1.85;
+
+type BlogBlockStyle = "p" | "h2" | "h3" | "blockquote";
+
+function blockStyleAtSelectionStart(editor: HTMLDivElement, range: Range): BlogBlockStyle {
+  let node: Node | null = range.startContainer;
+  if (node === editor && range.startOffset < editor.childNodes.length) {
+    node = editor.childNodes[range.startOffset] ?? node;
+  }
+  if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+
+  while (node && node !== editor) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const tagName = (node as Element).tagName.toLowerCase();
+      if (tagName === "h2" || tagName === "h3" || tagName === "blockquote") {
+        return tagName;
+      }
+    }
+    node = node.parentNode;
+  }
+
+  return "p";
+}
 
 /**
  * h1 -> h2 because the article template already renders the post title as the page's
@@ -486,6 +512,7 @@ export function BlogEditor({
     post.revision.metaDescription ?? "",
   );
   const [editorMode, setEditorMode] = useState<"visual" | "source">("visual");
+  const [activeBlockStyle, setActiveBlockStyle] = useState<BlogBlockStyle>("p");
   const [sourceHtml, setSourceHtml] = useState(post.revision.contentHtml);
   const [bodyFontSizePx, setBodyFontSizePx] = useState<number | null>(
     post.revision.bodyFontSizePx,
@@ -504,6 +531,21 @@ export function BlogEditor({
     if (htmlInputRef.current)
       htmlInputRef.current.value = editorRef.current?.innerHTML ?? "";
   };
+
+  const rememberEditorSelection = useCallback(() => {
+    const selection = window.getSelection();
+    const editor = editorRef.current;
+    if (!selection?.rangeCount || !editor) return;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+    savedSelectionRef.current = range.cloneRange();
+    setActiveBlockStyle(blockStyleAtSelectionStart(editor, range));
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener("selectionchange", rememberEditorSelection);
+    return () => document.removeEventListener("selectionchange", rememberEditorSelection);
+  }, [rememberEditorSelection]);
 
   const restoreEditorSelection = () => {
     const range = savedSelectionRef.current;
@@ -586,13 +628,6 @@ export function BlogEditor({
     document.execCommand("insertHTML", false, normalizePastedHtml(html));
     syncEditorHtml();
     rememberEditorSelection();
-  };
-  const rememberEditorSelection = () => {
-    const selection = window.getSelection();
-    if (!selection?.rangeCount || !editorRef.current) return;
-    const range = selection.getRangeAt(0);
-    if (editorRef.current.contains(range.commonAncestorContainer))
-      savedSelectionRef.current = range.cloneRange();
   };
   const chooseInlineImage = () => {
     rememberEditorSelection();
@@ -757,10 +792,14 @@ export function BlogEditor({
           <div className="sticky top-0 z-30 flex flex-wrap items-center gap-2 rounded-t-[27px] border-b border-[#e5d7c1] bg-[#f7efe3]/95 px-4 py-3 shadow-[0_8px_20px_rgba(67,50,34,.1)] backdrop-blur-md">
             <select
               aria-label="Text style"
-              defaultValue="p"
+              value={activeBlockStyle}
               disabled={editorMode === "source"}
               onMouseDown={rememberEditorSelection}
-              onChange={(event) => command("formatBlock", event.target.value)}
+              onChange={(event) => {
+                const blockStyle = event.target.value as BlogBlockStyle;
+                setActiveBlockStyle(blockStyle);
+                command("formatBlock", blockStyle);
+              }}
               className="rounded-[9px] border border-[#d8c7ad] bg-white px-3 py-2 pr-9 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45"
             >
               <option value="p">Paragraph</option>

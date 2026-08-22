@@ -8,18 +8,21 @@ export function PointsSubmitButton({
   pendingLabel,
   disabled = false,
   tone = "light",
-  prepareAwardSound = false
+  prepareAwardSound = false,
+  requireExplicitActivation = false
 }: {
   idleLabel: string;
   pendingLabel: string;
   disabled?: boolean;
   tone?: "light" | "dark" | "outline";
   prepareAwardSound?: boolean;
+  requireExplicitActivation?: boolean;
 }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
+      data-explicit-points-submit={requireExplicitActivation ? "true" : undefined}
       disabled={disabled || pending}
       data-click-sound={prepareAwardSound ? "none" : undefined}
       onPointerDown={prepareAwardSound ? () => void unlockPointAwardSound() : undefined}
