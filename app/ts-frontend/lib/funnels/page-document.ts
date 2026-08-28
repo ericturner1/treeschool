@@ -136,6 +136,15 @@ export type FunnelTextTypography = {
   fontSize?: number;
 };
 
+export type FunnelRichTextRun = {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  color?: string;
+};
+
 export type FunnelListAppearance = {
   layout?: "stacked" | "inline";
   marker?: FunnelListMarker;
@@ -245,7 +254,7 @@ export type FunnelPageElement =
     })
   | (FunnelElementBase & {
       type: "text";
-      props: { text: string; style: "lead" | "body" | "small"; align: FunnelTextAlign; typography?: FunnelTextTypography };
+      props: { text: string; richText?: FunnelRichTextRun[]; style: "lead" | "body" | "small"; align: FunnelTextAlign; typography?: FunnelTextTypography };
     })
   | (FunnelElementBase & {
       type: "list";

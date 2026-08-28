@@ -294,6 +294,18 @@ const funnelTextTypographySchema = z.object({
   fontSize: z.number().int().min(8).max(160).optional()
 });
 
+const funnelRichTextRunsSchema = z.array(z.object({
+  text: z.string().max(20_000),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  strikethrough: z.boolean().optional(),
+  color: z.string().trim().max(40).optional()
+})).max(500).refine(
+  (runs) => runs.reduce((length, run) => length + run.text.length, 0) <= 20_000,
+  { message: "Formatted text cannot exceed 20,000 characters." }
+);
+
 const funnelListTypographySchema = z.object({
   fontFamily: z.string().trim().max(300).optional(),
   fontSize: z.number().int().min(10).max(96).optional(),
@@ -348,6 +360,7 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
     type: z.literal("text"),
     props: z.object({
       text: z.string().trim().max(20_000).default(""),
+      richText: funnelRichTextRunsSchema.optional(),
       style: z.enum(["lead", "body", "small"]).default("body"),
       align: z.enum(["left", "center", "right"]).default("left"),
       typography: funnelTextTypographySchema.optional()
@@ -3542,7 +3555,7 @@ export async function generateAdminFunnelPageDraft(
               `Allowed themes: ${FUNNEL_PAGE_THEMES.join(", ")}. Section tones: default, muted, accent, dark. Section widths: narrow, standard, wide.`,
               "Allowed element types are eyebrow, heading, text, list, image, workbook_gallery, button, lead_capture, and divider.",
               "Use this exact nesting shape: content={schemaVersion:2,kind:'funnel_page',theme,sections:[{id,props:{tone,width,background:null},rows:[{id,columns:[{id,span,elements:[]}]}]}]}.",
-              "Exact element props: eyebrow={text,align}; heading={text,level:'h1'|'h2'|'h3',align,typography?:{fontFamily,fontSize}}; text={text,style:'lead'|'body'|'small',align,typography?:{fontFamily,fontSize}}; list={items:string[],style:'checks'|'bullets',align}; image={media:{assetId,storagePath,publicUrl,alt,width,height},fit:'contain'|'cover',caption,sizePercent?:10..100,align?:'left'|'center'|'right'}; workbook_gallery={title,cover:media,images:media[],fit:'contain'|'cover',caption}; button={label,variant:'primary'|'secondary'|'text',align,action}; lead_capture={heading,collectFirstName,firstNameLabel,emailLabel,submitLabel,action}; divider={}.",
+              "Exact element props: eyebrow={text,align}; heading={text,level:'h1'|'h2'|'h3',align,typography?:{fontFamily,fontSize}}; text={text,richText?:Array<{text,bold?,italic?,underline?,strikethrough?,color?}>,style:'lead'|'body'|'small',align,typography?:{fontFamily,fontSize}}; list={items:string[],style:'checks'|'bullets',align}; image={media:{assetId,storagePath,publicUrl,alt,width,height},fit:'contain'|'cover',caption,sizePercent?:10..100,align?:'left'|'center'|'right'}; workbook_gallery={title,cover:media,images:media[],fit:'contain'|'cover',caption}; button={label,variant:'primary'|'secondary'|'text',align,action}; lead_capture={heading,collectFirstName,firstNameLabel,emailLabel,submitLabel,action}; divider={}.",
               "Every element needs a unique stable string id. Rows, columns, and sections also need unique stable string ids. Columns use an integer span from 1 through 12.",
               "Buttons contain label, variant (primary, secondary, or text), align, and a semantic action.",
               "Use action {\"type\":\"next_step\"} to continue through the funnel. Use {\"type\":\"url\",\"target\":\"...\"} only for a deliberate external or fixed destination.",

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { FUNNEL_BUTTON_ICON_OPTIONS, FunnelButtonIconGlyph, resolveFunnelButtonIcon } from "../../../components/funnel-button-icon";
 import { FunnelProgressSteps } from "../../../components/funnel-progress-steps";
+import { FunnelRichTextContent } from "../../../components/funnel-rich-text-content";
 import { moveItemAtInsertionPoint } from "../../../lib/editor-drag";
 import { funnelElementSpacingStyle } from "../../../lib/funnels/element-spacing";
 import type {
@@ -16,6 +17,7 @@ import type {
   FunnelPageElement,
   FunnelPageRow,
   FunnelPageSection,
+  FunnelRichTextRun,
   FunnelRowColumnCount
 } from "../../../lib/funnels/page-document";
 import {
@@ -49,6 +51,12 @@ import {
   funnelWorkbookGalleryAspectClass,
   resolveFunnelWorkbookGalleryAppearance
 } from "../../../lib/funnels/workbook-gallery-style";
+import {
+  funnelRichTextEditorHtml,
+  funnelRichTextPlainText,
+  normalizeFunnelRichTextColor,
+  normalizeFunnelRichTextRuns
+} from "../../../lib/funnels/rich-text";
 import type { AdminManagedFunnelPagePayload, FunnelSubscriptionProduct, ManagedFunnelPage } from "../../../lib/funnels/server";
 import type { NativeWorkbookCatalogItem } from "../../../lib/native-workbooks/server";
 import { showGlobalToast } from "../../../lib/toast";
@@ -501,7 +509,7 @@ function PreviewElement({ element, palette, onSelect, selected }: { element: Fun
     const Tag = element.props.level;
     return <Tag onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} font-semibold leading-[1.05] tracking-[-.045em] ${element.props.level === "h1" ? "text-5xl" : element.props.level === "h2" ? "text-4xl" : "text-2xl"}`} style={{ textAlign: align, fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.05 : undefined }}>{element.props.text}</Tag>;
   }
-  if (element.type === "text") return <p onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} whitespace-pre-line ${element.props.style === "lead" ? "text-xl leading-8" : element.props.style === "small" ? "text-sm" : "text-base leading-7"}`} style={{ textAlign: align, fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.5 : undefined }}>{element.props.text}</p>;
+  if (element.type === "text") return <p onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} whitespace-pre-line ${element.props.style === "lead" ? "text-xl leading-8" : element.props.style === "small" ? "text-sm" : "text-base leading-7"}`} style={{ textAlign: align, fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.5 : undefined }}><FunnelRichTextContent text={element.props.text} runs={element.props.richText} /></p>;
   if (element.type === "list") {
     if (!isCustomizedFunnelList(element.props)) {
       return <ul onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} grid gap-2`}>{element.props.items.map((item, index) => <li key={index} className="flex gap-2 rounded-[12px] bg-white/70 px-3 py-2"><span style={{ color: palette.primary }}>{element.props.style === "checks" ? "✓" : "•"}</span>{item}</li>)}</ul>;
@@ -877,7 +885,10 @@ function EditorCanvas({
   const sectionGap = styles?.layout?.sectionGap ?? 22;
   const paddingY = styles?.layout?.sectionPaddingY ?? 38;
   const columnGap = styles?.layout?.columnGap ?? 22;
-  const activeSelection = selection.kind === "page" ? hoverSelection ?? selection : selection;
+  // Keep the inspector selection stable while letting the canvas show the one
+  // item currently under the pointer. This makes containers such as sections
+  // discoverable without drawing both the selected child and its parent.
+  const activeSelection = hoverSelection ?? selection;
   const dragging = Boolean(elementDrag || blockDrag || rowDrag || columnDrag);
 
   function clearHoverTimer() {
@@ -1192,7 +1203,14 @@ function EditorCanvas({
           <span className="text-xs font-semibold text-ink/45">Site header</span>
         </header>
       ) : null}
-      <div className="grid" style={{ gap: sectionGap, padding: viewport === "mobile" ? 12 : 24 }}>
+      <div
+        className="grid"
+        style={{
+          gap: sectionGap,
+          paddingLeft: viewport === "mobile" ? 12 : 24,
+          paddingRight: viewport === "mobile" ? 12 : 24,
+        }}
+      >
         {document.sections.map((section, sectionIndex) => {
           const sectionSelection: Selection = { kind: "section", sectionIndex };
           const selected = sameSelection(activeSelection, sectionSelection);
@@ -1709,12 +1727,224 @@ function HeadingTextTypographyInspector({ element, update }: { element: FunnelHe
   </InspectorGroup>;
 }
 
+type FunnelRichTextStyle = Omit<FunnelRichTextRun, "text">;
+
+function appendFunnelRichTextRun(
+  runs: FunnelRichTextRun[],
+  text: string,
+  style: FunnelRichTextStyle
+) {
+  const normalizedText = text.replaceAll("\u00a0", " ");
+  if (!normalizedText) return;
+  runs.push({ text: normalizedText, ...style });
+}
+
+function funnelRichTextRunsFromNode(
+  node: Node,
+  inheritedStyle: FunnelRichTextStyle,
+  runs: FunnelRichTextRun[]
+) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    appendFunnelRichTextRun(runs, node.textContent ?? "", inheritedStyle);
+    return;
+  }
+  if (!(node instanceof HTMLElement)) return;
+  if (node.tagName === "BR") {
+    appendFunnelRichTextRun(runs, "\n", {});
+    return;
+  }
+  const fontWeight = Number(node.style.fontWeight);
+  const textDecoration = `${node.style.textDecoration} ${node.style.textDecorationLine}`;
+  const color = normalizeFunnelRichTextColor(node.style.color || node.getAttribute("color")) ?? inheritedStyle.color;
+  const style: FunnelRichTextStyle = {
+    ...(inheritedStyle.bold || node.tagName === "B" || node.tagName === "STRONG" || node.style.fontWeight === "bold" || (!Number.isNaN(fontWeight) && fontWeight >= 600) ? { bold: true } : {}),
+    ...(inheritedStyle.italic || node.tagName === "I" || node.tagName === "EM" || node.style.fontStyle === "italic" || node.style.fontStyle === "oblique" ? { italic: true } : {}),
+    ...(inheritedStyle.underline || node.tagName === "U" || textDecoration.includes("underline") ? { underline: true } : {}),
+    ...(inheritedStyle.strikethrough || ["S", "STRIKE", "DEL"].includes(node.tagName) || textDecoration.includes("line-through") ? { strikethrough: true } : {}),
+    ...(color ? { color } : {})
+  };
+  node.childNodes.forEach((child) => funnelRichTextRunsFromNode(child, style, runs));
+}
+
+function funnelRichTextRunsFromEditor(editor: HTMLDivElement) {
+  const runs: FunnelRichTextRun[] = [];
+  const children = Array.from(editor.childNodes);
+  const appendLineBreak = () => {
+    if (runs.length > 0 && !runs.at(-1)?.text.endsWith("\n")) {
+      appendFunnelRichTextRun(runs, "\n", {});
+    }
+  };
+  children.forEach((node, index) => {
+    const isBlock = node instanceof HTMLElement && ["DIV", "P", "LI"].includes(node.tagName);
+    if (isBlock && runs.length > 0) appendLineBreak();
+    funnelRichTextRunsFromNode(node, {}, runs);
+    if (isBlock && index < children.length - 1) appendLineBreak();
+  });
+  return normalizeFunnelRichTextRuns(runs);
+}
+
+function selectionIsInside(editor: HTMLDivElement, selection: ReturnType<typeof window.getSelection>) {
+  if (!selection || selection.rangeCount === 0) return false;
+  const range = selection.getRangeAt(0);
+  return range.commonAncestorContainer === editor || editor.contains(range.commonAncestorContainer);
+}
+
+function colorInputValue(value: string) {
+  if (/^#[0-9a-f]{6}$/i.test(value)) return value;
+  const rgb = value.match(/^rgba?\(\s*(\d+)\D+(\d+)\D+(\d+)/i);
+  if (!rgb) return null;
+  return `#${[rgb[1], rgb[2], rgb[3]].map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, "0")).join("")}`;
+}
+
+function FunnelTextRichTextEditor({
+  text,
+  runs,
+  onChange
+}: {
+  text: string;
+  runs?: FunnelRichTextRun[];
+  onChange: (text: string, runs: FunnelRichTextRun[]) => void;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const savedRangeRef = useRef<Range | null>(null);
+  const html = useMemo(() => funnelRichTextEditorHtml(runs, text), [runs, text]);
+  const [active, setActive] = useState({ bold: false, italic: false, underline: false, strikethrough: false });
+  const [color, setColor] = useState("#243042");
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || document.activeElement === editor) return;
+    if (editor.innerHTML !== html) editor.innerHTML = html;
+  }, [html]);
+
+  useEffect(() => {
+    const refresh = () => {
+      const editor = editorRef.current;
+      const selection = window.getSelection();
+      if (!editor || !selectionIsInside(editor, selection)) return;
+      savedRangeRef.current = selection!.getRangeAt(0).cloneRange();
+      setActive({
+        bold: document.queryCommandState("bold"),
+        italic: document.queryCommandState("italic"),
+        underline: document.queryCommandState("underline"),
+        strikethrough: document.queryCommandState("strikeThrough")
+      });
+      const selectedColor = colorInputValue(String(document.queryCommandValue("foreColor") ?? ""));
+      if (selectedColor) setColor(selectedColor);
+    };
+    document.addEventListener("selectionchange", refresh);
+    return () => document.removeEventListener("selectionchange", refresh);
+  }, []);
+
+  const rememberSelection = () => {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (editor && selectionIsInside(editor, selection)) {
+      savedRangeRef.current = selection!.getRangeAt(0).cloneRange();
+    }
+  };
+  const restoreSelection = () => {
+    const range = savedRangeRef.current;
+    if (!range) return;
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  };
+  const emitChange = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const nextRuns = funnelRichTextRunsFromEditor(editor);
+    onChange(funnelRichTextPlainText(nextRuns), nextRuns);
+  };
+  const applyCommand = (command: "bold" | "italic" | "underline" | "strikeThrough") => {
+    restoreSelection();
+    document.execCommand(command, false);
+    emitChange();
+    rememberSelection();
+    setActive({
+      bold: document.queryCommandState("bold"),
+      italic: document.queryCommandState("italic"),
+      underline: document.queryCommandState("underline"),
+      strikethrough: document.queryCommandState("strikeThrough")
+    });
+  };
+  const toolbarButton = (
+    command: "bold" | "italic" | "underline" | "strikeThrough",
+    label: string,
+    content: ReactNode,
+    pressed: boolean
+  ) => (
+    <button
+      type="button"
+      title={`${label} selected text`}
+      aria-label={`${label} selected text`}
+      aria-pressed={pressed}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        applyCommand(command);
+      }}
+      className={`grid h-8 w-8 place-items-center rounded-[6px] border text-sm text-ink transition ${pressed ? "border-[#739655] bg-[#e7f0dc]" : "border-[#d8c8ae] bg-white hover:bg-[#edf4e7]"}`}
+    >
+      {content}
+    </button>
+  );
+
+  return (
+    <div className="overflow-hidden rounded-[9px] border border-[#d8c8ae] bg-white">
+      <div className="flex flex-wrap items-center gap-1 border-b border-[#e5d8c4] bg-[#f7f3eb] px-2 py-1.5">
+        {toolbarButton("bold", "Bold", <strong>B</strong>, active.bold)}
+        {toolbarButton("italic", "Italicize", <span className="font-serif italic">I</span>, active.italic)}
+        {toolbarButton("underline", "Underline", <span className="underline underline-offset-2">U</span>, active.underline)}
+        {toolbarButton("strikeThrough", "Strikethrough", <span className="line-through">S</span>, active.strikethrough)}
+        <label className="relative ml-0.5 grid h-8 w-8 cursor-pointer place-items-center rounded-[6px] border border-[#d8c8ae] bg-white" title="Color selected text">
+          <span className="text-sm font-bold" style={{ color }}>A</span>
+          <input
+            type="color"
+            value={color}
+            aria-label="Color selected text"
+            className="absolute inset-0 cursor-pointer opacity-0"
+            onPointerDown={rememberSelection}
+            onChange={(event) => {
+              const nextColor = event.target.value;
+              setColor(nextColor);
+              restoreSelection();
+              document.execCommand("styleWithCSS", false, "true");
+              document.execCommand("foreColor", false, nextColor);
+              emitChange();
+              rememberSelection();
+            }}
+          />
+        </label>
+        <span className="ml-1 text-[10px] leading-4 text-ink/45">Select text, then format it</span>
+      </div>
+      <div
+        ref={editorRef}
+        role="textbox"
+        aria-label="Text content"
+        aria-multiline="true"
+        contentEditable
+        suppressContentEditableWarning
+        onInput={emitChange}
+        onBlur={emitChange}
+        onMouseUp={rememberSelection}
+        onKeyUp={rememberSelection}
+        onPaste={(event) => {
+          event.preventDefault();
+          document.execCommand("insertText", false, event.clipboardData.getData("text/plain"));
+          emitChange();
+        }}
+        className="min-h-32 whitespace-pre-wrap px-3 py-2 text-sm leading-6 outline-none"
+      />
+    </div>
+  );
+}
+
 function ElementInspector({ element, update, chooseMedia, chooseGalleryMedia, move, remove, buttonPalette }: { element: FunnelPageElement; update: (next: FunnelPageElement) => void; chooseMedia: () => void; chooseGalleryMedia: (slot: "cover" | "append" | number) => void; move: (direction: -1 | 1) => void; remove: () => void; buttonPalette: FunnelButtonPalette }) {
   const align = "align" in element.props ? element.props.align : null;
   return <div className="grid gap-4">
     <div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Element</p><h3 className="mt-1 text-lg font-semibold capitalize">{element.type.replaceAll("_", " ")}</h3></div><div className="flex gap-1"><button type="button" onClick={() => move(-1)} className="rounded-lg border px-2 py-1">↑</button><button type="button" onClick={() => move(1)} className="rounded-lg border px-2 py-1">↓</button><button type="button" onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738]">×</button></div></div>
     {element.type === "eyebrow" || element.type === "heading" || element.type === "text" ? <InspectorGroup title="Content" open>
-      <label className={CONTROL_LABEL}>Text<textarea rows={element.type === "text" ? 7 : 3} className={`${INPUT} resize-y`} value={element.props.text} onChange={(event) => update({ ...element, props: { ...element.props, text: event.target.value } } as FunnelPageElement)} /></label>
+      {element.type === "text" ? <FunnelTextRichTextEditor text={element.props.text} runs={element.props.richText} onChange={(text, richText) => update({ ...element, props: { ...element.props, text, richText } })} /> : <label className={CONTROL_LABEL}>Text<textarea rows={3} className={`${INPUT} resize-y`} value={element.props.text} onChange={(event) => update({ ...element, props: { ...element.props, text: event.target.value } } as FunnelPageElement)} /></label>}
       {element.type === "heading" ? <SelectControl label="Heading size" value={element.props.level} onChange={(value) => update({ ...element, props: { ...element.props, level: value as "h1" | "h2" | "h3" } })}><option value="h1">Page headline</option><option value="h2">Section heading</option><option value="h3">Small heading</option></SelectControl> : null}
       {element.type === "text" ? <SelectControl label="Text style" value={element.props.style} onChange={(value) => update({ ...element, props: { ...element.props, style: value as "lead" | "body" | "small" } })}><option value="lead">Lead</option><option value="body">Body</option><option value="small">Small</option></SelectControl> : null}
     </InspectorGroup> : null}

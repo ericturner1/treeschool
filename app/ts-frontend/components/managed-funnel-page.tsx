@@ -41,6 +41,7 @@ import { ManagedFunnelOrderForm } from "./managed-funnel-order-form";
 import { ManagedFunnelPageTracker } from "./managed-funnel-page-tracker";
 import { FunnelCountdown } from "./funnel-countdown";
 import { FunnelProgressSteps } from "./funnel-progress-steps";
+import { FunnelRichTextContent } from "./funnel-rich-text-content";
 import { WorkbookGallery } from "./workbook-gallery";
 
 const THEMES = {
@@ -193,7 +194,7 @@ function PageElement({
       : element.props.style === "small"
         ? "text-sm leading-6 text-current/60"
         : "whitespace-pre-line text-base leading-7 text-current/70 sm:text-lg sm:leading-8";
-    return <p style={{ fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.5 : undefined }} className={`${visibility} ${style} ${alignClass(element.props.align)}`}>{element.props.text}</p>;
+    return <p style={{ fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.5 : undefined }} className={`${visibility} whitespace-pre-line ${style} ${alignClass(element.props.align)}`}><FunnelRichTextContent text={element.props.text} runs={element.props.richText} /></p>;
   }
   if (element.type === "list") {
     if (isCustomizedFunnelList(element.props)) {
