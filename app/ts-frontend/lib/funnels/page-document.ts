@@ -250,7 +250,7 @@ export type FunnelPageElement =
     })
   | (FunnelElementBase & {
       type: "heading";
-      props: { text: string; level: "h1" | "h2" | "h3"; align: FunnelTextAlign; typography?: FunnelTextTypography };
+      props: { text: string; richText?: FunnelRichTextRun[]; level: "h1" | "h2" | "h3"; align: FunnelTextAlign; typography?: FunnelTextTypography };
     })
   | (FunnelElementBase & {
       type: "text";

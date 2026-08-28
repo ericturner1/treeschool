@@ -3,12 +3,14 @@ import { funnelRichTextRunStyle, resolveFunnelRichTextRuns } from "../lib/funnel
 
 export function FunnelRichTextContent({
   text,
-  runs
+  runs,
+  trimBoundaryLineBreaks = false
 }: {
   text: string;
   runs?: FunnelRichTextRun[];
+  trimBoundaryLineBreaks?: boolean;
 }) {
-  return resolveFunnelRichTextRuns(runs, text).map((run, index) => (
+  return resolveFunnelRichTextRuns(runs, text, { trimBoundaryLineBreaks }).map((run, index) => (
     <span key={index} style={funnelRichTextRunStyle(run)}>{run.text}</span>
   ));
 }

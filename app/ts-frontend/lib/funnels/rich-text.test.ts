@@ -4,7 +4,8 @@ import {
   funnelRichTextPlainText,
   funnelRichTextRunStyle,
   normalizeFunnelRichTextRuns,
-  resolveFunnelRichTextRuns
+  resolveFunnelRichTextRuns,
+  trimFunnelRichTextBoundaryLineBreaks
 } from "./rich-text";
 
 describe("funnel rich text", () => {
@@ -49,5 +50,21 @@ describe("funnel rich text", () => {
   test("drops unsafe color values from editor markup", () => {
     expect(funnelRichTextEditorHtml([{ text: "Safe", color: 'red;background:url("x")' }], ""))
       .toBe("Safe");
+  });
+
+  test("removes only outer blank lines while preserving internal heading line breaks", () => {
+    expect(trimFunnelRichTextBoundaryLineBreaks([
+      { text: "\n", bold: true },
+      { text: "Start Your Child\n", bold: true },
+      { text: "Learning Japanese Early!\n\n  ", color: "#243042" }
+    ])).toEqual([
+      { text: "Start Your Child\n", bold: true },
+      { text: "Learning Japanese Early!", color: "#243042" }
+    ]);
+    expect(resolveFunnelRichTextRuns(
+      undefined,
+      "\nStart Your Child\nLearning Japanese Early!\n\n",
+      { trimBoundaryLineBreaks: true }
+    )).toEqual([{ text: "Start Your Child\nLearning Japanese Early!" }]);
   });
 });

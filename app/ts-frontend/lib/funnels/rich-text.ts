@@ -40,9 +40,38 @@ export function normalizeFunnelRichTextRuns(runs: FunnelRichTextRun[]) {
   return normalized;
 }
 
-export function resolveFunnelRichTextRuns(runs: FunnelRichTextRun[] | undefined, fallbackText: string) {
+export function trimFunnelRichTextBoundaryLineBreaks(runs: FunnelRichTextRun[]) {
+  const normalized = normalizeFunnelRichTextRuns(runs);
+  const text = normalized.map((run) => run.text).join("");
+  const leadingLength = text.match(/^(?:[\t ]*\n)+/)?.[0].length ?? 0;
+  const trailingLength = text.match(/(?:\n[\t ]*)+$/)?.[0].length ?? 0;
+  const end = Math.max(leadingLength, text.length - trailingLength);
+  let offset = 0;
+
+  return normalizeFunnelRichTextRuns(normalized.flatMap((run) => {
+    const runStart = offset;
+    const runEnd = runStart + run.text.length;
+    offset = runEnd;
+    const start = Math.max(runStart, leadingLength);
+    const finish = Math.min(runEnd, end);
+    if (start >= finish) return [];
+    return [{
+      ...run,
+      text: run.text.slice(start - runStart, finish - runStart)
+    }];
+  }));
+}
+
+export function resolveFunnelRichTextRuns(
+  runs: FunnelRichTextRun[] | undefined,
+  fallbackText: string,
+  options?: { trimBoundaryLineBreaks?: boolean }
+) {
   const normalized = normalizeFunnelRichTextRuns(runs ?? []);
-  return normalized.length > 0 ? normalized : [{ text: fallbackText }];
+  const resolved = normalized.length > 0 ? normalized : [{ text: fallbackText }];
+  return options?.trimBoundaryLineBreaks
+    ? trimFunnelRichTextBoundaryLineBreaks(resolved)
+    : resolved;
 }
 
 export function funnelRichTextPlainText(runs: FunnelRichTextRun[]) {
@@ -72,8 +101,12 @@ function escapeEditorHtml(value: string) {
     .replaceAll("\n", "<br>");
 }
 
-export function funnelRichTextEditorHtml(runs: FunnelRichTextRun[] | undefined, fallbackText: string) {
-  return resolveFunnelRichTextRuns(runs, fallbackText).map((run) => {
+export function funnelRichTextEditorHtml(
+  runs: FunnelRichTextRun[] | undefined,
+  fallbackText: string,
+  options?: { trimBoundaryLineBreaks?: boolean }
+) {
+  return resolveFunnelRichTextRuns(runs, fallbackText, options).map((run) => {
     let value = escapeEditorHtml(run.text);
     if (run.bold) value = `<strong>${value}</strong>`;
     if (run.italic) value = `<em>${value}</em>`;

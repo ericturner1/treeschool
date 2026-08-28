@@ -126,7 +126,21 @@ describe("funnel administration normalization", () => {
             id: "column_typography",
             span: 12,
             elements: [
-              { id: "heading_typography", type: "heading", props: { text: "A clear headline", level: "h1", align: "center", typography: { fontFamily: "Georgia, serif", fontSize: 84 } } },
+              {
+                id: "heading_typography",
+                type: "heading",
+                props: {
+                  text: "A clear headline",
+                  richText: [
+                    { text: "\n", bold: true },
+                    { text: "A clear ", italic: true },
+                    { text: "headline\n\n  ", underline: true, color: "#557b3f" }
+                  ],
+                  level: "h1",
+                  align: "center",
+                  typography: { fontFamily: "Georgia, serif", fontSize: 84 }
+                }
+              },
               {
                 id: "text_typography",
                 type: "text",
@@ -150,6 +164,10 @@ describe("funnel administration normalization", () => {
 
     const [heading, text] = content.sections[0]?.rows[0]?.columns[0]?.elements ?? [];
     expect(heading?.type === "heading" ? heading.props.typography?.fontSize : null).toBe(84);
+    expect(heading?.type === "heading" ? heading.props.richText : null).toEqual([
+      { text: "A clear ", italic: true },
+      { text: "headline", underline: true, color: "#557b3f" }
+    ]);
     expect(text?.type === "text" ? text.props.typography?.fontFamily : null).toBe("Verdana, sans-serif");
     expect(text?.type === "text" ? text.props.richText : null).toEqual([
       { text: "Readable ", bold: true, color: "#557b3f" },

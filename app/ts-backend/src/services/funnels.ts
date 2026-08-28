@@ -306,6 +306,29 @@ const funnelRichTextRunsSchema = z.array(z.object({
   { message: "Formatted text cannot exceed 20,000 characters." }
 );
 
+function trimFunnelRichTextBoundaryLineBreaks(
+  runs: z.infer<typeof funnelRichTextRunsSchema>
+) {
+  const text = runs.map((run) => run.text).join("");
+  const leadingLength = text.match(/^(?:[\t ]*\n)+/)?.[0].length ?? 0;
+  const trailingLength = text.match(/(?:\n[\t ]*)+$/)?.[0].length ?? 0;
+  const end = Math.max(leadingLength, text.length - trailingLength);
+  let offset = 0;
+
+  return runs.flatMap((run) => {
+    const runStart = offset;
+    const runEnd = runStart + run.text.length;
+    offset = runEnd;
+    const start = Math.max(runStart, leadingLength);
+    const finish = Math.min(runEnd, end);
+    if (start >= finish) return [];
+    return [{
+      ...run,
+      text: run.text.slice(start - runStart, finish - runStart)
+    }];
+  });
+}
+
 const funnelListTypographySchema = z.object({
   fontFamily: z.string().trim().max(300).optional(),
   fontSize: z.number().int().min(10).max(96).optional(),
@@ -351,6 +374,7 @@ const funnelPageElementSchema = z.discriminatedUnion("type", [
     type: z.literal("heading"),
     props: z.object({
       text: z.string().trim().min(1).max(1000),
+      richText: funnelRichTextRunsSchema.transform(trimFunnelRichTextBoundaryLineBreaks).optional(),
       level: z.enum(["h1", "h2", "h3"]).default("h2"),
       align: z.enum(["left", "center", "right"]).default("left"),
       typography: funnelTextTypographySchema.optional()
@@ -3555,7 +3579,7 @@ export async function generateAdminFunnelPageDraft(
               `Allowed themes: ${FUNNEL_PAGE_THEMES.join(", ")}. Section tones: default, muted, accent, dark. Section widths: narrow, standard, wide.`,
               "Allowed element types are eyebrow, heading, text, list, image, workbook_gallery, button, lead_capture, and divider.",
               "Use this exact nesting shape: content={schemaVersion:2,kind:'funnel_page',theme,sections:[{id,props:{tone,width,background:null},rows:[{id,columns:[{id,span,elements:[]}]}]}]}.",
-              "Exact element props: eyebrow={text,align}; heading={text,level:'h1'|'h2'|'h3',align,typography?:{fontFamily,fontSize}}; text={text,richText?:Array<{text,bold?,italic?,underline?,strikethrough?,color?}>,style:'lead'|'body'|'small',align,typography?:{fontFamily,fontSize}}; list={items:string[],style:'checks'|'bullets',align}; image={media:{assetId,storagePath,publicUrl,alt,width,height},fit:'contain'|'cover',caption,sizePercent?:10..100,align?:'left'|'center'|'right'}; workbook_gallery={title,cover:media,images:media[],fit:'contain'|'cover',caption}; button={label,variant:'primary'|'secondary'|'text',align,action}; lead_capture={heading,collectFirstName,firstNameLabel,emailLabel,submitLabel,action}; divider={}.",
+              "Exact element props: eyebrow={text,align}; heading={text,richText?:Array<{text,bold?,italic?,underline?,strikethrough?,color?}>,level:'h1'|'h2'|'h3',align,typography?:{fontFamily,fontSize}}; text={text,richText?:Array<{text,bold?,italic?,underline?,strikethrough?,color?}>,style:'lead'|'body'|'small',align,typography?:{fontFamily,fontSize}}; list={items:string[],style:'checks'|'bullets',align}; image={media:{assetId,storagePath,publicUrl,alt,width,height},fit:'contain'|'cover',caption,sizePercent?:10..100,align?:'left'|'center'|'right'}; workbook_gallery={title,cover:media,images:media[],fit:'contain'|'cover',caption}; button={label,variant:'primary'|'secondary'|'text',align,action}; lead_capture={heading,collectFirstName,firstNameLabel,emailLabel,submitLabel,action}; divider={}.",
               "Every element needs a unique stable string id. Rows, columns, and sections also need unique stable string ids. Columns use an integer span from 1 through 12.",
               "Buttons contain label, variant (primary, secondary, or text), align, and a semantic action.",
               "Use action {\"type\":\"next_step\"} to continue through the funnel. Use {\"type\":\"url\",\"target\":\"...\"} only for a deliberate external or fixed destination.",

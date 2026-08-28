@@ -186,7 +186,7 @@ function PageElement({
       : element.props.level === "h2"
         ? "text-3xl leading-tight tracking-[-0.04em] sm:text-5xl"
         : "text-2xl leading-tight tracking-[-0.03em] sm:text-3xl";
-    return <Tag style={{ fontFamily: element.props.typography?.fontFamily || styles?.typography?.headingFontFamily, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.05 : undefined, color: styles?.typography?.headingColor }} className={`${visibility} ${size} ${alignClass(element.props.align)} font-semibold`}>{element.props.text}</Tag>;
+    return <Tag style={{ fontFamily: element.props.typography?.fontFamily || styles?.typography?.headingFontFamily, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.05 : undefined, color: styles?.typography?.headingColor }} className={`${visibility} whitespace-pre-line ${size} ${alignClass(element.props.align)} font-semibold`}><FunnelRichTextContent text={element.props.text} runs={element.props.richText} trimBoundaryLineBreaks /></Tag>;
   }
   if (element.type === "text") {
     const style = element.props.style === "lead"

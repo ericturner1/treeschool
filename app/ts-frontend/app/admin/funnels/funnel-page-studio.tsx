@@ -54,7 +54,8 @@ import {
   funnelRichTextEditorHtml,
   funnelRichTextPlainText,
   normalizeFunnelRichTextColor,
-  normalizeFunnelRichTextRuns
+  normalizeFunnelRichTextRuns,
+  trimFunnelRichTextBoundaryLineBreaks
 } from "../../../lib/funnels/rich-text";
 import type { AdminManagedFunnelPagePayload, FunnelSubscriptionProduct, ManagedFunnelPage } from "../../../lib/funnels/server";
 import type { NativeWorkbookCatalogItem } from "../../../lib/native-workbooks/server";
@@ -505,6 +506,7 @@ function InlineFunnelCopy({
   ariaLabel,
   className,
   style,
+  trimBoundaryLineBreaks = false,
   onSelect,
   onChange
 }: {
@@ -513,18 +515,22 @@ function InlineFunnelCopy({
   ariaLabel: string;
   className: string;
   style?: CSSProperties;
+  trimBoundaryLineBreaks?: boolean;
   onSelect: () => void;
   onChange: (text: string, richText?: FunnelRichTextRun[]) => void;
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
-  const html = useMemo(() => funnelRichTextEditorHtml(richText, text), [richText, text]);
+  const html = useMemo(
+    () => funnelRichTextEditorHtml(richText, text, { trimBoundaryLineBreaks }),
+    [richText, text, trimBoundaryLineBreaks]
+  );
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
     if (!editor || document.activeElement === editor || editor.innerHTML === html) return;
     editor.innerHTML = html;
-  }, [html]);
+  }, [editing, html]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -541,7 +547,10 @@ function InlineFunnelCopy({
   const emitChange = () => {
     const editor = editorRef.current;
     if (!editor) return;
-    const runs = funnelRichTextRunsFromEditor(editor);
+    const parsedRuns = funnelRichTextRunsFromEditor(editor);
+    const runs = trimBoundaryLineBreaks
+      ? trimFunnelRichTextBoundaryLineBreaks(parsedRuns)
+      : parsedRuns;
     onChange(funnelRichTextPlainText(runs), richText ? runs : undefined);
   };
 
@@ -600,7 +609,7 @@ function PreviewElement({ element, palette, onSelect, onInlineChange, selected }
   const common = `relative rounded-[8px] cursor-pointer transition ${selection}`;
   if (element.type === "eyebrow") return <p onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} text-xs font-black uppercase tracking-[.12em]`} style={{ textAlign: align }}>{element.props.text}</p>;
   if (element.type === "heading") {
-    return <InlineFunnelCopy text={element.props.text} ariaLabel="Edit heading" onSelect={onSelect} onChange={(text) => onInlineChange(text)} className={`${common} whitespace-pre-wrap font-semibold leading-[1.05] tracking-[-.045em] ${element.props.level === "h1" ? "text-5xl" : element.props.level === "h2" ? "text-4xl" : "text-2xl"}`} style={{ textAlign: align, fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.05 : undefined }} />;
+    return <InlineFunnelCopy text={element.props.text} richText={element.props.richText ?? [{ text: element.props.text }]} ariaLabel="Edit heading" trimBoundaryLineBreaks onSelect={onSelect} onChange={onInlineChange} className={`${common} whitespace-pre-wrap font-semibold leading-[1.05] tracking-[-.045em] ${element.props.level === "h1" ? "text-5xl" : element.props.level === "h2" ? "text-4xl" : "text-2xl"}`} style={{ textAlign: align, fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.05 : undefined }} />;
   }
   if (element.type === "text") return <InlineFunnelCopy text={element.props.text} richText={element.props.richText ?? [{ text: element.props.text }]} ariaLabel="Edit text" onSelect={onSelect} onChange={onInlineChange} className={`${common} whitespace-pre-wrap ${element.props.style === "lead" ? "text-xl leading-8" : element.props.style === "small" ? "text-sm" : "text-base leading-7"}`} style={{ textAlign: align, fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.5 : undefined }} />;
   if (element.type === "list") {
@@ -1894,15 +1903,20 @@ function colorInputValue(value: string) {
 function FunnelTextRichTextEditor({
   text,
   runs,
+  trimBoundaryLineBreaks = false,
   onChange
 }: {
   text: string;
   runs?: FunnelRichTextRun[];
+  trimBoundaryLineBreaks?: boolean;
   onChange: (text: string, runs: FunnelRichTextRun[]) => void;
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const savedRangeRef = useRef<Range | null>(null);
-  const html = useMemo(() => funnelRichTextEditorHtml(runs, text), [runs, text]);
+  const html = useMemo(
+    () => funnelRichTextEditorHtml(runs, text, { trimBoundaryLineBreaks }),
+    [runs, text, trimBoundaryLineBreaks]
+  );
   const [active, setActive] = useState({ bold: false, italic: false, underline: false, strikethrough: false });
   const [color, setColor] = useState("#243042");
 
@@ -1948,7 +1962,10 @@ function FunnelTextRichTextEditor({
   const emitChange = () => {
     const editor = editorRef.current;
     if (!editor) return;
-    const nextRuns = funnelRichTextRunsFromEditor(editor);
+    const parsedRuns = funnelRichTextRunsFromEditor(editor);
+    const nextRuns = trimBoundaryLineBreaks
+      ? trimFunnelRichTextBoundaryLineBreaks(parsedRuns)
+      : parsedRuns;
     onChange(funnelRichTextPlainText(nextRuns), nextRuns);
   };
   const applyCommand = (command: "bold" | "italic" | "underline" | "strikeThrough") => {
@@ -2039,7 +2056,7 @@ function ElementInspector({ element, update, chooseMedia, chooseGalleryMedia, mo
   return <div className="grid gap-4">
     <div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Element</p><h3 className="mt-1 text-lg font-semibold capitalize">{element.type.replaceAll("_", " ")}</h3></div><div className="flex gap-1"><button type="button" onClick={() => move(-1)} className="rounded-lg border px-2 py-1">↑</button><button type="button" onClick={() => move(1)} className="rounded-lg border px-2 py-1">↓</button><button type="button" onClick={remove} className="rounded-lg border px-2 py-1 text-[#9b4738]">×</button></div></div>
     {element.type === "eyebrow" || element.type === "heading" || element.type === "text" ? <InspectorGroup title="Content" open>
-      {element.type === "text" ? <FunnelTextRichTextEditor text={element.props.text} runs={element.props.richText} onChange={(text, richText) => update({ ...element, props: { ...element.props, text, richText } })} /> : <label className={CONTROL_LABEL}>Text<textarea rows={3} className={`${INPUT} resize-y`} value={element.props.text} onChange={(event) => update({ ...element, props: { ...element.props, text: event.target.value } } as FunnelPageElement)} /></label>}
+      {element.type === "heading" || element.type === "text" ? <FunnelTextRichTextEditor text={element.props.text} runs={element.props.richText} trimBoundaryLineBreaks={element.type === "heading"} onChange={(text, richText) => update({ ...element, props: { ...element.props, text, richText } } as FunnelPageElement)} /> : <label className={CONTROL_LABEL}>Text<textarea rows={3} className={`${INPUT} resize-y`} value={element.props.text} onChange={(event) => update({ ...element, props: { ...element.props, text: event.target.value } } as FunnelPageElement)} /></label>}
       {element.type === "heading" ? <SelectControl label="Heading size" value={element.props.level} onChange={(value) => update({ ...element, props: { ...element.props, level: value as "h1" | "h2" | "h3" } })}><option value="h1">Page headline</option><option value="h2">Section heading</option><option value="h3">Small heading</option></SelectControl> : null}
       {element.type === "text" ? <SelectControl label="Text style" value={element.props.style} onChange={(value) => update({ ...element, props: { ...element.props, style: value as "lead" | "body" | "small" } })}><option value="lead">Lead</option><option value="body">Body</option><option value="small">Small</option></SelectControl> : null}
     </InspectorGroup> : null}
@@ -2182,6 +2199,7 @@ export function FunnelPageStudio({
       const element = columnAtPath(draft, location)?.elements[location.elementIndex];
       if (element?.type === "heading") {
         element.props.text = text;
+        element.props.richText = richText;
       } else if (element?.type === "text") {
         element.props.text = text;
         element.props.richText = richText;
