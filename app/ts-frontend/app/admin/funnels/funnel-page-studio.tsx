@@ -2909,6 +2909,25 @@ export function FunnelPageStudio({
 function ColorControl({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className={CONTROL_LABEL}>{label}<span className="flex items-center gap-2"><input type="color" value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-12 shrink-0 cursor-pointer rounded-[10px] border border-[#cfbea4] bg-white p-1" /><input className={INPUT} value={value} onChange={(event) => onChange(event.target.value)} /></span></label>; }
 function NumberControl({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) { return <label className={CONTROL_LABEL}>{label}<input type="number" className={INPUT} value={value} min={min} max={max} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
 function RangeControl({ label, value, min, max, step, onChange, formatValue = (current) => `${current.toFixed(2)}×` }: { label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void; formatValue?: (value: number) => string }) { return <label className={CONTROL_LABEL}><span className="flex items-center justify-between gap-3"><span>{label}</span><output className="rounded-full bg-[#edf5e7] px-2 py-1 text-[10px] font-bold tabular-nums text-[#4d6a39]">{formatValue(value)}</output></span><input type="range" value={value} min={min} max={max} step={step} onChange={(event) => onChange(Number(event.target.value))} className="h-2 w-full cursor-pointer accent-[#76a456]" /></label>; }
+function AxisSpacingControl({ label, firstLabel, secondLabel, first, second, min, onChange }: { label: string; firstLabel: string; secondLabel: string; first: number; second: number; min: number; onChange: (value: number) => void }) {
+  const mixed = first !== second;
+  return <label className={CONTROL_LABEL}>
+    <span>{label}{mixed ? " · mixed" : ""}</span>
+    <input
+      type="number"
+      className={INPUT}
+      value={mixed ? "" : first}
+      placeholder={mixed ? "Mixed" : undefined}
+      min={min}
+      max={300}
+      onChange={(event) => {
+        if (event.target.value === "") return;
+        onChange(Number(event.target.value));
+      }}
+    />
+    {mixed ? <span className="text-[10px] font-medium leading-4 text-ink/50">{firstLabel} {first}px · {secondLabel} {second}px</span> : null}
+  </label>;
+}
 function LayoutSpacingControls({ spacing, onChange, hasOverrides, allowNegativeMargins = true }: { spacing?: FunnelElementSpacing; onChange: (spacing: FunnelElementSpacing | undefined) => void; hasOverrides?: boolean; allowNegativeMargins?: boolean }) {
   const [moreControl, setMoreControl] = useState(false);
   const value = spacing ?? {};
@@ -2920,7 +2939,6 @@ function LayoutSpacingControls({ spacing, onChange, hasOverrides, allowNegativeM
   const paddingRight = value.paddingRight ?? 0;
   const paddingBottom = value.paddingBottom ?? 0;
   const paddingLeft = value.paddingLeft ?? 0;
-  const axisValue = (first: number, second: number) => first === second ? first : 0;
   const setSpacing = (next: Partial<FunnelElementSpacing>) => onChange({ ...value, ...next });
   const marginMin = allowNegativeMargins ? -300 : 0;
   const resettable = hasOverrides ?? spacing !== undefined;
@@ -2928,10 +2946,10 @@ function LayoutSpacingControls({ spacing, onChange, hasOverrides, allowNegativeM
   return <InspectorGroup title="Spacing" open>
     <p className="text-xs leading-5 text-ink/50">Margin adds space outside the selected item. Padding adds space inside it.</p>
     <div className="grid grid-cols-2 gap-2">
-      <NumberControl label={marginLeft === marginRight ? "Margin horizontal" : "Margin horizontal · mixed"} value={axisValue(marginLeft, marginRight)} min={marginMin} max={300} onChange={(next) => setSpacing({ marginLeft: next, marginRight: next })} />
-      <NumberControl label={marginTop === marginBottom ? "Margin vertical" : "Margin vertical · mixed"} value={axisValue(marginTop, marginBottom)} min={marginMin} max={300} onChange={(next) => setSpacing({ marginTop: next, marginBottom: next })} />
-      <NumberControl label={paddingLeft === paddingRight ? "Padding horizontal" : "Padding horizontal · mixed"} value={axisValue(paddingLeft, paddingRight)} min={0} max={300} onChange={(next) => setSpacing({ paddingLeft: next, paddingRight: next })} />
-      <NumberControl label={paddingTop === paddingBottom ? "Padding vertical" : "Padding vertical · mixed"} value={axisValue(paddingTop, paddingBottom)} min={0} max={300} onChange={(next) => setSpacing({ paddingTop: next, paddingBottom: next })} />
+      <AxisSpacingControl label="Margin horizontal" firstLabel="Left" secondLabel="Right" first={marginLeft} second={marginRight} min={marginMin} onChange={(next) => setSpacing({ marginLeft: next, marginRight: next })} />
+      <AxisSpacingControl label="Margin vertical" firstLabel="Top" secondLabel="Bottom" first={marginTop} second={marginBottom} min={marginMin} onChange={(next) => setSpacing({ marginTop: next, marginBottom: next })} />
+      <AxisSpacingControl label="Padding horizontal" firstLabel="Left" secondLabel="Right" first={paddingLeft} second={paddingRight} min={0} onChange={(next) => setSpacing({ paddingLeft: next, paddingRight: next })} />
+      <AxisSpacingControl label="Padding vertical" firstLabel="Top" secondLabel="Bottom" first={paddingTop} second={paddingBottom} min={0} onChange={(next) => setSpacing({ paddingTop: next, paddingBottom: next })} />
     </div>
     <button type="button" onClick={() => setMoreControl((current) => !current)} className={`justify-self-start ${SECONDARY_CONTROL}`}>{moreControl ? "Less control" : "More control…"}</button>
     {moreControl ? <div className="grid gap-3 rounded-[12px] border border-[#dfcfb7] bg-white/60 p-3">
