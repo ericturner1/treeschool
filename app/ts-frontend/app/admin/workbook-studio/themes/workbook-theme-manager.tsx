@@ -226,6 +226,9 @@ export function WorkbookThemeManager({
               <option value={'"Nunito", "Avenir Next", sans-serif'}>
                 Nunito
               </option>
+              <option value={'"Courier New", Courier, "Liberation Mono", monospace'}>
+                Courier New
+              </option>
               <option value={'"Noto Sans JP", sans-serif'}>Noto Sans JP</option>
             </select>
           </label>
@@ -248,6 +251,9 @@ export function WorkbookThemeManager({
               </option>
               <option value={'"Comic Neue", "Comic Sans MS", cursive'}>
                 Comic Neue
+              </option>
+              <option value={'"Courier New", Courier, "Liberation Mono", monospace'}>
+                Courier New
               </option>
             </select>
           </label>

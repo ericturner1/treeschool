@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  FUNNEL_BUTTON_FONT_OPTIONS,
   funnelButtonBoxStyle,
   funnelButtonSubtextStyle,
   funnelButtonTextStyle,
@@ -20,6 +21,13 @@ const palette: FunnelButtonPalette = {
 };
 
 describe("funnel button styles", () => {
+  test("offers Courier New anywhere funnel typography is configurable", () => {
+    expect(FUNNEL_BUTTON_FONT_OPTIONS).toContainEqual({
+      value: '"Courier New", Courier, "Liberation Mono", monospace',
+      label: "Courier New"
+    });
+  });
+
   test("keeps legacy primary buttons on the page defaults", () => {
     const props: ButtonProps = {
       label: "Continue",

@@ -4,7 +4,6 @@ import Image from "next/image";
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { FUNNEL_BUTTON_ICON_OPTIONS, FunnelButtonIconGlyph, resolveFunnelButtonIcon } from "../../../components/funnel-button-icon";
 import { FunnelProgressSteps } from "../../../components/funnel-progress-steps";
-import { FunnelRichTextContent } from "../../../components/funnel-rich-text-content";
 import { moveItemAtInsertionPoint } from "../../../lib/editor-drag";
 import { funnelElementSpacingStyle } from "../../../lib/funnels/element-spacing";
 import type {
@@ -500,16 +499,112 @@ function PreviewWorkbookGallery({ element, onSelect, selected }: { element: Funn
   );
 }
 
-function PreviewElement({ element, palette, onSelect, selected }: { element: FunnelPageElement; palette: FunnelButtonPalette; onSelect: () => void; selected: boolean }) {
+function InlineFunnelCopy({
+  text,
+  richText,
+  ariaLabel,
+  className,
+  style,
+  onSelect,
+  onChange
+}: {
+  text: string;
+  richText?: FunnelRichTextRun[];
+  ariaLabel: string;
+  className: string;
+  style?: CSSProperties;
+  onSelect: () => void;
+  onChange: (text: string, richText?: FunnelRichTextRun[]) => void;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState(false);
+  const html = useMemo(() => funnelRichTextEditorHtml(richText, text), [richText, text]);
+  const initialHtmlRef = useRef(html);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || document.activeElement === editor || editor.innerHTML === html) return;
+    editor.innerHTML = html;
+  }, [html]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editing || !editor) return;
+    editor.focus();
+    const range = window.document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }, [editing]);
+
+  const emitChange = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const runs = funnelRichTextRunsFromEditor(editor);
+    onChange(funnelRichTextPlainText(runs), richText ? runs : undefined);
+  };
+
+  return (
+    <div
+      ref={editorRef}
+      data-funnel-inline-editor={editing ? "true" : undefined}
+      role="textbox"
+      aria-label={ariaLabel}
+      aria-multiline="true"
+      aria-readonly={!editing}
+      contentEditable={editing}
+      suppressContentEditableWarning
+      spellCheck={editing}
+      title={editing ? undefined : "Double-click to edit"}
+      onPointerDown={(event) => {
+        if (editing) event.stopPropagation();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect();
+      }}
+      onDoubleClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect();
+        setEditing(true);
+      }}
+      onInput={emitChange}
+      onBlur={() => {
+        emitChange();
+        setEditing(false);
+      }}
+      onDragStart={(event) => {
+        if (!editing) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onPaste={(event) => {
+        event.preventDefault();
+        document.execCommand("insertText", false, event.clipboardData.getData("text/plain"));
+        emitChange();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") editorRef.current?.blur();
+      }}
+      className={`${className} ${editing ? "cursor-text" : ""} outline-none focus:ring-4 focus:ring-[#739655]/25`}
+      style={style}
+      dangerouslySetInnerHTML={{ __html: initialHtmlRef.current }}
+    />
+  );
+}
+
+function PreviewElement({ element, palette, onSelect, onInlineChange, selected }: { element: FunnelPageElement; palette: FunnelButtonPalette; onSelect: () => void; onInlineChange: (text: string, richText?: FunnelRichTextRun[]) => void; selected: boolean }) {
   const align = "align" in element.props ? element.props.align : "left";
   const selection = selected ? "ring-4 ring-[#739655]/35 ring-offset-2" : "";
   const common = `relative rounded-[8px] cursor-pointer transition ${selection}`;
   if (element.type === "eyebrow") return <p onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} text-xs font-black uppercase tracking-[.12em]`} style={{ textAlign: align }}>{element.props.text}</p>;
   if (element.type === "heading") {
-    const Tag = element.props.level;
-    return <Tag onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} font-semibold leading-[1.05] tracking-[-.045em] ${element.props.level === "h1" ? "text-5xl" : element.props.level === "h2" ? "text-4xl" : "text-2xl"}`} style={{ textAlign: align, fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.05 : undefined }}>{element.props.text}</Tag>;
+    return <InlineFunnelCopy text={element.props.text} ariaLabel="Edit heading" onSelect={onSelect} onChange={(text) => onInlineChange(text)} className={`${common} whitespace-pre-wrap font-semibold leading-[1.05] tracking-[-.045em] ${element.props.level === "h1" ? "text-5xl" : element.props.level === "h2" ? "text-4xl" : "text-2xl"}`} style={{ textAlign: align, fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.05 : undefined }} />;
   }
-  if (element.type === "text") return <p onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} whitespace-pre-line ${element.props.style === "lead" ? "text-xl leading-8" : element.props.style === "small" ? "text-sm" : "text-base leading-7"}`} style={{ textAlign: align, fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.5 : undefined }}><FunnelRichTextContent text={element.props.text} runs={element.props.richText} /></p>;
+  if (element.type === "text") return <InlineFunnelCopy text={element.props.text} richText={element.props.richText ?? [{ text: element.props.text }]} ariaLabel="Edit text" onSelect={onSelect} onChange={onInlineChange} className={`${common} whitespace-pre-wrap ${element.props.style === "lead" ? "text-xl leading-8" : element.props.style === "small" ? "text-sm" : "text-base leading-7"}`} style={{ textAlign: align, fontFamily: element.props.typography?.fontFamily || undefined, fontSize: element.props.typography?.fontSize, lineHeight: element.props.typography?.fontSize ? 1.5 : undefined }} />;
   if (element.type === "list") {
     if (!isCustomizedFunnelList(element.props)) {
       return <ul onClick={(e) => { e.stopPropagation(); onSelect(); }} className={`${common} grid gap-2`}>{element.props.items.map((item, index) => <li key={index} className="flex gap-2 rounded-[12px] bg-white/70 px-3 py-2"><span style={{ color: palette.primary }}>{element.props.style === "checks" ? "✓" : "•"}</span>{item}</li>)}</ul>;
@@ -808,6 +903,7 @@ function EditorCanvas({
   document,
   selection,
   onSelect,
+  onInlineElementChange,
   viewport,
   elementDrag,
   dropTarget,
@@ -837,6 +933,7 @@ function EditorCanvas({
   document: FunnelPageDocument;
   selection: Selection;
   onSelect: (selection: Selection) => void;
+  onInlineElementChange: (location: FunnelElementLocation, text: string, richText?: FunnelRichTextRun[]) => void;
   viewport: "desktop" | "mobile";
   elementDrag: FunnelElementDrag | null;
   dropTarget: FunnelElementDropTarget | null;
@@ -1144,8 +1241,8 @@ function EditorCanvas({
                     const elementSelected = sameSelection(selection, location);
                     return <div key={element.id} className="min-w-0">
                       {elementDrag ? <FunnelElementDropZone key="drop-zone" target={target} active={sameDropTarget(dropTarget, target)} copy={elementDrag.kind === "new"} onTarget={onDropTarget} onDrop={onDropElement} /> : null}
-                      <div key="element" draggable={elementSelected} onClickCapture={(event) => { if (!event.altKey) return; event.preventDefault(); event.stopPropagation(); selectAt(location, true); }} onPointerMove={(event) => trackPointer(event, location)} onDragStart={(event) => startCanvasElementDrag(event, location)} onDragEnd={onEndElementDrag} className={`group/drag relative transition ${elementSelected ? "cursor-grab active:cursor-grabbing" : ""} ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
-                        <PreviewElement element={element} palette={palette} selected={sameSelection(activeSelection, location)} onSelect={() => selectAt(location)} />
+                      <div key="element" draggable={elementSelected} onClickCapture={(event) => { if (!event.altKey) return; event.preventDefault(); event.stopPropagation(); selectAt(location, true); }} onPointerMove={(event) => trackPointer(event, location)} onDragStart={(event) => { if (event.target instanceof Element && event.target.closest('[data-funnel-inline-editor="true"]')) { event.preventDefault(); event.stopPropagation(); return; } startCanvasElementDrag(event, location); }} onDragEnd={onEndElementDrag} className={`group/drag relative transition ${elementSelected ? "cursor-grab active:cursor-grabbing" : ""} ${dragged ? "opacity-35" : ""}`} style={funnelElementSpacingStyle(element)}>
+                        <PreviewElement element={element} palette={palette} selected={sameSelection(activeSelection, location)} onSelect={() => selectAt(location)} onInlineChange={(text, richText) => onInlineElementChange(location, text, richText)} />
                       </div>
                     </div>;
                   })}
@@ -2078,6 +2175,22 @@ export function FunnelPageStudio({
     return columnAtPath(document, selection)?.elements[selection.elementIndex] ?? null;
   }
 
+  function updateInlineElement(
+    location: FunnelElementLocation,
+    text: string,
+    richText?: FunnelRichTextRun[]
+  ) {
+    mutate((draft) => {
+      const element = columnAtPath(draft, location)?.elements[location.elementIndex];
+      if (element?.type === "heading") {
+        element.props.text = text;
+      } else if (element?.type === "text") {
+        element.props.text = text;
+        element.props.richText = richText;
+      }
+    });
+  }
+
   function selectedRow() {
     if (selection.kind !== "row") return null;
     return rowAtPath(document, selection.sectionIndex, selection.rowPath);
@@ -2752,7 +2865,7 @@ export function FunnelPageStudio({
           </InspectorGroup>
         </div> : null}
       </aside>
-      <section className="min-w-0 overflow-auto bg-[#d9d4cc] p-5"><EditorCanvas document={document} selection={selection} onSelect={setSelection} viewport={viewport} elementDrag={elementDrag} dropTarget={elementDropTarget} onStartElementDrag={startElementDrag} onDropTarget={updateElementDropTarget} onDropElement={dropElement} onEndElementDrag={endElementDrag} blockDrag={blockDrag} sectionDropTarget={sectionDropTarget} onSectionDropTarget={updateSectionDropTarget} onDropBlock={dropBlock} rowDrag={rowDrag} rowDropTarget={rowDropTarget} onRowDropTarget={updateRowDropTarget} onDropRow={dropRow} onStartRowDrag={startRowDrag} onEndRowDrag={endRowDrag} resolveRowDrag={() => rowDragRef.current ?? rowDrag} columnDrag={columnDrag} columnDropTarget={columnDropTarget} onStartColumnDrag={startColumnDrag} onColumnDropTarget={updateColumnDropTarget} onDropColumn={dropColumn} onEndColumnDrag={endColumnDrag} orderFormPreview={orderFormPreview} /></section>
+      <section className="min-w-0 overflow-auto bg-[#d9d4cc] p-5"><EditorCanvas document={document} selection={selection} onSelect={setSelection} onInlineElementChange={updateInlineElement} viewport={viewport} elementDrag={elementDrag} dropTarget={elementDropTarget} onStartElementDrag={startElementDrag} onDropTarget={updateElementDropTarget} onDropElement={dropElement} onEndElementDrag={endElementDrag} blockDrag={blockDrag} sectionDropTarget={sectionDropTarget} onSectionDropTarget={updateSectionDropTarget} onDropBlock={dropBlock} rowDrag={rowDrag} rowDropTarget={rowDropTarget} onRowDropTarget={updateRowDropTarget} onDropRow={dropRow} onStartRowDrag={startRowDrag} onEndRowDrag={endRowDrag} resolveRowDrag={() => rowDragRef.current ?? rowDrag} columnDrag={columnDrag} columnDropTarget={columnDropTarget} onStartColumnDrag={startColumnDrag} onColumnDropTarget={updateColumnDropTarget} onDropColumn={dropColumn} onEndColumnDrag={endColumnDrag} orderFormPreview={orderFormPreview} /></section>
       <aside className={`overflow-auto border-l border-[#d6c6af] bg-[#fffaf2] ${rightSidebarCollapsed ? "p-2" : "p-4"}`}>
         <div className={`mb-3 flex items-center ${rightSidebarCollapsed ? "justify-center" : "justify-between"}`}>
           {!rightSidebarCollapsed ? <span className="text-[10px] font-black uppercase tracking-[.12em] text-[#567b40]">Inspector</span> : null}

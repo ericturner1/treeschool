@@ -18,6 +18,7 @@ export const FUNNEL_BUTTON_FONT_OPTIONS = [
   { value: '"Avenir Next", "Nunito", "Trebuchet MS", "Segoe UI", sans-serif', label: "Treeschool sans" },
   { value: 'Arial, Helvetica, sans-serif', label: "Arial" },
   { value: 'Georgia, "Times New Roman", serif', label: "Georgia" },
+  { value: '"Courier New", Courier, "Liberation Mono", monospace', label: "Courier New" },
   { value: '"Trebuchet MS", "Segoe UI", sans-serif', label: "Trebuchet" },
   { value: 'Verdana, Geneva, sans-serif', label: "Verdana" }
 ] as const;
