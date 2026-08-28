@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { FUNNEL_BUTTON_ICON_OPTIONS, FunnelButtonIconGlyph, resolveFunnelButtonIcon } from "../../../components/funnel-button-icon";
 import { FunnelProgressSteps } from "../../../components/funnel-progress-steps";
 import { moveItemAtInsertionPoint } from "../../../lib/editor-drag";
@@ -519,9 +519,8 @@ function InlineFunnelCopy({
   const editorRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
   const html = useMemo(() => funnelRichTextEditorHtml(richText, text), [richText, text]);
-  const initialHtmlRef = useRef(html);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const editor = editorRef.current;
     if (!editor || document.activeElement === editor || editor.innerHTML === html) return;
     editor.innerHTML = html;
@@ -591,7 +590,6 @@ function InlineFunnelCopy({
       }}
       className={`${className} ${editing ? "cursor-text" : ""} outline-none focus:ring-4 focus:ring-[#739655]/25`}
       style={style}
-      dangerouslySetInnerHTML={{ __html: initialHtmlRef.current }}
     />
   );
 }
