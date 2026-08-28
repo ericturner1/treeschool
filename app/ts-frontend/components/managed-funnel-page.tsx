@@ -540,7 +540,7 @@ export async function ManagedFunnelPageView({
         />
       ) : null}
       <div className={`pointer-events-none absolute -right-24 -top-28 h-80 w-80 rounded-full opacity-45 blur-3xl ${theme.glow}`} aria-hidden="true" />
-      <div className="relative mx-auto flex min-h-screen w-full max-w-[1400px] flex-col px-5 py-6 sm:px-8">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-[1400px] flex-col px-5 sm:px-8">
         {showSiteHeader ? (
           <header className="flex items-center justify-between">
             <Link href="/" className="inline-flex items-center gap-2.5" aria-label="Treeschool home">
@@ -551,7 +551,7 @@ export async function ManagedFunnelPageView({
         ) : null}
 
         <div
-          className="my-auto grid gap-6 py-10 sm:py-14"
+          className="grid gap-6"
           style={{ gap: styles?.layout?.sectionGap }}
         >
           {document.sections.map((section) => {

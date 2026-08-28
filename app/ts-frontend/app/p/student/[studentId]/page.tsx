@@ -8,6 +8,7 @@ import {
 import { PointIcon } from "../../../../components/point-icon";
 import { getStudentPoints } from "../../../../lib/points/server";
 import { getStudentOverviewMetrics } from "../../../../lib/student-overview/server";
+import { shouldShowStreakWarning } from "../../../../lib/student-overview/streak-warning";
 import { ParentModeGuard } from "../../parent-mode-guard";
 import { getParentStudentPageData, studentRoutePath } from "./student-page-data";
 import { StudentShell } from "./student-shell";
@@ -36,6 +37,28 @@ function formatSchoolYearDate(value: string) {
 
 function formatPoints(amount: number) {
   return new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(amount);
+}
+
+function AlarmIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-5 w-5"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="13" r="7" />
+      <path d="M12 10v4l2.5 1.5" />
+      <path d="m5 3-3 3" />
+      <path d="m19 3 3 3" />
+      <path d="M7 20.5 5.5 22" />
+      <path d="m17 20.5 1.5 1.5" />
+    </svg>
+  );
 }
 
 function dateKeyInTimeZone(date: Date, timeZone: string) {
@@ -171,6 +194,7 @@ export default async function ParentStudentOverviewPage(props: ParentStudentOver
     }).catch(() => null)
   ]);
   const streak = calendar.streak;
+  const showStreakWarning = shouldShowStreakWarning(streak);
   const calendarStatus = getDashboardCalendarStatus(calendar);
   const basePath = studentRoutePath(studentRouteSegment);
   const query = new URLSearchParams();
@@ -417,6 +441,19 @@ export default async function ParentStudentOverviewPage(props: ParentStudentOver
                   {streak.currentCount === 1 ? "School day in a row." : "School days in a row."}
                   {streak.longestCount > 0 ? ` Best: ${streak.longestCount}.` : ""}
                 </p>
+                {showStreakWarning ? (
+                  <div
+                    role="status"
+                    className="mt-4 flex items-start gap-3 rounded-[16px] border border-[#e2b55f] bg-[#fff3ce] px-3.5 py-3 text-[#704b12]"
+                  >
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f3c967] text-[#66430e]">
+                      <AlarmIcon />
+                    </span>
+                    <p className="pt-0.5 text-sm font-semibold leading-[1.45]">
+                      Your streak will be broken today if you don&apos;t do schoolwork!
+                    </p>
+                  </div>
+                ) : null}
                 <Link
                   href={studentRoutePath(studentRouteSegment, "/attendance/calendar") as Route}
                   className="mt-3 inline-flex text-sm font-semibold text-[#4f703c] underline decoration-[#99b782] underline-offset-4"
