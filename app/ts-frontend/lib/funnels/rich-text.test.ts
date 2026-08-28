@@ -26,6 +26,21 @@ describe("funnel rich text", () => {
     ]);
   });
 
+  test("keeps an explicit regular-weight override distinct from inherited heading weight", () => {
+    expect(normalizeFunnelRichTextRuns([
+      { text: "Regular", bold: false },
+      { text: " inherited" },
+      { text: " bold", bold: true }
+    ])).toEqual([
+      { text: "Regular", bold: false },
+      { text: " inherited" },
+      { text: " bold", bold: true }
+    ]);
+    expect(funnelRichTextEditorHtml([{ text: "Regular", bold: false }], ""))
+      .toBe('<span style="font-weight:400">Regular</span>');
+    expect(funnelRichTextRunStyle({ text: "Regular", bold: false }).fontWeight).toBe(400);
+  });
+
   test("renders and recovers all supported selection styles safely", () => {
     const runs = [{
       text: "Save <today>",

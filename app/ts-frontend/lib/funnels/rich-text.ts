@@ -6,7 +6,7 @@ const SAFE_COLOR = /^(?:#[0-9a-f]{3}(?:[0-9a-f]{1}|[0-9a-f]{3}(?:[0-9a-f]{2})?)?
 type FunnelRichTextStyle = Omit<FunnelRichTextRun, "text">;
 
 function sameStyle(left: FunnelRichTextStyle, right: FunnelRichTextStyle) {
-  return Boolean(left.bold) === Boolean(right.bold)
+  return left.bold === right.bold
     && Boolean(left.italic) === Boolean(right.italic)
     && Boolean(left.underline) === Boolean(right.underline)
     && Boolean(left.strikethrough) === Boolean(right.strikethrough)
@@ -24,7 +24,7 @@ export function normalizeFunnelRichTextRuns(runs: FunnelRichTextRun[]) {
     if (!run.text) continue;
     const color = normalizeFunnelRichTextColor(run.color);
     const style: FunnelRichTextStyle = {
-      ...(run.bold ? { bold: true } : {}),
+      ...(run.bold === true ? { bold: true } : run.bold === false ? { bold: false } : {}),
       ...(run.italic ? { italic: true } : {}),
       ...(run.underline ? { underline: true } : {}),
       ...(run.strikethrough ? { strikethrough: true } : {}),
@@ -84,7 +84,7 @@ export function funnelRichTextRunStyle(run: FunnelRichTextRun): CSSProperties {
     run.strikethrough ? "line-through" : ""
   ].filter(Boolean).join(" ");
   return {
-    fontWeight: run.bold ? 700 : undefined,
+    fontWeight: run.bold === true ? 700 : run.bold === false ? 400 : undefined,
     fontStyle: run.italic ? "italic" : undefined,
     textDecorationLine: decorations || undefined,
     color: normalizeFunnelRichTextColor(run.color)
@@ -108,7 +108,8 @@ export function funnelRichTextEditorHtml(
 ) {
   return resolveFunnelRichTextRuns(runs, fallbackText, options).map((run) => {
     let value = escapeEditorHtml(run.text);
-    if (run.bold) value = `<strong>${value}</strong>`;
+    if (run.bold === true) value = `<strong>${value}</strong>`;
+    if (run.bold === false) value = `<span style="font-weight:400">${value}</span>`;
     if (run.italic) value = `<em>${value}</em>`;
     if (run.underline) value = `<u>${value}</u>`;
     if (run.strikethrough) value = `<s>${value}</s>`;

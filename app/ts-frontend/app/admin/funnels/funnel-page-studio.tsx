@@ -1858,10 +1858,20 @@ function funnelRichTextRunsFromNode(
     return;
   }
   const fontWeight = Number(node.style.fontWeight);
+  const explicitBold = node.tagName === "B"
+    || node.tagName === "STRONG"
+    || node.style.fontWeight === "bold"
+    || (!Number.isNaN(fontWeight) && fontWeight >= 600)
+    ? true
+    : node.style.fontWeight === "normal"
+      || (!Number.isNaN(fontWeight) && fontWeight > 0 && fontWeight < 600)
+      ? false
+      : undefined;
+  const bold = explicitBold ?? inheritedStyle.bold;
   const textDecoration = `${node.style.textDecoration} ${node.style.textDecorationLine}`;
   const color = normalizeFunnelRichTextColor(node.style.color || node.getAttribute("color")) ?? inheritedStyle.color;
   const style: FunnelRichTextStyle = {
-    ...(inheritedStyle.bold || node.tagName === "B" || node.tagName === "STRONG" || node.style.fontWeight === "bold" || (!Number.isNaN(fontWeight) && fontWeight >= 600) ? { bold: true } : {}),
+    ...(bold === true ? { bold: true } : bold === false ? { bold: false } : {}),
     ...(inheritedStyle.italic || node.tagName === "I" || node.tagName === "EM" || node.style.fontStyle === "italic" || node.style.fontStyle === "oblique" ? { italic: true } : {}),
     ...(inheritedStyle.underline || node.tagName === "U" || textDecoration.includes("underline") ? { underline: true } : {}),
     ...(inheritedStyle.strikethrough || ["S", "STRIKE", "DEL"].includes(node.tagName) || textDecoration.includes("line-through") ? { strikethrough: true } : {}),
@@ -1970,6 +1980,7 @@ function FunnelTextRichTextEditor({
   };
   const applyCommand = (command: "bold" | "italic" | "underline" | "strikeThrough") => {
     restoreSelection();
+    document.execCommand("styleWithCSS", false, "true");
     document.execCommand(command, false);
     emitChange();
     rememberSelection();
