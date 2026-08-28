@@ -1,0 +1,23 @@
+FROM gcr.io/google.com/cloudsdktool/google-cloud-cli:529.0.0-slim@sha256:bc626175c0c3ec1428df21657fa870301c829979aa1e357b17e1c5efb1d67914
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates curl gnupg jq zstd age \
+  && install -d /usr/share/postgresql-common/pgdg \
+  && curl --fail --silent --show-error \
+    https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+  && . /etc/os-release \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+    > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends postgresql-client-17 \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY scripts/backups/run-database-backup.sh /usr/local/bin/run-database-backup
+COPY scripts/backups/verify-database-backup.sh /usr/local/bin/verify-database-backup
+
+RUN chmod 0755 /usr/local/bin/run-database-backup /usr/local/bin/verify-database-backup
+
+ENTRYPOINT ["/usr/local/bin/run-database-backup"]

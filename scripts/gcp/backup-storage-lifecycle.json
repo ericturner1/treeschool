@@ -1,0 +1,33 @@
+{
+  "rule": [
+    {
+      "action": {
+        "type": "SetStorageClass",
+        "storageClass": "COLDLINE"
+      },
+      "condition": {
+        "age": 7,
+        "matchesPrefix": ["nightly/"],
+        "matchesStorageClass": ["STANDARD"]
+      }
+    },
+    {
+      "action": {
+        "type": "Delete"
+      },
+      "condition": {
+        "age": 100,
+        "matchesPrefix": ["nightly/"]
+      }
+    },
+    {
+      "action": {
+        "type": "Delete"
+      },
+      "condition": {
+        "age": 370,
+        "matchesPrefix": ["monthly/"]
+      }
+    }
+  ]
+}
