@@ -70,6 +70,10 @@ import {
   submitLessonQuiz
 } from "./services/lessons";
 import { getStudentGrades } from "./services/grades";
+import {
+  buildStudentAttendanceReport,
+  buildStudentReportCard
+} from "./services/student-reports";
 import { getStudentOverviewMetrics } from "./services/student-overview";
 import { getTeacherActivity } from "./services/teacher-activity";
 import { getPremiumFeatureAccess, requirePremiumFeatureAccess } from "./services/entitlements";
@@ -3776,6 +3780,52 @@ const server = Bun.serve({
           subjectKey
         })
       );
+    }
+
+    if (url.pathname === "/internal/profiles/student/reports/attendance" && request.method === "GET") {
+      const parentUserId = url.searchParams.get("parentUserId");
+      const profileId = url.searchParams.get("profileId");
+      const yearId = url.searchParams.get("yearId");
+      if (!parentUserId || !profileId) {
+        return Response.json({ error: "parentUserId and profileId are required." }, { status: 400 });
+      }
+      try {
+        const report = await buildStudentAttendanceReport({ parentUserId, profileId, yearId });
+        return new Response(report.bytes, {
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(report.filename)}`,
+            "Cache-Control": "private, no-store"
+          }
+        });
+      } catch (error) {
+        return Response.json({
+          error: publicErrorMessage(error, "Could not build the attendance report.")
+        }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/profiles/student/reports/report-card" && request.method === "GET") {
+      const parentUserId = url.searchParams.get("parentUserId");
+      const profileId = url.searchParams.get("profileId");
+      const yearId = url.searchParams.get("yearId");
+      if (!parentUserId || !profileId) {
+        return Response.json({ error: "parentUserId and profileId are required." }, { status: 400 });
+      }
+      try {
+        const report = await buildStudentReportCard({ parentUserId, profileId, yearId });
+        return new Response(report.bytes, {
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(report.filename)}`,
+            "Cache-Control": "private, no-store"
+          }
+        });
+      } catch (error) {
+        return Response.json({
+          error: publicErrorMessage(error, "Could not build the report card.")
+        }, { status: 400 });
+      }
     }
 
     if (url.pathname === "/internal/profiles/student/overview" && request.method === "GET") {

@@ -6,6 +6,7 @@ import { PremiumFeatureLock } from "../../../../../components/premium-feature-lo
 import { getParentBillingOverview } from "../../../../../lib/billing/server";
 import { getStudentGrades } from "../../../../../lib/grades/server";
 import { getParentStudentPageData, studentRoutePath } from "../student-page-data";
+import { ReportDownloadButton } from "../report-download-button";
 import { StudentShell } from "../student-shell";
 
 type Props = {
@@ -75,11 +76,28 @@ export default async function GradesPage(props: Props) {
                 ) : null}
               </div>
               {grades.selectedYear ? (
-                <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Overall</p><p className="mt-1 text-3xl font-semibold text-ink">{grades.selectedYear.grade ?? "—"}</p></div>
-                  <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Average</p><p className="mt-1 text-3xl font-semibold text-ink">{grades.selectedYear.overallAverage == null ? "—" : `${grades.selectedYear.overallAverage}%`}</p></div>
-                  <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Grades recorded</p><p className="mt-1 text-3xl font-semibold text-ink">{grades.selectedYear.gradedEntries}</p></div>
-                </div>
+                <>
+                  <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Overall</p><p className="mt-1 text-3xl font-semibold text-ink">{grades.selectedYear.grade ?? "—"}</p></div>
+                    <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Average</p><p className="mt-1 text-3xl font-semibold text-ink">{grades.selectedYear.overallAverage == null ? "—" : `${grades.selectedYear.overallAverage}%`}</p></div>
+                    <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Grades recorded</p><p className="mt-1 text-3xl font-semibold text-ink">{grades.selectedYear.gradedEntries}</p></div>
+                  </div>
+                  <div className="mt-5 flex flex-col gap-4 rounded-[20px] border border-[#cbdcb9] bg-[#f4f8ee] px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-[#456434]">
+                        {grades.selectedYear.status === "completed" ? "Final report card" : "Current progress report"}
+                      </p>
+                      <p className="mt-1 max-w-2xl text-sm leading-6 text-ink/62">
+                        Download a polished PDF showing the overall result and a clear visual grade for every subject.
+                      </p>
+                    </div>
+                    <ReportDownloadButton
+                      href={`/api/student-reports/report-card?${new URLSearchParams({ profileId: student.id, yearId: grades.selectedYear.id }).toString()}`}
+                      label={grades.selectedYear.status === "completed" ? "Download report card" : "Download progress report"}
+                      fallbackFilename={`${student.firstName.toLowerCase()}-report-card.pdf`}
+                    />
+                  </div>
+                </>
               ) : null}
             </section>
 
