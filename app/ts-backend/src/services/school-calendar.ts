@@ -104,7 +104,10 @@ function normalizePausedWeeks(values: unknown) {
 }
 
 async function ensureCalendarSettings(profileId: string): Promise<CalendarSettings> {
-  await db.insert(streakSettings).values({ profileId }).onConflictDoNothing();
+  // Legacy students may predate calendar setup. Give them the same sensible
+  // Saturday/Sunday default as newly created students instead of silently
+  // treating all seven days as required school days.
+  await db.insert(streakSettings).values({ profileId, pausedWeekdays: [0, 6] }).onConflictDoNothing();
   const [row] = await db
     .select({
       mode: streakSettings.mode,

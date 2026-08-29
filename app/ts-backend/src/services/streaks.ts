@@ -135,7 +135,9 @@ function describeCurrentPeriod(settings: StreakSettingsRow, now: Date) {
 }
 
 async function ensureStreakSettings(profileId: string) {
-  await db.insert(streakSettings).values({ profileId }).onConflictDoNothing();
+  // Match the student-creation default for legacy profiles that do not yet
+  // have calendar settings of their own.
+  await db.insert(streakSettings).values({ profileId, pausedWeekdays: [0, 6] }).onConflictDoNothing();
 
   const [settings] = await db
     .select({
@@ -223,8 +225,16 @@ export async function updateStudentStreakSettings(input: {
   await getManageableStudentProfile(input.parentUserId, input.profileId);
   const existing = await ensureStreakSettings(input.profileId);
 
-  const nextPausedWeekdays = input.mode === "daily" ? clampPausedWeekdays(input.pausedWeekdays ?? []) : [];
-  const nextPausedWeeks = input.mode === "weekly" ? normalizePausedWeeks(input.pausedWeeks ?? []) : [];
+  // Keep both calendar preferences when the streak mode changes. Previously,
+  // switching to a weekly streak erased regular days off, so switching back to
+  // daily could unexpectedly make Saturdays and Sundays count as school days.
+  // An explicitly supplied empty array still clears that particular setting.
+  const nextPausedWeekdays = input.pausedWeekdays === undefined
+    ? existing.pausedWeekdays
+    : clampPausedWeekdays(input.pausedWeekdays);
+  const nextPausedWeeks = input.pausedWeeks === undefined
+    ? existing.pausedWeeks
+    : normalizePausedWeeks(input.pausedWeeks);
   const nextTimeZone = input.timeZone?.trim() || existing.timeZone || "UTC";
   const modeChanged = existing.mode !== input.mode;
   const now = new Date();
