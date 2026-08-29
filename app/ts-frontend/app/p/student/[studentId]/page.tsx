@@ -39,28 +39,6 @@ function formatPoints(amount: number) {
   return new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(amount);
 }
 
-function AlarmIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-5 w-5"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="13" r="7" />
-      <path d="M12 10v4l2.5 1.5" />
-      <path d="m5 3-3 3" />
-      <path d="m19 3 3 3" />
-      <path d="M7 20.5 5.5 22" />
-      <path d="m17 20.5 1.5 1.5" />
-    </svg>
-  );
-}
-
 function dateKeyInTimeZone(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -447,7 +425,7 @@ export default async function ParentStudentOverviewPage(props: ParentStudentOver
                     className="mt-4 flex items-start gap-3 rounded-[16px] border border-[#e2b55f] bg-[#fff3ce] px-3.5 py-3 text-[#704b12]"
                   >
                     <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f3c967] text-[#66430e]">
-                      <AlarmIcon />
+                      <span role="img" aria-label="Police car light" className="text-xl leading-none">🚨</span>
                     </span>
                     <p className="pt-0.5 text-sm font-semibold leading-[1.45]">
                       Your streak will be broken today if you don&apos;t do schoolwork!
