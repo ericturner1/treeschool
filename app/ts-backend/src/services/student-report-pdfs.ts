@@ -54,6 +54,7 @@ export type ReportCardSubject = {
 
 export type ReportCardPdfData = {
   studentName: string;
+  gradeLevel: number | null;
   yearTitle: string;
   yearStatus: string;
   dateFrom: string | null;
@@ -633,7 +634,12 @@ export async function buildAttendanceReportPdf(data: AttendanceReportPdfData) {
 }
 
 function reportCardStatusLabel(status: string) {
-  return status === "completed" ? "Final report card" : "Progress report";
+  return status === "completed" ? "Final Report Card" : "Report Card";
+}
+
+function studentGradeLabel(gradeLevel: number | null) {
+  if (gradeLevel == null) return "Grade not set";
+  return gradeLevel === 0 ? "Kindergarten" : `Grade ${gradeLevel}`;
 }
 
 export async function buildReportCardPdf(data: ReportCardPdfData) {
@@ -667,7 +673,12 @@ export async function buildReportCardPdf(data: ReportCardPdfData) {
     bold: true,
     maxWidth: badgeWidth - 20,
   });
-  writer.cursorY -= 33;
+  writer.cursorY -= 25;
+  await writer.text(studentGradeLabel(data.gradeLevel), PAGE_MARGIN, writer.cursorY, 12, writer.bold, COLORS.earth, {
+    bold: true,
+    maxWidth: writer.dimensions[0] - PAGE_MARGIN * 2 - 100,
+  });
+  writer.cursorY -= 23;
   await writer.text(`${data.gradingSchemeName}. This report reflects grades recorded so far.`, PAGE_MARGIN, writer.cursorY, 9.5, writer.font, COLORS.muted, {
     maxWidth: writer.dimensions[0] - PAGE_MARGIN * 2,
   });

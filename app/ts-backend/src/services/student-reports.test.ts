@@ -88,6 +88,7 @@ describe("student report PDFs", () => {
   test("builds a current-year report card", async () => {
     const bytes = await buildReportCardPdf({
       studentName: "Gajou",
+      gradeLevel: 1,
       yearTitle: "2026-2027 Learning Year",
       yearStatus: "active",
       dateFrom: "2026-08-01",

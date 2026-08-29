@@ -374,6 +374,7 @@ export async function buildStudentReportCard(input: {
   }
   const bytes = await buildReportCardPdf({
     studentName: student.firstName,
+    gradeLevel: student.gradeLevel,
     yearTitle: year.title,
     yearStatus: year.status,
     dateFrom: isoDate(year.startDate),

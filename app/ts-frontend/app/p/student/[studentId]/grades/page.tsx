@@ -93,7 +93,7 @@ export default async function GradesPage(props: Props) {
                     </div>
                     <ReportDownloadButton
                       href={`/api/student-reports/report-card?${new URLSearchParams({ profileId: student.id, yearId: grades.selectedYear.id }).toString()}`}
-                      label={grades.selectedYear.status === "completed" ? "Download report card" : "Download progress report"}
+                      label="Download Report Card"
                       fallbackFilename={`${student.firstName.toLowerCase()}-report-card.pdf`}
                     />
                   </div>
