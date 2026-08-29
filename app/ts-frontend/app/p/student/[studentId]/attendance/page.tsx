@@ -59,20 +59,32 @@ export default async function AttendancePage(props: Props) {
           <div className="space-y-6">
             {searchParams?.error ? <div className="rounded-[18px] border border-[#d9afa2] bg-[#fff1ec] px-5 py-4 text-sm font-semibold text-[#8b3e2f]">{searchParams.error}</div> : null}
             <section className="site-panel rounded-[28px] px-6 py-7 sm:px-8">
-              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                 <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-earth">Learning activity</p><h2 className="mt-2 text-[32px] font-semibold tracking-[-0.055em] text-ink">Attendance at a glance</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-ink/62">Planned school days and learning beyond the plan belong in one honest record. Plan progress is based on the scheduled subjects logged here.</p></div>
-                <div className="flex flex-wrap items-end gap-2">
-                  {attendance.years.length > 0 ? <form method="GET" className="flex flex-wrap items-end gap-2">
-                    <label className="text-xs font-semibold text-ink/65">School year<select name="yearId" defaultValue={attendance.selectedYearId ?? ""} className="mt-1 block rounded-[12px] border border-[#dcc8aa] bg-white px-3 py-2 text-sm text-ink">{attendance.years.map((year) => <option key={year.id} value={year.id}>{year.title}</option>)}</select></label>
-                    <button className="cta-button cta-button--small" type="submit">View</button>
+                <aside aria-label="Attendance controls" className="w-full rounded-[20px] border border-[#e2d2b8] bg-[#f8f1e4] p-3.5 lg:w-[400px] lg:flex-none">
+                  <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-earth">Attendance tools</p>
+                  {attendance.years.length > 0 ? <form method="GET" className="mt-2.5">
+                    {searchParams?.lang ? <input type="hidden" name="lang" value={searchParams.lang} /> : null}
+                    <label htmlFor="attendance-year" className="px-1 text-xs font-semibold text-ink/65">School year</label>
+                    <div className="mt-1.5 flex gap-2">
+                      <select id="attendance-year" name="yearId" defaultValue={attendance.selectedYearId ?? ""} className="min-w-0 flex-1 rounded-[13px] border border-[#d8c4a5] bg-white px-3 py-2.5 text-sm font-semibold text-ink shadow-[0_1px_0_rgba(90,62,32,0.04)] outline-none transition focus:border-[#6d9651] focus:ring-2 focus:ring-[#6d9651]/20">{attendance.years.map((year) => <option key={year.id} value={year.id}>{year.title}</option>)}</select>
+                      <button className="inline-flex min-h-11 items-center justify-center rounded-[13px] bg-[#557a3b] px-4 text-sm font-semibold text-white shadow-[0_3px_0_#3f612d] transition hover:-translate-y-px hover:bg-[#4b6e34] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#557a3b] focus-visible:ring-offset-2" type="submit">Show</button>
+                    </div>
                   </form> : null}
                   <Link
                     href={studentRoutePath(studentRouteSegment, "/attendance/calendar") as Route}
-                    className="cta-button cta-button--outline cta-button--small"
+                    className="mt-3 flex items-center gap-3 rounded-[14px] border border-[#d8c4a5] bg-white px-3.5 py-3 text-ink transition hover:border-[#8baa72] hover:bg-[#fbfdf8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6d9651]/30"
                   >
-                    School calendar &amp; streak
+                    <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[11px] bg-[#edf4e6] text-[#4d7137]" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M7 3v3M17 3v3M4 9h16" /><rect x="4" y="5" width="16" height="16" rx="3" /><path d="m9 15 2 2 4-5" /></svg>
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold">School calendar &amp; streak</span>
+                      <span className="mt-0.5 block text-xs text-ink/50">Set breaks and see learning streaks</span>
+                    </span>
+                    <svg viewBox="0 0 20 20" className="h-4 w-4 flex-none text-ink/35" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m7.5 4.5 5 5-5 5" /></svg>
                   </Link>
-                </div>
+                </aside>
               </div>
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Learning days</p><p className="mt-1 text-3xl font-semibold text-ink">{attendance.summary.learningDays}</p></div>
