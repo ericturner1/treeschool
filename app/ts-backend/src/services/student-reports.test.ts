@@ -4,9 +4,40 @@ import {
   buildAttendanceReportPdf,
   buildReportCardPdf,
 } from "./student-report-pdfs";
+import {
+  estimatePlanItemMinutes,
+  learningUnitMinuteEstimates,
+  logicalPlanItemKey,
+} from "./learning-time-estimates";
 import { reportLearningUnits } from "./student-reports";
 
 describe("student report PDFs", () => {
+  test("estimates unique logical lesson time without double-counting split components", () => {
+    const estimates = learningUnitMinuteEstimates({
+      learningUnits: [
+        { id: "lesson-a", estimatedMinutes: 35 },
+        { id: "lesson-b" },
+      ],
+    });
+    const firstPart = {
+      id: "part-a",
+      documentId: "workbook-a",
+      sourceUnitId: "lesson-a",
+      firstPageIndex: 2,
+      lastPageIndex: 3,
+    };
+    const secondPart = { ...firstPart, id: "part-b", firstPageIndex: 4, lastPageIndex: 4 };
+
+    expect(estimatePlanItemMinutes(firstPart, estimates)).toBe(35);
+    expect(logicalPlanItemKey(firstPart)).toBe(logicalPlanItemKey(secondPart));
+    expect(estimates.get("lesson-b")).toBe(30);
+    expect(estimatePlanItemMinutes({
+      sourceUnitId: null,
+      firstPageIndex: 0,
+      lastPageIndex: 1,
+    }, estimates)).toBe(20);
+  });
+
   test("uses stable workbook unit ids and sequence order for progress", () => {
     expect(reportLearningUnits({
       learningUnits: [

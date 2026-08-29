@@ -5,6 +5,7 @@ import {
   contentDocuments,
   learningActivityEvents,
   learningYears,
+  nativeWorkbookVersions,
   teacherActivityEvents,
   weeklyPlanItems,
   weeklyPlans
@@ -30,6 +31,11 @@ import {
   type ManualAttendanceFields
 } from "./manual-attendance";
 import { planSubjectKey } from "./plan-subject-key";
+import {
+  estimatePlanItemMinutes,
+  learningUnitMinuteEstimates,
+  logicalPlanItemKey
+} from "./learning-time-estimates";
 
 const DAY_MS = 86_400_000;
 
@@ -46,6 +52,95 @@ function safeDate(value: string | null | undefined, fallback: Date) {
 async function verifyStudent(parentUserId: string, profileId: string) {
   await requirePremiumFeatureAccess(parentUserId);
   return (await getManageableStudentProfile(parentUserId, profileId)).studentProfile;
+}
+
+async function estimatedCompletedLearningMinutes(
+  entries: Array<typeof attendanceEntries.$inferSelect>,
+  subjectsByEntryId: Map<string, Array<typeof attendanceEntrySubjects.$inferSelect>>
+) {
+  const explicitMinutes = entries.reduce((total, entry) => total + (entry.minutes ?? 0), 0);
+  const weeklyPlanIds = Array.from(new Set(entries.flatMap((entry) =>
+    entry.weeklyPlanId ? [entry.weeklyPlanId] : []
+  )));
+  if (weeklyPlanIds.length === 0) return explicitMinutes;
+
+  const items = await db.select({
+    id: weeklyPlanItems.id,
+    weeklyPlanId: weeklyPlanItems.weeklyPlanId,
+    documentId: weeklyPlanItems.documentId,
+    dayNumber: weeklyPlanItems.dayNumber,
+    sourceUnitId: weeklyPlanItems.sourceUnitId,
+    firstPageIndex: weeklyPlanItems.firstPageIndex,
+    lastPageIndex: weeklyPlanItems.lastPageIndex,
+    subjectId: contentDocuments.subjectId,
+    subjectLabel: contentDocuments.subjectLabel,
+    documentLabel: contentDocuments.label,
+    analysisJson: contentDocuments.analysisJson,
+    nativeWorkbookVersionId: contentDocuments.nativeWorkbookVersionId
+  }).from(weeklyPlanItems)
+    .innerJoin(contentDocuments, eq(contentDocuments.id, weeklyPlanItems.documentId))
+    .where(and(
+      inArray(weeklyPlanItems.weeklyPlanId, weeklyPlanIds),
+      eq(weeklyPlanItems.includedInPacket, true)
+    ));
+
+  const nativeVersionIds = Array.from(new Set(items.flatMap((item) =>
+    item.nativeWorkbookVersionId ? [item.nativeWorkbookVersionId] : []
+  )));
+  const nativeVersions = nativeVersionIds.length === 0 ? [] : await db.select({
+    id: nativeWorkbookVersions.id,
+    analysisJson: nativeWorkbookVersions.analysisJson
+  }).from(nativeWorkbookVersions)
+    .where(inArray(nativeWorkbookVersions.id, nativeVersionIds));
+  const nativeAnalysisById = new Map(nativeVersions.map((version) => [version.id, version.analysisJson]));
+  const estimatesByDocumentId = new Map<string, Map<string, number>>();
+  for (const item of items) {
+    if (estimatesByDocumentId.has(item.documentId)) continue;
+    const analysis = item.nativeWorkbookVersionId
+      ? nativeAnalysisById.get(item.nativeWorkbookVersionId) ?? item.analysisJson
+      : item.analysisJson;
+    estimatesByDocumentId.set(item.documentId, learningUnitMinuteEstimates(analysis));
+  }
+
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  const itemsByWeekAndDay = new Map<string, typeof items>();
+  for (const item of items) {
+    if (item.dayNumber == null) continue;
+    const key = `${item.weeklyPlanId}:${item.dayNumber}`;
+    const current = itemsByWeekAndDay.get(key) ?? [];
+    current.push(item);
+    itemsByWeekAndDay.set(key, current);
+  }
+
+  const countedLessonKeys = new Set<string>();
+  let estimatedLessonMinutes = 0;
+  for (const entry of entries) {
+    if (entry.entryKind === "manual") continue;
+    let completedItems = entry.weeklyPlanItemId
+      ? [itemById.get(entry.weeklyPlanItemId)].filter((item): item is NonNullable<typeof item> => Boolean(item))
+      : entry.weeklyPlanId && entry.weeklyPlanDayNumber != null
+        ? itemsByWeekAndDay.get(`${entry.weeklyPlanId}:${entry.weeklyPlanDayNumber}`) ?? []
+        : [];
+    if (!entry.weeklyPlanItemId) {
+      const selectedSubjectKeys = new Set((subjectsByEntryId.get(entry.id) ?? []).map((subject) => subject.subjectKey));
+      if (selectedSubjectKeys.size > 0) {
+        completedItems = completedItems.filter((item) => selectedSubjectKeys.has(planSubjectKey({
+          subjectId: item.subjectId,
+          subjectLabel: item.subjectLabel?.trim() || item.documentLabel
+        })));
+      }
+    }
+    for (const item of completedItems) {
+      const key = logicalPlanItemKey(item);
+      if (countedLessonKeys.has(key)) continue;
+      countedLessonKeys.add(key);
+      estimatedLessonMinutes += estimatePlanItemMinutes(
+        item,
+        estimatesByDocumentId.get(item.documentId) ?? new Map()
+      );
+    }
+  }
+  return explicitMinutes + estimatedLessonMinutes;
 }
 
 export async function getStudentAttendance(input: {
@@ -83,6 +178,7 @@ export async function getStudentAttendance(input: {
     current.push(subject);
     subjectsByEntryId.set(subject.attendanceEntryId, current);
   }
+  const estimatedMinutes = await estimatedCompletedLearningMinutes(rows, subjectsByEntryId);
 
   const dailyMap = new Map<string, { count: number; minutes: number }>();
   const subjectMap = new Map<string, { subjectKey: string; subjectLabel: string; days: Set<string>; activities: number }>();
@@ -124,7 +220,7 @@ export async function getStudentAttendance(input: {
     summary: {
       learningDays: dailyMap.size,
       activities: rows.length,
-      minutes: rows.reduce((sum, row) => sum + (row.minutes ?? 0), 0)
+      estimatedMinutes
     },
     days,
     subjects: Array.from(subjectMap.values()).map((subject) => ({

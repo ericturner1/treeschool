@@ -13,6 +13,11 @@ import { db } from "../db";
 import { getManageableStudentProfile } from "./accounts";
 import { requirePremiumFeatureAccess } from "./entitlements";
 import { getStudentGrades } from "./grades";
+import {
+  estimatePlanItemMinutes,
+  learningUnitMinuteEstimates,
+  logicalPlanItemKey,
+} from "./learning-time-estimates";
 import { planSubjectKey } from "./plan-subject-key";
 import {
   buildAttendanceReportPdf,
@@ -95,6 +100,8 @@ type PlanItemRow = {
   dayNumber: number | null;
   label: string;
   sourceUnitId: string | null;
+  firstPageIndex: number;
+  lastPageIndex: number;
   includedInPacket: boolean;
   sortOrder: number;
 };
@@ -104,6 +111,7 @@ function groupAttendanceDays(input: {
   subjectsByEntryId: Map<string, Array<{ subjectKey: string; subjectLabel: string }>>;
   itemsByEntryId: Map<string, PlanItemRow[]>;
   documentsById: Map<string, typeof contentDocuments.$inferSelect>;
+  estimatedMinutesByItemId: Map<string, number>;
 }) {
   const days = new Map<string, {
     date: string;
@@ -112,6 +120,7 @@ function groupAttendanceDays(input: {
     otherActivities: Set<string>;
     minutes: number;
   }>();
+  const countedLessonKeys = new Set<string>();
   for (const entry of input.entries) {
     const day = days.get(entry.attendanceDate) ?? {
       date: entry.attendanceDate,
@@ -130,6 +139,11 @@ function groupAttendanceDays(input: {
         day.lessonsCompleted.add(item.label);
         const document = input.documentsById.get(item.documentId);
         if (document?.subjectLabel) day.subjectLabels.add(document.subjectLabel);
+        const lessonKey = logicalPlanItemKey(item);
+        if (!countedLessonKeys.has(lessonKey)) {
+          countedLessonKeys.add(lessonKey);
+          day.minutes += input.estimatedMinutesByItemId.get(item.id) ?? 0;
+        }
       }
     }
     day.minutes += entry.minutes ?? 0;
@@ -165,6 +179,8 @@ export async function buildStudentAttendanceReport(input: {
       dayNumber: weeklyPlanItems.dayNumber,
       label: weeklyPlanItems.label,
       sourceUnitId: weeklyPlanItems.sourceUnitId,
+      firstPageIndex: weeklyPlanItems.firstPageIndex,
+      lastPageIndex: weeklyPlanItems.lastPageIndex,
       includedInPacket: weeklyPlanItems.includedInPacket,
       sortOrder: weeklyPlanItems.sortOrder,
     }).from(weeklyPlanItems)
@@ -264,6 +280,18 @@ export async function buildStudentAttendanceReport(input: {
     durableByVersionId.set(progress.nativeWorkbookVersionId, current);
   }
 
+  const estimatesByDocumentId = new Map<string, Map<string, number>>();
+  for (const document of documents) {
+    const analysisJson = document.nativeWorkbookVersionId
+      ? nativeVersionById.get(document.nativeWorkbookVersionId)?.analysisJson ?? document.analysisJson
+      : document.analysisJson;
+    estimatesByDocumentId.set(document.id, learningUnitMinuteEstimates(analysisJson));
+  }
+  const estimatedMinutesByItemId = new Map(items.map((item) => [
+    item.id,
+    estimatePlanItemMinutes(item, estimatesByDocumentId.get(item.documentId) ?? new Map()),
+  ]));
+
   const workbooks: AttendanceReportWorkbook[] = documents.map((document) => {
     const analysisJson = document.nativeWorkbookVersionId
       ? nativeVersionById.get(document.nativeWorkbookVersionId)?.analysisJson ?? document.analysisJson
@@ -295,6 +323,7 @@ export async function buildStudentAttendanceReport(input: {
     subjectsByEntryId,
     itemsByEntryId,
     documentsById,
+    estimatedMinutesByItemId,
   });
   const otherActivities = entries.filter((entry) => entry.entryKind === "manual").length;
   const bytes = await buildAttendanceReportPdf({
@@ -309,7 +338,7 @@ export async function buildStudentAttendanceReport(input: {
       learningDays: days.length,
       lessonsCompleted: attendedItemIds.size,
       otherActivities,
-      minutes: entries.reduce((total, entry) => total + (entry.minutes ?? 0), 0),
+      minutes: days.reduce((total, day) => total + day.minutes, 0),
     },
     workbooks,
     days,

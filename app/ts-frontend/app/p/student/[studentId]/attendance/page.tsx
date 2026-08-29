@@ -77,7 +77,7 @@ export default async function AttendancePage(props: Props) {
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Learning days</p><p className="mt-1 text-3xl font-semibold text-ink">{attendance.summary.learningDays}</p></div>
                 <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Activities</p><p className="mt-1 text-3xl font-semibold text-ink">{attendance.summary.activities}</p></div>
-                <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Optional time logged</p><p className="mt-1 text-3xl font-semibold text-ink">{attendance.summary.minutes ? `${Math.floor(attendance.summary.minutes / 60)}h ${attendance.summary.minutes % 60}m` : "—"}</p></div>
+                <div className="rounded-[18px] bg-[#f8f1e4] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-earth">Estimated learning time</p><p className="mt-1 text-3xl font-semibold text-ink">{attendance.summary.estimatedMinutes ? `${Math.floor(attendance.summary.estimatedMinutes / 60)}h ${attendance.summary.estimatedMinutes % 60}m` : "—"}</p><p className="mt-1 text-xs leading-5 text-ink/48">Completed lesson estimates + manually logged time</p></div>
               </div>
               {attendance.selectedYearId ? (
                 <div className="mt-5 flex flex-col gap-4 rounded-[20px] border border-[#cbdcb9] bg-[#f4f8ee] px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
@@ -89,7 +89,7 @@ export default async function AttendancePage(props: Props) {
                   </div>
                   <ReportDownloadButton
                     href={`/api/student-reports/attendance?${new URLSearchParams({ profileId: student.id, yearId: attendance.selectedYearId }).toString()}`}
-                    label="Download attendance PDF"
+                    label="Download Attendance Report"
                     fallbackFilename={`${student.firstName.toLowerCase()}-attendance-report.pdf`}
                   />
                 </div>

@@ -83,6 +83,14 @@ const COLORS = {
   line: rgb(0.86, 0.8, 0.7),
 };
 
+const ATTENDANCE_HEAT_COLORS = [
+  rgb(0.96, 0.95, 0.91),
+  rgb(0.86, 0.92, 0.79),
+  rgb(0.69, 0.81, 0.57),
+  rgb(0.45, 0.62, 0.34),
+  rgb(0.29, 0.43, 0.22),
+] as const;
+
 const PAGE_MARGIN = 38;
 
 function pageSize(value: string): readonly [number, number] {
@@ -325,6 +333,157 @@ async function drawMetricCards(
   writer.cursorY -= cardHeight + 20;
 }
 
+const DAY_MS = 86_400_000;
+
+function parseReportDay(value: string | null) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function addReportDays(date: Date, days: number) {
+  return new Date(date.getTime() + days * DAY_MS);
+}
+
+function reportDayKey(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function attendanceDateRange(data: AttendanceReportPdfData) {
+  const recordedDays = data.days
+    .map((day) => parseReportDay(day.date))
+    .filter((day): day is Date => Boolean(day));
+  const start = parseReportDay(data.dateFrom) ?? recordedDays.at(0) ?? null;
+  const end = parseReportDay(data.dateTo) ?? recordedDays.at(-1) ?? null;
+  if (!start || !end) return null;
+  return start <= end ? { start, end } : { start: end, end: start };
+}
+
+function heatLevel(day: AttendanceReportDay | undefined) {
+  if (!day) return 0;
+  const activityCount = day.lessonsCompleted.length + day.otherActivities.length;
+  if (activityCount >= 4) return 4;
+  return Math.max(1, activityCount);
+}
+
+async function drawAttendanceHeatmap(writer: ReportPdfWriter, data: AttendanceReportPdfData) {
+  const range = attendanceDateRange(data);
+  if (!range) {
+    await writer.text("No learning-year dates are available for the attendance graph.", PAGE_MARGIN, writer.cursorY, 9, writer.font, COLORS.muted, {
+      maxWidth: writer.dimensions[0] - PAGE_MARGIN * 2,
+    });
+    writer.cursorY -= 22;
+    return;
+  }
+
+  await writer.text(
+    "Each square is one day. Darker greens indicate more completed lessons or activities.",
+    PAGE_MARGIN,
+    writer.cursorY,
+    8,
+    writer.font,
+    COLORS.muted,
+    { maxWidth: writer.dimensions[0] - PAGE_MARGIN * 2 },
+  );
+  writer.cursorY -= 18;
+
+  const startOfFirstWeek = addReportDays(range.start, -range.start.getUTCDay());
+  const endOfLastWeek = addReportDays(range.end, 6 - range.end.getUTCDay());
+  const totalWeeks = Math.floor((endOfLastWeek.getTime() - startOfFirstWeek.getTime()) / (DAY_MS * 7)) + 1;
+  const bandCount = Math.max(1, Math.ceil(totalWeeks / 36));
+  const weeksPerBand = Math.ceil(totalWeeks / bandCount);
+  const cellSize = 8.5;
+  const cellGap = 1.8;
+  const cellStep = cellSize + cellGap;
+  const dayLabelWidth = 19;
+  const cellStartX = PAGE_MARGIN + dayLabelWidth;
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const attendanceByDate = new Map(data.days.map((day) => [day.date.slice(0, 10), day]));
+  const bandHeight = 16 + cellStep * 7 + 10;
+
+  for (let bandIndex = 0; bandIndex < bandCount; bandIndex += 1) {
+    await writer.ensureSpace(bandHeight + 8);
+    const firstWeekIndex = bandIndex * weeksPerBand;
+    const weeksInBand = Math.min(weeksPerBand, totalWeeks - firstWeekIndex);
+    const bandTop = writer.cursorY;
+    const monthMarkers: Array<{ label: string; weekIndex: number; startsMonth: boolean }> = [];
+    let lastMonthKey = "";
+
+    for (let weekIndex = 0; weekIndex < weeksInBand; weekIndex += 1) {
+      const absoluteWeekIndex = firstWeekIndex + weekIndex;
+      const weekStart = addReportDays(startOfFirstWeek, absoluteWeekIndex * 7);
+      for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+        const day = addReportDays(weekStart, dayIndex);
+        if (day < range.start || day > range.end) continue;
+        const monthKey = `${day.getUTCFullYear()}-${day.getUTCMonth()}`;
+        if (monthKey !== lastMonthKey) {
+          monthMarkers.push({
+            label: monthNames[day.getUTCMonth()]!,
+            weekIndex,
+            startsMonth: day.getUTCDate() === 1,
+          });
+          lastMonthKey = monthKey;
+        }
+      }
+    }
+
+    for (const [markerIndex, marker] of monthMarkers.entries()) {
+      const next = monthMarkers[markerIndex + 1];
+      if (!marker.startsMonth && next && next.weekIndex - marker.weekIndex < 3) continue;
+      await writer.text(
+        marker.label,
+        cellStartX + marker.weekIndex * cellStep,
+        bandTop - 7,
+        7,
+        writer.bold,
+        COLORS.earth,
+        { bold: true, maxWidth: 24 },
+      );
+    }
+
+    const weekdayLabels = new Map([[1, "M"], [3, "W"], [5, "F"]]);
+    for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+      const cellY = bandTop - 16 - cellSize - dayIndex * cellStep;
+      const weekdayLabel = weekdayLabels.get(dayIndex);
+      if (weekdayLabel) {
+        await writer.text(weekdayLabel, PAGE_MARGIN + 5, cellY + 1, 6.5, writer.font, COLORS.muted, { maxWidth: 10 });
+      }
+      for (let weekIndex = 0; weekIndex < weeksInBand; weekIndex += 1) {
+        const absoluteWeekIndex = firstWeekIndex + weekIndex;
+        const day = addReportDays(startOfFirstWeek, absoluteWeekIndex * 7 + dayIndex);
+        const withinRange = day >= range.start && day <= range.end;
+        const level = withinRange ? heatLevel(attendanceByDate.get(reportDayKey(day))) : 0;
+        writer.page.drawRectangle({
+          x: cellStartX + weekIndex * cellStep,
+          y: cellY,
+          width: cellSize,
+          height: cellSize,
+          color: withinRange ? ATTENDANCE_HEAT_COLORS[level]! : COLORS.cream,
+          borderColor: withinRange ? COLORS.line : COLORS.cream,
+          borderWidth: 0.35,
+        });
+      }
+    }
+    writer.cursorY -= bandHeight;
+  }
+
+  const legendX = writer.dimensions[0] - PAGE_MARGIN - 100;
+  await writer.text("Less", legendX - 25, writer.cursorY + 2, 6.5, writer.font, COLORS.muted, { maxWidth: 22 });
+  for (let level = 0; level < ATTENDANCE_HEAT_COLORS.length; level += 1) {
+    writer.page.drawRectangle({
+      x: legendX + level * 11,
+      y: writer.cursorY,
+      width: 8,
+      height: 8,
+      color: ATTENDANCE_HEAT_COLORS[level]!,
+      borderColor: COLORS.line,
+      borderWidth: 0.3,
+    });
+  }
+  await writer.text("More", legendX + 59, writer.cursorY + 2, 6.5, writer.font, COLORS.muted, { maxWidth: 28 });
+  writer.cursorY -= 16;
+}
+
 export async function buildAttendanceReportPdf(data: AttendanceReportPdfData) {
   const writer = await ReportPdfWriter.create({
     title: "Annual attendance and progress report",
@@ -345,8 +504,21 @@ export async function buildAttendanceReportPdf(data: AttendanceReportPdfData) {
     { label: "Learning days", value: String(data.summary.learningDays) },
     { label: "Lessons completed", value: String(data.summary.lessonsCompleted) },
     { label: "Other activities", value: String(data.summary.otherActivities) },
-    { label: "Time logged", value: formatDuration(data.summary.minutes) },
+    { label: "Estimated learning time", value: formatDuration(data.summary.minutes) },
   ]);
+  await writer.text(
+    "Learning time combines completed lesson estimates with manually logged activity time.",
+    PAGE_MARGIN,
+    writer.cursorY + 9,
+    7.5,
+    writer.font,
+    COLORS.muted,
+    { maxWidth: writer.dimensions[0] - PAGE_MARGIN * 2 },
+  );
+  writer.cursorY -= 7;
+
+  await writer.sectionHeading("Attendance activity");
+  await drawAttendanceHeatmap(writer, data);
 
   await writer.sectionHeading("Course and workbook progress");
   if (data.workbooks.length === 0) {

@@ -9,7 +9,7 @@ export type StudentAttendancePayload = {
   selectedYearId: string | null;
   dateFrom: string;
   dateTo: string;
-  summary: { learningDays: number; activities: number; minutes: number };
+  summary: { learningDays: number; activities: number; estimatedMinutes: number };
   days: Array<{ date: string; count: number; minutes: number }>;
   subjects: Array<{ subjectKey: string; subjectLabel: string; learningDays: number; activities: number }>;
   entries: Array<{
