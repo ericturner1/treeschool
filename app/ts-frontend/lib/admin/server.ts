@@ -32,6 +32,32 @@ export type AdminDashboardMetrics = {
   funnelConversion: { visitors: number; customers: number; rate: number | null };
 };
 
+export type AdminBackupExecution = {
+  id: string;
+  status: "succeeded" | "failed" | "running" | "unknown";
+  createdAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  durationSeconds: number | null;
+  retryCount: number;
+};
+
+export type AdminBackupStatus = {
+  configured: boolean;
+  generatedAt: string;
+  schedule: {
+    description: string;
+    timeZone: string;
+  };
+  retention: {
+    nightlyDays: number;
+    monthlyDays: number;
+  };
+  recoveryMode: "manual";
+  latestSuccessfulAt: string | null;
+  executions: AdminBackupExecution[];
+};
+
 export async function getAdminDashboardMetrics(userId: string) {
   const query = new URLSearchParams({ userId });
   const response = await backendFetch(
@@ -43,4 +69,36 @@ export async function getAdminDashboardMetrics(userId: string) {
     throw new Error(payload.error || "Could not load admin metrics.");
   }
   return response.json() as Promise<AdminDashboardMetrics>;
+}
+
+export async function getAdminBackupStatus(userId: string) {
+  const query = new URLSearchParams({ userId });
+  const response = await backendFetch(
+    `${getBackendUrl()}/internal/admin/backups?${query}`,
+    { cache: "no-store" },
+  );
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(payload.error || "Could not load backup status.");
+  }
+  return response.json() as Promise<AdminBackupStatus>;
+}
+
+export async function runAdminBackupNow(input: { userId: string; confirmation: string }) {
+  const response = await backendFetch(
+    `${getBackendUrl()}/internal/admin/backups/run`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => ({})) as {
+    started?: boolean;
+    reason?: "already_running";
+    error?: string;
+  };
+  if (!response.ok) throw new Error(payload.error || "Could not start the backup.");
+  return payload;
 }

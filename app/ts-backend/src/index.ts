@@ -210,6 +210,7 @@ import {
   saveSalesFaq
 } from "./services/sales-faqs";
 import { getAdminDashboardMetrics } from "./services/admin-dashboard";
+import { getAdminBackupStatus, runAdminBackupNow } from "./services/admin-backups";
 import {
   completeAdminWorkbookSoundUpload,
   completeAdminWorkbookImageUpload,
@@ -365,6 +366,26 @@ const server = Bun.serve({
         return Response.json(await getAdminDashboardMetrics(userId));
       } catch (error) {
         return Response.json({ error: publicErrorMessage(error, "Could not load admin metrics.") }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/admin/backups" && request.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId");
+        if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
+        return Response.json(await getAdminBackupStatus(userId));
+      } catch (error) {
+        return Response.json({ error: publicErrorMessage(error, "Could not load backup status.") }, { status: 400 });
+      }
+    }
+
+    if (url.pathname === "/internal/admin/backups/run" && request.method === "POST") {
+      try {
+        return Response.json(await runAdminBackupNow(
+          await request.json() as Parameters<typeof runAdminBackupNow>[0],
+        ));
+      } catch (error) {
+        return Response.json({ error: publicErrorMessage(error, "Could not start the backup.") }, { status: 400 });
       }
     }
 

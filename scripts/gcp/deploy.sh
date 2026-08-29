@@ -7,6 +7,7 @@ REPOSITORY="${GCP_ARTIFACT_REPOSITORY:-treeschool}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/backend:$(git rev-parse --short HEAD 2>/dev/null || echo local)-$(date +%Y%m%d%H%M%S)"
 API_SERVICE="${GCP_API_SERVICE:-treeschool-api}"
 PROCESSOR_JOB="${GCP_PROCESSOR_JOB_NAME:-treeschool-processor}"
+BACKUP_JOB="${GCP_BACKUP_JOB:-treeschool-database-backup}"
 BUCKET="${GCS_BUCKET_NAME:-treeschool-private-assets}"
 API_MEMORY="${GCP_API_MEMORY:-1Gi}"
 API_CONCURRENCY="${GCP_API_CONCURRENCY:-1}"
@@ -61,7 +62,7 @@ gcloud run deploy "${API_SERVICE}" \
   --max-instances 3 \
   --concurrency "${API_CONCURRENCY}" \
   --timeout 300 \
-  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_PROCESSOR_JOB_NAME=${PROCESSOR_JOB},GCS_BUCKET_NAME=${BUCKET},PUBLIC_APP_URL=https://www.treehomeschool.com,META_PIXEL_ID=930584153407646,META_GRAPH_API_VERSION=v25.0,SMTP_HOST=mail.privateemail.com,SMTP_PORT=465,SMTP_SECURE=true,SMTP_USER=support@treehomeschool.com,SMTP_FROM=Treeschool Support <support@treehomeschool.com>,SALES_NOTIFICATION_EMAIL=ericsturner1@gmail.com" \
+  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_PROCESSOR_JOB_NAME=${PROCESSOR_JOB},GCP_BACKUP_JOB_NAME=${BACKUP_JOB},GCS_BUCKET_NAME=${BUCKET},PUBLIC_APP_URL=https://www.treehomeschool.com,META_PIXEL_ID=930584153407646,META_GRAPH_API_VERSION=v25.0,SMTP_HOST=mail.privateemail.com,SMTP_PORT=465,SMTP_SECURE=true,SMTP_USER=support@treehomeschool.com,SMTP_FROM=Treeschool Support <support@treehomeschool.com>,SALES_NOTIFICATION_EMAIL=ericsturner1@gmail.com" \
   --set-secrets "${API_SECRETS}" \
   --quiet
 
@@ -70,6 +71,19 @@ gcloud run jobs add-iam-policy-binding "${PROCESSOR_JOB}" \
   --region "${REGION}" \
   --member "serviceAccount:treeschool-api@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role roles/run.invoker >/dev/null
+
+if gcloud run jobs describe "${BACKUP_JOB}" --project "${PROJECT_ID}" --region "${REGION}" >/dev/null 2>&1; then
+  gcloud run jobs add-iam-policy-binding "${BACKUP_JOB}" \
+    --project "${PROJECT_ID}" \
+    --region "${REGION}" \
+    --member "serviceAccount:treeschool-api@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role roles/run.invoker >/dev/null
+  gcloud run jobs add-iam-policy-binding "${BACKUP_JOB}" \
+    --project "${PROJECT_ID}" \
+    --region "${REGION}" \
+    --member "serviceAccount:treeschool-api@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role roles/run.viewer >/dev/null
+fi
 
 SCHEDULER_JOB="${GCP_SCHEDULER_JOB:-treeschool-processor-recovery}"
 SCHEDULER_SCHEDULE="${GCP_SCHEDULER_SCHEDULE:-*/5 * * * *}"

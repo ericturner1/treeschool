@@ -12,7 +12,8 @@ const ADMIN_NAVIGATION = [
   { href: "/admin/blog", label: "Blog", icon: "blog" },
   { href: "/admin/faqs", label: "Sales FAQs", icon: "faq" },
   { href: "/admin/workbooks", label: "Workbooks", icon: "workbooks" },
-  { href: "/admin/workbook-studio", label: "Workbook Studio", icon: "studio" }
+  { href: "/admin/workbook-studio", label: "Workbook Studio", icon: "studio" },
+  { href: "/admin/backups", label: "Backups", icon: "backups" }
 ] as const;
 
 type AdminIconName = (typeof ADMIN_NAVIGATION)[number]["icon"] | "parent" | "collapse" | "expand";
@@ -38,6 +39,7 @@ function AdminIcon({ name, className = "h-5 w-5" }: { name: AdminIconName; class
   if (name === "faq") return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M9.6 9a2.5 2.5 0 1 1 3.4 2.34c-.65.3-1 .85-1 1.66M12 17h.01" /></svg>;
   if (name === "workbooks") return <svg {...common}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5v14Z" /><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5" /></svg>;
   if (name === "studio") return <svg {...common}><path d="m12 3 1.35 3.65L17 8l-3.65 1.35L12 13l-1.35-3.65L7 8l3.65-1.35L12 3ZM5.5 13l.8 2.2 2.2.8-2.2.8L5.5 19l-.8-2.2-2.2-.8 2.2-.8.8-2.2ZM18.5 13l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z" /></svg>;
+  if (name === "backups") return <svg {...common}><ellipse cx="12" cy="5" rx="7.5" ry="3" /><path d="M4.5 5v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V5M4.5 11v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3v-6" /><path d="M16.5 8.5h.01M16.5 14.5h.01" /></svg>;
   if (name === "parent") return <svg {...common}><path d="m3 11 9-8 9 8" /><path d="M5 10v10h14V10M9 20v-6h6v6" /></svg>;
   if (name === "collapse") return <svg {...common}><path d="m13 17-5-5 5-5M19 17l-5-5 5-5" /></svg>;
   return <svg {...common}><path d="m11 7 5 5-5 5M5 7l5 5-5 5" /></svg>;

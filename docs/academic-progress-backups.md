@@ -28,6 +28,10 @@ age private key is stored only in the backup project as
 `treeschool-backup-age-private-key`; the production job receives only its
 public recipient.
 
+The production API identity has narrowly scoped Cloud Run permissions to view
+backup job executions and request a run. It cannot read, replace, delete, or
+decrypt backup objects.
+
 Nightly files begin in Standard storage. After seven days, lifecycle rules move
 them to Coldline. They are deleted after 100 days, which is longer than
 Coldline's 90-day minimum after transition. A second Archive copy is written on
@@ -60,6 +64,23 @@ by default and passes credentials to PostgreSQL through private environment
 fields, so command errors do not print the connection URL.
 Only the dedicated backup service account can access that secret; the API,
 frontend, and processor identities cannot.
+
+## Admin visibility
+
+Administrators can open **Admin → Backups** to see the latest successful
+archive, the automatic schedule, retention periods, and recent job results.
+The **Run backup now** action is intentionally a little frictiony: it opens a
+confirmation dialog and requires the exact phrase `RUN BACKUP`. It also refuses
+to enqueue a duplicate while a backup is already running.
+
+The admin page never exposes archive paths, database credentials, decrypted
+data, or encryption keys. It has no restore action. A successful row means the
+job completed its encrypted upload and archive-size check; it does not replace
+the isolated restore validation described below.
+
+Any future in-app deletion of backup archives must require a separate,
+destructive-action design review. Do not add archive deletion to the same API
+identity used by the admin status page.
 
 Supabase's free tier does not let the project `postgres` user create a custom
 login with `BYPASSRLS`. A complete dump (including rows protected by RLS and

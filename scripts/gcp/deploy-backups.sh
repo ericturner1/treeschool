@@ -13,6 +13,7 @@ BACKUP_SCHEDULE="${GCP_BACKUP_SCHEDULE:-30 2 * * *}"
 BACKUP_TIME_ZONE="${GCP_BACKUP_TIME_ZONE:-Asia/Tokyo}"
 BACKUP_SERVICE_ACCOUNT="treeschool-backup@${PROJECT_ID}.iam.gserviceaccount.com"
 SCHEDULER_SERVICE_ACCOUNT="treeschool-scheduler@${PROJECT_ID}.iam.gserviceaccount.com"
+API_SERVICE_ACCOUNT="treeschool-api@${PROJECT_ID}.iam.gserviceaccount.com"
 GIT_REVISION="$(git rev-parse --short HEAD 2>/dev/null || echo local)"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/backup:${GIT_REVISION}-$(date +%Y%m%d%H%M%S)"
 
@@ -70,6 +71,18 @@ gcloud run jobs add-iam-policy-binding "${BACKUP_JOB}" \
   --region="${REGION}" \
   --member="serviceAccount:${SCHEDULER_SERVICE_ACCOUNT}" \
   --role=roles/run.invoker >/dev/null
+
+gcloud run jobs add-iam-policy-binding "${BACKUP_JOB}" \
+  --project="${PROJECT_ID}" \
+  --region="${REGION}" \
+  --member="serviceAccount:${API_SERVICE_ACCOUNT}" \
+  --role=roles/run.invoker >/dev/null
+
+gcloud run jobs add-iam-policy-binding "${BACKUP_JOB}" \
+  --project="${PROJECT_ID}" \
+  --region="${REGION}" \
+  --member="serviceAccount:${API_SERVICE_ACCOUNT}" \
+  --role=roles/run.viewer >/dev/null
 
 echo "Deployed ${BACKUP_JOB} using ${IMAGE}."
 echo "Nightly schedule: ${BACKUP_SCHEDULE} (${BACKUP_TIME_ZONE})."
