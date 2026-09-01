@@ -7858,6 +7858,7 @@ export async function getPaperPlan(parentUserId: string, profileId: string) {
       return {
         ...week,
         status: attendanceStatus,
+        downloaded: downloadedWeekIds.has(week.id),
         preservedForReplan:
           ["in_progress", "completed"].includes(week.status) || downloadedWeekIds.has(week.id),
         pdfQualityStatus: pdfAsset?.qualityStatus ?? "unverified",
