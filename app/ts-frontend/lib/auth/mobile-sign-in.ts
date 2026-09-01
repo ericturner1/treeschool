@@ -1,6 +1,8 @@
 import { canSignInWithParentEmail } from "../accounts/server";
-import { getPublicAppOrigin } from "../security/public-origin";
 import { sendMagicLink } from "./server";
+
+export const MOBILE_APP_AUTH_REDIRECT_URL =
+  "com.treehomeschool.app://login-callback";
 
 type MobileSignInDependencies = {
   canSignIn: (email: string) => Promise<boolean>;
@@ -9,13 +11,11 @@ type MobileSignInDependencies = {
     redirectTo: string,
     options: { createUser: boolean },
   ) => Promise<{ ok: boolean; error?: string }>;
-  publicOrigin: (requestUrl?: string | URL) => string;
 };
 
 const defaultDependencies: MobileSignInDependencies = {
   canSignIn: canSignInWithParentEmail,
   sendCode: sendMagicLink,
-  publicOrigin: getPublicAppOrigin,
 };
 
 export function normalizeMobileSignInEmail(value: unknown) {
@@ -25,17 +25,18 @@ export function normalizeMobileSignInEmail(value: unknown) {
 }
 
 export async function requestMobileSignInCode(
-  input: { email: string; requestUrl: string },
+  input: { email: string },
   dependencies: MobileSignInDependencies = defaultDependencies,
 ) {
   if (!(await dependencies.canSignIn(input.email))) {
     return { ok: false as const, status: 404, error: "No Treeschool parent account was found for this email." };
   }
 
-  const redirectTo = `${dependencies.publicOrigin(input.requestUrl)}/auth/confirm?next=${encodeURIComponent("/p/dashboard")}`;
-  const result = await dependencies.sendCode(input.email, redirectTo, {
-    createUser: false,
-  });
+  const result = await dependencies.sendCode(
+    input.email,
+    MOBILE_APP_AUTH_REDIRECT_URL,
+    { createUser: false },
+  );
 
   return result.ok
     ? { ok: true as const, status: 200 }

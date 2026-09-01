@@ -162,7 +162,8 @@ site_url = "https://dev.treehomeschool.com"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = [
   "http://localhost:3100/auth/confirm**",
-  "https://dev.treehomeschool.com/auth/confirm**"
+  "https://dev.treehomeschool.com/auth/confirm**",
+  "com.treehomeschool.app://login-callback"
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600

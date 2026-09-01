@@ -20,7 +20,6 @@ export async function POST(request: Request) {
   try {
     const result = await requestMobileSignInCode({
       email,
-      requestUrl: request.url,
     });
     return result.ok
       ? NextResponse.json({ sent: true })

@@ -12,16 +12,14 @@ describe("mobile email sign-in", () => {
     expect(normalizeMobileSignInEmail("not-an-email")).toBeNull();
   });
 
-  test("uses the website mail path without creating users", async () => {
+  test("uses the mobile deep link without creating users", async () => {
     const calls: unknown[] = [];
     const result = await requestMobileSignInCode(
       {
         email: "parent@example.com",
-        requestUrl: "https://www.treehomeschool.com/api/mobile/auth/code",
       },
       {
         canSignIn: async () => true,
-        publicOrigin: () => "https://www.treehomeschool.com",
         sendCode: async (...args) => {
           calls.push(args);
           return { ok: true };
@@ -33,7 +31,7 @@ describe("mobile email sign-in", () => {
     expect(calls).toEqual([
       [
         "parent@example.com",
-        "https://www.treehomeschool.com/auth/confirm?next=%2Fp%2Fdashboard",
+        "com.treehomeschool.app://login-callback",
         { createUser: false },
       ],
     ]);
@@ -43,11 +41,9 @@ describe("mobile email sign-in", () => {
     const result = await requestMobileSignInCode(
       {
         email: "missing@example.com",
-        requestUrl: "https://www.treehomeschool.com/api/mobile/auth/code",
       },
       {
         canSignIn: async () => false,
-        publicOrigin: () => "https://www.treehomeschool.com",
         sendCode: async () => ({ ok: true }),
       },
     );
