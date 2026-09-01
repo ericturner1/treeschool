@@ -58,11 +58,17 @@ async function estimatedCompletedLearningMinutes(
   entries: Array<typeof attendanceEntries.$inferSelect>,
   subjectsByEntryId: Map<string, Array<typeof attendanceEntrySubjects.$inferSelect>>
 ) {
-  const explicitMinutes = entries.reduce((total, entry) => total + (entry.minutes ?? 0), 0);
+  const byEntryId = new Map<string, number>();
+  let totalMinutes = 0;
+  for (const entry of entries) {
+    if (entry.minutes == null) continue;
+    byEntryId.set(entry.id, entry.minutes);
+    totalMinutes += entry.minutes;
+  }
   const weeklyPlanIds = Array.from(new Set(entries.flatMap((entry) =>
     entry.weeklyPlanId ? [entry.weeklyPlanId] : []
   )));
-  if (weeklyPlanIds.length === 0) return explicitMinutes;
+  if (weeklyPlanIds.length === 0) return { totalMinutes, byEntryId };
 
   const items = await db.select({
     id: weeklyPlanItems.id,
@@ -113,7 +119,6 @@ async function estimatedCompletedLearningMinutes(
   }
 
   const countedLessonKeys = new Set<string>();
-  let estimatedLessonMinutes = 0;
   for (const entry of entries) {
     if (entry.entryKind === "manual") continue;
     let completedItems = entry.weeklyPlanItemId
@@ -134,13 +139,15 @@ async function estimatedCompletedLearningMinutes(
       const key = logicalPlanItemKey(item);
       if (countedLessonKeys.has(key)) continue;
       countedLessonKeys.add(key);
-      estimatedLessonMinutes += estimatePlanItemMinutes(
+      const itemMinutes = estimatePlanItemMinutes(
         item,
         estimatesByDocumentId.get(item.documentId) ?? new Map()
       );
+      totalMinutes += itemMinutes;
+      byEntryId.set(entry.id, (byEntryId.get(entry.id) ?? 0) + itemMinutes);
     }
   }
-  return explicitMinutes + estimatedLessonMinutes;
+  return { totalMinutes, byEntryId };
 }
 
 export async function getStudentAttendance(input: {
@@ -178,7 +185,7 @@ export async function getStudentAttendance(input: {
     current.push(subject);
     subjectsByEntryId.set(subject.attendanceEntryId, current);
   }
-  const estimatedMinutes = await estimatedCompletedLearningMinutes(rows, subjectsByEntryId);
+  const learningTime = await estimatedCompletedLearningMinutes(rows, subjectsByEntryId);
 
   const dailyMap = new Map<string, { count: number; minutes: number }>();
   const subjectMap = new Map<string, { subjectKey: string; subjectLabel: string; days: Set<string>; activities: number }>();
@@ -220,7 +227,7 @@ export async function getStudentAttendance(input: {
     summary: {
       learningDays: dailyMap.size,
       activities: rows.length,
-      estimatedMinutes
+      estimatedMinutes: learningTime.totalMinutes
     },
     days,
     subjects: Array.from(subjectMap.values()).map((subject) => ({
@@ -240,6 +247,7 @@ export async function getStudentAttendance(input: {
       title: row.title,
       notes: row.notes,
       minutes: row.minutes,
+      estimatedMinutes: learningTime.byEntryId.get(row.id) ?? null,
       extraCreditPoints: row.extraCreditPoints
     }))
   };
