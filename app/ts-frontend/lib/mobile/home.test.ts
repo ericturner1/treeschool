@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildMobileHomePayload } from "./home";
+import { buildMobileHomePayload, mobileSchoolDayStatus } from "./home";
 
 describe("mobile home payload", () => {
   test("returns students and the first unfinished week with download state", () => {
@@ -26,6 +26,25 @@ describe("mobile home payload", () => {
         },
       ],
       selectedProfileId: "student-1",
+      now: new Date("2026-09-02T12:00:00.000Z"),
+      calendar: {
+        timeZone: "UTC",
+        recurringDaysOff: [0, 6],
+        holidays: [],
+        activityDates: [],
+        streak: {
+          mode: "daily",
+          timeZone: "UTC",
+          currentCount: 4,
+          longestCount: 6,
+          lastActiveAt: "2026-09-01",
+          currentPeriodLabel: "2026-09-02",
+          currentPeriodPaused: false,
+          currentPeriodCompleted: false,
+          pausedWeekdays: [0, 6],
+          pausedWeeks: [],
+        },
+      },
       plan: {
         permissions: {
           accountRole: "OWNER",
@@ -102,12 +121,54 @@ describe("mobile home payload", () => {
     expect(payload).toEqual({
       students: [{ id: "student-1", firstName: "Maya" }],
       selectedProfileId: "student-1",
+      schoolDay: {
+        isSchoolDay: true,
+        dayOffReason: null,
+      },
+      streak: {
+        mode: "daily",
+        currentCount: 4,
+        longestCount: 6,
+        currentPeriodPaused: false,
+        currentPeriodCompleted: false,
+        showWarning: true,
+      },
       nextWeek: {
         id: "week-2",
         weekNumber: 2,
         title: "Week 2",
         downloaded: true,
       },
+    });
+  });
+
+  test("recognizes a calendar exception as a day off", () => {
+    expect(mobileSchoolDayStatus({
+      timeZone: "America/New_York",
+      recurringDaysOff: [0, 6],
+      holidays: [{
+        id: "break-1",
+        label: "Autumn break",
+        exceptionKind: "school_break",
+        startDate: "2026-09-02",
+        endDate: "2026-09-03",
+      }],
+      activityDates: [],
+      streak: {
+        mode: "daily",
+        timeZone: "America/New_York",
+        currentCount: 4,
+        longestCount: 6,
+        lastActiveAt: "2026-09-01",
+        currentPeriodLabel: "2026-09-02",
+        currentPeriodPaused: true,
+        currentPeriodCompleted: false,
+        pausedWeekdays: [0, 6],
+        pausedWeeks: [],
+      },
+    }, new Date("2026-09-02T16:00:00.000Z"))).toEqual({
+      isSchoolDay: false,
+      dayOffReason: "Autumn break",
     });
   });
 });

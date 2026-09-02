@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { listHouseholdProfiles } from "../../../../lib/accounts/server";
+import { getStudentSchoolCalendar } from "../../../../lib/attendance/server";
 import { getRequestUser } from "../../../../lib/auth/request-user";
 import { buildMobileHomePayload } from "../../../../lib/mobile/home";
 import { getPaperPlan } from "../../../../lib/paper-plans/server";
@@ -27,15 +28,25 @@ export async function GET(request: Request) {
       );
     }
 
-    const plan = await getPaperPlan({
-      parentUserId: currentUser.id,
-      profileId: selected.id,
-    });
+    const calendarDate = new Date().toISOString().slice(0, 10);
+    const [plan, calendar] = await Promise.all([
+      getPaperPlan({
+        parentUserId: currentUser.id,
+        profileId: selected.id,
+      }),
+      getStudentSchoolCalendar({
+        parentUserId: currentUser.id,
+        profileId: selected.id,
+        dateFrom: calendarDate,
+        dateTo: calendarDate,
+      }),
+    ]);
     return NextResponse.json(
       buildMobileHomePayload({
         students,
         selectedProfileId: selected.id,
         plan,
+        calendar,
       }),
     );
   } catch (error) {
