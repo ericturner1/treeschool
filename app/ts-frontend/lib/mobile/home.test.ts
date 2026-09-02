@@ -131,6 +131,7 @@ describe("mobile home payload", () => {
       students: [{
         id: "student-1",
         firstName: "Maya",
+        avatarUrl: null,
         gradeLevel: 3,
         currentPoints: 12,
         pointSingularName: "point",

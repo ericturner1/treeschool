@@ -60,6 +60,7 @@ export function buildMobileHomePayload(input: {
     students: input.students.map((student) => ({
       id: student.id,
       firstName: student.firstName,
+      avatarUrl: student.avatarUrl,
       gradeLevel: student.gradeLevel,
       currentPoints: student.id === input.selectedProfileId
         ? input.points.summary.totalBalance
