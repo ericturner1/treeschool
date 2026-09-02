@@ -279,6 +279,45 @@ export const profiles = pgTable("profiles", {
   uiTheme: uiThemeEnum("ui_theme").notNull().default("playful")
 });
 
+export const mobilePushDevices = pgTable(
+  "mobile_push_devices",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    platform: text("platform").notNull().default("ios"),
+    environment: text("environment").notNull().default("production"),
+    bundleId: text("bundle_id").notNull().default("com.treehomeschool.app"),
+    disabledAt: timestamp("disabled_at", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+  },
+  (table) => ({
+    tokenEnvironmentUnique: unique("mobile_push_devices_token_environment_unique").on(
+      table.token,
+      table.environment,
+      table.bundleId
+    ),
+    accountEnabledIndex: index("mobile_push_devices_account_enabled_idx").on(
+      table.accountId,
+      table.disabledAt
+    ),
+    userIndex: index("mobile_push_devices_user_idx").on(table.userId)
+  })
+);
+
 export const studentProfileCheckouts = pgTable(
   "student_profile_checkouts",
   {

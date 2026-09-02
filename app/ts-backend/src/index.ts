@@ -133,6 +133,10 @@ import {
   updateStudentCalendarSchedule
 } from "./services/school-calendar";
 import {
+  registerMobilePushDevice,
+  unregisterMobilePushDevice
+} from "./services/mobile-push-notifications";
+import {
   awardStudentPoints,
   completeStudentPointIconUpload,
   depositStudentPointsToBank,
@@ -3580,6 +3584,62 @@ const server = Bun.serve({
       } catch (error) {
         return Response.json(
           { error: publicErrorMessage(error, "Failed to remove the calendar entry.") },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/mobile/push-devices" && request.method === "POST") {
+      const body = (await request.json()) as {
+        userId?: string;
+        token?: string;
+        environment?: string;
+        bundleId?: string;
+      };
+      if (!body.userId || !body.token || !body.environment) {
+        return Response.json(
+          { error: "userId, token, and environment are required." },
+          { status: 400 }
+        );
+      }
+      try {
+        return Response.json(await registerMobilePushDevice({
+          userId: body.userId,
+          token: body.token,
+          environment: body.environment,
+          bundleId: body.bundleId
+        }), { status: 201 });
+      } catch (error) {
+        return Response.json(
+          { error: publicErrorMessage(error, "Failed to register this phone for notifications.") },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/mobile/push-devices" && request.method === "DELETE") {
+      const body = (await request.json()) as {
+        userId?: string;
+        token?: string;
+        environment?: string;
+        bundleId?: string;
+      };
+      if (!body.userId || !body.token || !body.environment) {
+        return Response.json(
+          { error: "userId, token, and environment are required." },
+          { status: 400 }
+        );
+      }
+      try {
+        return Response.json(await unregisterMobilePushDevice({
+          userId: body.userId,
+          token: body.token,
+          environment: body.environment,
+          bundleId: body.bundleId
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: publicErrorMessage(error, "Failed to unregister this phone from notifications.") },
           { status: 400 }
         );
       }

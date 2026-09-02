@@ -54,7 +54,11 @@ const envSchema = z.object({
   SMTP_USER: z.string().min(1).optional(),
   SMTP_PASSWORD: z.string().min(1).optional(),
   SMTP_FROM: z.string().min(1).optional(),
-  SALES_NOTIFICATION_EMAIL: z.string().email().optional()
+  SALES_NOTIFICATION_EMAIL: z.string().email().optional(),
+  APNS_KEY_ID: z.string().min(1).optional(),
+  APNS_TEAM_ID: z.string().min(1).optional(),
+  APNS_PRIVATE_KEY_B64: z.string().min(1).optional(),
+  APNS_BUNDLE_ID: z.string().min(1).default("com.treehomeschool.app")
 });
 
 export const env = envSchema.parse({
@@ -102,7 +106,11 @@ export const env = envSchema.parse({
   SMTP_USER: process.env.SMTP_USER,
   SMTP_PASSWORD: process.env.SMTP_PASSWORD,
   SMTP_FROM: process.env.SMTP_FROM,
-  SALES_NOTIFICATION_EMAIL: process.env.SALES_NOTIFICATION_EMAIL
+  SALES_NOTIFICATION_EMAIL: process.env.SALES_NOTIFICATION_EMAIL,
+  APNS_KEY_ID: process.env.APNS_KEY_ID,
+  APNS_TEAM_ID: process.env.APNS_TEAM_ID,
+  APNS_PRIVATE_KEY_B64: process.env.APNS_PRIVATE_KEY_B64,
+  APNS_BUNDLE_ID: process.env.APNS_BUNDLE_ID
 });
 
 export const client = postgres(env.DATABASE_URL, {

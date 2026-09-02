@@ -84,6 +84,7 @@ export {
   localizedContent,
   masteryStatusEnum,
   modelUsageEvents,
+  mobilePushDevices,
   nativeWorkbookBundleItems,
   nativeWorkbookBundles,
   nativeWorkbookDownloadLinks,

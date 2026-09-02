@@ -31,6 +31,7 @@ import {
   type ManualAttendanceFields
 } from "./manual-attendance";
 import { planSubjectKey } from "./plan-subject-key";
+import { notifyPlanCompletion } from "./mobile-push-notifications";
 import {
   estimatePlanItemMinutes,
   learningUnitMinuteEstimates,
@@ -276,7 +277,7 @@ async function synchronizeWeekStatusFromAttendance(weeklyPlanId: string) {
     subjects.add(planSubjectKey({ subjectId: row.subjectId, subjectLabel: label }));
     scheduledSubjectsByDay.set(row.dayNumber, subjects);
   }
-  if (scheduledSubjectsByDay.size === 0) return;
+  if (scheduledSubjectsByDay.size === 0) return "planned";
   const attendanceRows = await db.select({
     id: attendanceEntries.id,
     dayNumber: attendanceEntries.weeklyPlanDayNumber
@@ -324,6 +325,7 @@ async function synchronizeWeekStatusFromAttendance(weeklyPlanId: string) {
     completedAt: status === "completed" ? new Date() : null,
     updatedAt: new Date()
   }).where(eq(weeklyPlans.id, weeklyPlanId));
+  return status;
 }
 
 export async function recordPlanDayAttendance(input: {
@@ -340,7 +342,10 @@ export async function recordPlanDayAttendance(input: {
   }
   const rows = await db.select({
     itemId: weeklyPlanItems.id,
+    itemLabel: weeklyPlanItems.label,
     weekNumber: weeklyPlans.weekNumber,
+    weekTitle: weeklyPlans.title,
+    weekStatus: weeklyPlans.status,
     learningYearId: learningYears.id,
     profileId: learningYears.profileId,
     subjectId: contentDocuments.subjectId,
@@ -368,6 +373,21 @@ export async function recordPlanDayAttendance(input: {
   const requestedKeys = Array.from(new Set(input.subjectKeys ?? [])).filter((key) => availableSubjects.has(key));
   const selectedKeys = input.subjectKeys == null ? Array.from(availableSubjects.keys()) : requestedKeys;
   if (selectedKeys.length === 0) throw new Error("Select at least one subject taught that day.");
+  const existingSubjects = await db.select({
+    subjectKey: attendanceEntrySubjects.subjectKey
+  }).from(attendanceEntrySubjects)
+    .innerJoin(
+      attendanceEntries,
+      eq(attendanceEntries.id, attendanceEntrySubjects.attendanceEntryId)
+    )
+    .where(and(
+      eq(attendanceEntries.profileId, input.profileId),
+      eq(attendanceEntries.weeklyPlanId, input.weeklyPlanId),
+      eq(attendanceEntries.weeklyPlanDayNumber, input.dayNumber),
+      eq(attendanceEntries.entryKind, "plan_day")
+    ));
+  const existingSubjectKeys = new Set(existingSubjects.map((subject) => subject.subjectKey));
+  const newlyCompletedSubjectKeys = selectedKeys.filter((key) => !existingSubjectKeys.has(key));
   const date = isoDate(safeDate(input.attendanceDate, new Date()));
   let savedEntry: typeof attendanceEntries.$inferSelect | undefined;
   await db.transaction(async (tx) => {
@@ -434,10 +454,41 @@ export async function recordPlanDayAttendance(input: {
       subjectLabel: availableSubjects.get(selectedKey)!
     });
   }
-  await synchronizeWeekStatusFromAttendance(input.weeklyPlanId);
+  const weekStatus = await synchronizeWeekStatusFromAttendance(input.weeklyPlanId);
   await db.insert(learningActivityEvents).values({ profileId: input.profileId, source: "attendance_plan_day" });
   await refreshStudentStreakCache(input.profileId);
-  return savedEntry!;
+  const weekNewlyCompleted = rows[0]!.weekStatus !== "completed" && weekStatus === "completed";
+  if (newlyCompletedSubjectKeys.length > 0) {
+    try {
+      await notifyPlanCompletion({
+        actorUserId: input.parentUserId,
+        studentProfileId: input.profileId,
+        weeklyPlanId: input.weeklyPlanId,
+        weekNumber: rows[0]!.weekNumber,
+        weekTitle: rows[0]!.weekTitle,
+        dayNumber: input.dayNumber,
+        lessons: newlyCompletedSubjectKeys.map((subjectKey) => ({
+          subjectKey,
+          title: Array.from(new Set(rows
+            .filter((row) => {
+              const label = row.subjectLabel?.trim() || row.documentLabel;
+              return planSubjectKey({ subjectId: row.subjectId, subjectLabel: label }) === subjectKey;
+            })
+            .map((row) => row.itemLabel.trim())
+            .filter(Boolean)))
+            .join("; ") || availableSubjects.get(subjectKey) || "a lesson"
+        })),
+        weekNewlyCompleted
+      });
+    } catch (error) {
+      console.error("Could not send completion push notifications.", error);
+    }
+  }
+  return {
+    ...savedEntry!,
+    newlyCompletedSubjectKeys,
+    weekNewlyCompleted
+  };
 }
 
 export async function setPlanDaySubjectCompletion(input: {
