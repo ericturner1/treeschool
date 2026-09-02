@@ -23,6 +23,9 @@ Create these Secret Manager secrets before deployment:
 - `STRIPE_WEBHOOK_SECRET`
 - `INTERNAL_API_SECRET`
 - `ANTHROPIC_API_KEY` (required for Workbook Studio AI generation)
+- `APNS_KEY_ID` (Apple Push Notification service key ID)
+- `APNS_TEAM_ID` (Apple Developer team ID)
+- `APNS_PRIVATE_KEY_B64` (base64-encoded APNs `.p8` private key)
 
 Optional:
 
