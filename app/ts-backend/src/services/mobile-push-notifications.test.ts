@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { buildCompletionPushMessages } from "./mobile-push-notifications";
+import {
+  buildCompletionPushMessages,
+  buildPointAwardPushMessage
+} from "./mobile-push-notifications";
 
 describe("completion push messages", () => {
   test("names the teacher, student, lesson, and completed week", () => {
@@ -49,5 +52,46 @@ describe("completion push messages", () => {
 
     expect(messages).toHaveLength(1);
     expect(messages[0]?.title).toBe("Lesson completed");
+  });
+});
+
+describe("point award push messages", () => {
+  test("names the teacher, student, amount, and reason", () => {
+    const message = buildPointAwardPushMessage({
+      actorName: "Eric",
+      studentName: "Maya",
+      studentProfileId: "student-1",
+      pointTransactionId: "transaction-1",
+      amount: 5,
+      reason: "Great reading!",
+      singularName: "star",
+      pluralName: "stars"
+    });
+
+    expect(message).toMatchObject({
+      title: "Points awarded",
+      body: "Eric gave Maya 5 stars for Great reading.",
+      data: {
+        type: "points_awarded",
+        studentProfileId: "student-1",
+        pointTransactionId: "transaction-1",
+        amount: "5"
+      }
+    });
+  });
+
+  test("uses the singular point name for one point", () => {
+    const message = buildPointAwardPushMessage({
+      actorName: "Eric",
+      studentName: "Maya",
+      studentProfileId: "student-1",
+      pointTransactionId: "transaction-2",
+      amount: 1,
+      reason: "Helping",
+      singularName: "leaf",
+      pluralName: "leaves"
+    });
+
+    expect(message.body).toBe("Eric gave Maya 1 leaf for Helping.");
   });
 });

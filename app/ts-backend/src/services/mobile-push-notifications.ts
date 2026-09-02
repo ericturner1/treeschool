@@ -14,7 +14,7 @@ type RegisteredDevice = {
   bundleId: string;
 };
 
-export type CompletionPushMessage = {
+export type MobilePushMessage = {
   title: string;
   body: string;
   collapseId: string;
@@ -79,7 +79,7 @@ export function buildCompletionPushMessages(input: {
 }) {
   const actorName = cleanLabel(input.actorName, "A teacher");
   const studentName = cleanLabel(input.studentName, "the student");
-  const messages: CompletionPushMessage[] = input.lessons.map((lesson) => {
+  const messages: MobilePushMessage[] = input.lessons.map((lesson) => {
     const lessonTitle = cleanLabel(lesson.title, "a lesson");
     return {
       title: "Lesson completed",
@@ -113,6 +113,36 @@ export function buildCompletionPushMessages(input: {
   }
 
   return messages;
+}
+
+export function buildPointAwardPushMessage(input: {
+  actorName: string;
+  studentName: string;
+  studentProfileId: string;
+  pointTransactionId: string;
+  amount: number;
+  reason: string;
+  singularName: string;
+  pluralName: string;
+}): MobilePushMessage {
+  const actorName = cleanLabel(input.actorName, "A teacher");
+  const studentName = cleanLabel(input.studentName, "the student");
+  const reason = cleanLabel(input.reason, "good work");
+  const unit = cleanLabel(
+    input.amount === 1 ? input.singularName : input.pluralName,
+    input.amount === 1 ? "point" : "points"
+  );
+  return {
+    title: "Points awarded",
+    body: `${actorName} gave ${studentName} ${input.amount} ${unit} for ${reason}.`,
+    collapseId: collapseId(`points:${input.pointTransactionId}`),
+    data: {
+      type: "points_awarded",
+      studentProfileId: input.studentProfileId,
+      pointTransactionId: input.pointTransactionId,
+      amount: String(input.amount)
+    }
+  };
 }
 
 export async function registerMobilePushDevice(input: {
@@ -236,7 +266,7 @@ function providerToken(configuration: NonNullable<ReturnType<typeof providerConf
 function sendApnsRequest(input: {
   session: ClientHttp2Session;
   device: RegisteredDevice;
-  message: CompletionPushMessage;
+  message: MobilePushMessage;
   authorization: string;
 }): Promise<ApnsResponse> {
   return new Promise((resolve) => {
@@ -300,7 +330,7 @@ function sendApnsRequest(input: {
 
 async function sendMessages(
   devices: RegisteredDevice[],
-  messages: CompletionPushMessage[]
+  messages: MobilePushMessage[]
 ) {
   const configuration = providerConfiguration();
   if (!configuration || devices.length === 0 || messages.length === 0) {
@@ -415,4 +445,45 @@ export async function notifyPlanCompletion(input: {
     ...input
   });
   return sendMessages(devices, messages);
+}
+
+export async function notifyPointAward(input: {
+  actorUserId: string;
+  studentProfileId: string;
+  pointTransactionId: string;
+  amount: number;
+  reason: string;
+  singularName: string;
+  pluralName: string;
+}) {
+  const [actor, [student]] = await Promise.all([
+    getAccountMemberContext(input.actorUserId),
+    db.select({
+      accountId: profiles.accountId,
+      firstName: profiles.firstName
+    }).from(profiles).where(and(
+      eq(profiles.id, input.studentProfileId),
+      eq(profiles.role, "STUDENT")
+    )).limit(1)
+  ]);
+  if (!student || student.accountId !== actor.accountId) {
+    throw new Error("Student profile does not belong to this account.");
+  }
+
+  const devices = await db.select({
+    id: mobilePushDevices.id,
+    token: mobilePushDevices.token,
+    environment: mobilePushDevices.environment,
+    bundleId: mobilePushDevices.bundleId
+  }).from(mobilePushDevices).where(and(
+    eq(mobilePushDevices.accountId, actor.accountId),
+    ne(mobilePushDevices.userId, input.actorUserId),
+    isNull(mobilePushDevices.disabledAt)
+  ));
+  const message = buildPointAwardPushMessage({
+    actorName: actor.firstName,
+    studentName: student.firstName,
+    ...input
+  });
+  return sendMessages(devices, [message]);
 }

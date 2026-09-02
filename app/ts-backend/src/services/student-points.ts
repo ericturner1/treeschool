@@ -30,6 +30,7 @@ import {
   normalizeBankInterestBasisPoints,
   pointsFromMicropoints
 } from "./student-point-bank";
+import { notifyPointAward } from "./mobile-push-notifications";
 
 export const STUDENT_POINT_ICON_KEYS = [
   "star",
@@ -654,7 +655,7 @@ export async function awardStudentPoints(input: {
   const reason = normalizeReason(input.reason);
   const occurredAt = new Date();
   await accrueStudentPointBankInterest(input.profileId, occurredAt);
-  return db.transaction(async (tx) => {
+  const transaction = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`student-points:${input.profileId}`}))`);
     const [summary] = await tx
       .select({
@@ -689,6 +690,20 @@ export async function awardStudentPoints(input: {
     });
     return transaction;
   });
+  try {
+    await notifyPointAward({
+      actorUserId: input.parentUserId,
+      studentProfileId: input.profileId,
+      pointTransactionId: transaction.id,
+      amount,
+      reason,
+      singularName: settings.singularName,
+      pluralName: settings.pluralName
+    });
+  } catch (error) {
+    console.error("Could not send point award push notifications.", error);
+  }
+  return transaction;
 }
 
 export async function redeemStudentPoints(input: {
