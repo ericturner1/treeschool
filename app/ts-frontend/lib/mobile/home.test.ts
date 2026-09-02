@@ -26,6 +26,15 @@ describe("mobile home payload", () => {
         },
       ],
       selectedProfileId: "student-1",
+      points: {
+        settings: {
+          singularName: "point",
+          pluralName: "points",
+        },
+        summary: {
+          totalBalance: 12,
+        },
+      },
       now: new Date("2026-09-02T12:00:00.000Z"),
       calendar: {
         timeZone: "UTC",
@@ -119,7 +128,14 @@ describe("mobile home payload", () => {
     });
 
     expect(payload).toEqual({
-      students: [{ id: "student-1", firstName: "Maya" }],
+      students: [{
+        id: "student-1",
+        firstName: "Maya",
+        gradeLevel: 3,
+        currentPoints: 12,
+        pointSingularName: "point",
+        pointPluralName: "points",
+      }],
       selectedProfileId: "student-1",
       schoolDay: {
         isSchoolDay: true,

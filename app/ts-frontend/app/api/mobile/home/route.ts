@@ -4,6 +4,7 @@ import { getStudentSchoolCalendar } from "../../../../lib/attendance/server";
 import { getRequestUser } from "../../../../lib/auth/request-user";
 import { buildMobileHomePayload } from "../../../../lib/mobile/home";
 import { getPaperPlan } from "../../../../lib/paper-plans/server";
+import { getStudentPoints } from "../../../../lib/points/server";
 import { publicErrorMessage } from "../../../../lib/security/request-guards";
 
 export async function GET(request: Request) {
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
     }
 
     const calendarDate = new Date().toISOString().slice(0, 10);
-    const [plan, calendar] = await Promise.all([
+    const [plan, calendar, points] = await Promise.all([
       getPaperPlan({
         parentUserId: currentUser.id,
         profileId: selected.id,
@@ -40,6 +41,11 @@ export async function GET(request: Request) {
         dateFrom: calendarDate,
         dateTo: calendarDate,
       }),
+      getStudentPoints({
+        parentUserId: currentUser.id,
+        profileId: selected.id,
+        historyLimit: 1,
+      }),
     ]);
     return NextResponse.json(
       buildMobileHomePayload({
@@ -47,6 +53,7 @@ export async function GET(request: Request) {
         selectedProfileId: selected.id,
         plan,
         calendar,
+        points,
       }),
     );
   } catch (error) {

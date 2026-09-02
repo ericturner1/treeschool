@@ -40,6 +40,15 @@ export function buildMobileHomePayload(input: {
   selectedProfileId: string;
   plan: PaperPlan;
   calendar: StudentSchoolCalendarPayload;
+  points: {
+    settings: {
+      singularName: string;
+      pluralName: string;
+    };
+    summary: {
+      totalBalance: number;
+    };
+  };
   now?: Date;
 }) {
   const nextWeek = input.plan.weeks.find(
@@ -51,6 +60,16 @@ export function buildMobileHomePayload(input: {
     students: input.students.map((student) => ({
       id: student.id,
       firstName: student.firstName,
+      gradeLevel: student.gradeLevel,
+      currentPoints: student.id === input.selectedProfileId
+        ? input.points.summary.totalBalance
+        : null,
+      pointSingularName: student.id === input.selectedProfileId
+        ? input.points.settings.singularName
+        : null,
+      pointPluralName: student.id === input.selectedProfileId
+        ? input.points.settings.pluralName
+        : null,
     })),
     selectedProfileId: input.selectedProfileId,
     schoolDay: mobileSchoolDayStatus(input.calendar, input.now),
