@@ -318,6 +318,43 @@ export const mobilePushDevices = pgTable(
   })
 );
 
+export const mobilePushReminderDeliveries = pgTable(
+  "mobile_push_reminder_deliveries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    reminderDate: date("reminder_date").notNull(),
+    reminderKind: text("reminder_kind").notNull(),
+    status: text("status").notNull().default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(1),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }).defaultNow().notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    profileDateKindUnique: unique("mobile_push_reminder_deliveries_profile_date_kind_unique").on(
+      table.profileId,
+      table.reminderDate,
+      table.reminderKind
+    ),
+    statusClaimedIndex: index("mobile_push_reminder_deliveries_status_claimed_idx").on(
+      table.status,
+      table.claimedAt
+    ),
+    accountDateIndex: index("mobile_push_reminder_deliveries_account_date_idx").on(
+      table.accountId,
+      table.reminderDate
+    )
+  })
+);
+
 export const studentProfileCheckouts = pgTable(
   "student_profile_checkouts",
   {

@@ -266,13 +266,13 @@ function calculateStreak(input: {
   };
 }
 
-export async function getCalculatedStreakStatus(profileId: string) {
+export async function getCalculatedStreakStatus(profileId: string, now = new Date()) {
   const settings = await ensureCalendarSettings(profileId);
   const [exceptions, activityDates] = await Promise.all([
     listCalendarExceptions(profileId),
     getActivityDates(profileId, settings.timeZone)
   ]);
-  const today = dateKeyInTimeZone(new Date(), settings.timeZone);
+  const today = dateKeyInTimeZone(now, settings.timeZone);
   const calculated = calculateStreak({
     settings,
     exceptions,
@@ -288,6 +288,8 @@ export async function getCalculatedStreakStatus(profileId: string) {
     currentPeriodLabel: settings.mode === "daily" ? today : `Week of ${weekStart(today)}`,
     currentPeriodPaused: calculated.currentPeriodPaused,
     currentPeriodCompleted: calculated.currentPeriodCompleted,
+    isSchoolDayToday: isExpectedSchoolDay(today, settings, exceptions),
+    schoolworkCompletedToday: activityDates.has(today),
     pausedWeekdays: settings.pausedWeekdays,
     pausedWeeks: settings.pausedWeeks
   };

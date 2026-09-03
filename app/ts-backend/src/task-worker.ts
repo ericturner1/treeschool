@@ -3,6 +3,7 @@ import { runNextPaperDocumentJob, runNextWeeklyPlanJob } from "./services/paper-
 import { runNextNativeWorkbookJob } from "./services/native-workbooks";
 import { runNextWorkbookStudioJob } from "./services/workbook-studio-worker";
 import { accrueDueStudentPointBankInterest } from "./services/student-points";
+import { sendDueSchoolworkReminders } from "./services/mobile-push-notifications";
 import { client, env } from "./db";
 
 const workerId = process.env.TASK_WORKER_ID ?? `ts-tasks-${crypto.randomUUID().slice(0, 8)}`;
@@ -17,6 +18,13 @@ async function main() {
   if (bankInterest.processedPeriods > 0 || bankInterest.failedProfiles > 0) {
     console.log(
       `[${workerId}] point-bank interest: ${bankInterest.processedPeriods} period(s), ${bankInterest.awardedPoints} point(s), ${bankInterest.failedProfiles} failure(s)`
+    );
+  }
+
+  const reminders = await sendDueSchoolworkReminders();
+  if (reminders.dueStudents > 0 || reminders.failedStudents > 0) {
+    console.log(
+      `[${workerId}] schoolwork reminders: ${reminders.sentStudents} student(s), ${reminders.sentNotifications} notification(s), ${reminders.failedStudents} failure(s)`
     );
   }
 

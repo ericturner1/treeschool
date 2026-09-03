@@ -85,6 +85,7 @@ export {
   masteryStatusEnum,
   modelUsageEvents,
   mobilePushDevices,
+  mobilePushReminderDeliveries,
   nativeWorkbookBundleItems,
   nativeWorkbookBundles,
   nativeWorkbookDownloadLinks,
