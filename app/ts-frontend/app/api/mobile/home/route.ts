@@ -49,7 +49,7 @@ export async function GET(request: Request) {
       getRecentAccountActivity({
         userId: currentUser.id,
         profileId: selected.id,
-        limit: 8,
+        limit: 10,
       }),
     ]);
     return NextResponse.json(

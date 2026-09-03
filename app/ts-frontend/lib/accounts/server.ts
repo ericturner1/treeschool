@@ -279,7 +279,7 @@ export async function getRecentAccountActivity(input: {
   const params = new URLSearchParams({
     userId: input.userId,
     profileId: input.profileId,
-    limit: String(input.limit ?? 8)
+    limit: String(input.limit ?? 10)
   });
   const response = await backendFetch(
     `${getBackendUrl()}/internal/accounts/activity/recent?${params.toString()}`,

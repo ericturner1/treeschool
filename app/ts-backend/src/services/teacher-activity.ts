@@ -220,7 +220,7 @@ export async function getRecentAccountActivity(input: {
     throw new Error("Student profile does not belong to this account.");
   }
 
-  const limit = Math.max(1, Math.min(input.limit ?? 8, 20));
+  const limit = Math.max(1, Math.min(input.limit ?? 10, 10));
   const events = await db.select().from(teacherActivityEvents).where(and(
     eq(teacherActivityEvents.accountId, requester.accountId),
     eq(teacherActivityEvents.studentProfileId, input.studentProfileId),
