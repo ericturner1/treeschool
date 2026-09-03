@@ -1,4 +1,5 @@
 import type { HouseholdProfile } from "../accounts/server";
+import type { RecentAccountActivity } from "../accounts/server";
 import type { StudentSchoolCalendarPayload } from "../attendance/server";
 import type { PaperPlan } from "../paper-plans/server";
 import { shouldShowStreakWarning } from "../student-overview/streak-warning";
@@ -49,6 +50,7 @@ export function buildMobileHomePayload(input: {
       totalBalance: number;
     };
   };
+  recentActivity: RecentAccountActivity["events"];
   now?: Date;
 }) {
   const nextWeek = input.plan.weeks.find(
@@ -90,5 +92,6 @@ export function buildMobileHomePayload(input: {
           downloaded: nextWeek.downloaded,
         }
       : null,
+    recentActivity: input.recentActivity,
   };
 }

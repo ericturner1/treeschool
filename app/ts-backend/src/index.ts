@@ -75,7 +75,7 @@ import {
   buildStudentReportCard
 } from "./services/student-reports";
 import { getStudentOverviewMetrics } from "./services/student-overview";
-import { getTeacherActivity } from "./services/teacher-activity";
+import { getRecentAccountActivity, getTeacherActivity } from "./services/teacher-activity";
 import { getPremiumFeatureAccess, requirePremiumFeatureAccess } from "./services/entitlements";
 import { getLocaleAssets } from "./services/locales";
 import { runMaintenanceJob } from "./services/maintenance";
@@ -2761,6 +2761,30 @@ const server = Bun.serve({
       } catch (error) {
         return Response.json(
           { error: publicErrorMessage(error, "Failed to load teacher activity.") },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/accounts/activity/recent" && request.method === "GET") {
+      const userId = url.searchParams.get("userId");
+      const profileId = url.searchParams.get("profileId");
+      const limitParam = url.searchParams.get("limit");
+      const requestedLimit = limitParam == null ? undefined : Number(limitParam);
+      if (!userId || !profileId) {
+        return Response.json({ error: "userId and profileId are required." }, { status: 400 });
+      }
+      try {
+        return Response.json(await getRecentAccountActivity({
+          requesterUserId: userId,
+          studentProfileId: profileId,
+          limit: requestedLimit != null && Number.isInteger(requestedLimit)
+            ? requestedLimit
+            : undefined
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: publicErrorMessage(error, "Failed to load recent account activity.") },
           { status: 400 }
         );
       }

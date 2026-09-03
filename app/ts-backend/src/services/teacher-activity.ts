@@ -202,3 +202,69 @@ export async function getTeacherActivity(input: {
     }))
   };
 }
+
+export async function getRecentAccountActivity(input: {
+  requesterUserId: string;
+  studentProfileId: string;
+  limit?: number;
+}) {
+  const requester = await accountMemberForUser(input.requesterUserId);
+  const [student] = await db.select({
+    accountId: profiles.accountId,
+    name: profiles.firstName
+  }).from(profiles).where(and(
+    eq(profiles.id, input.studentProfileId),
+    eq(profiles.role, "STUDENT")
+  )).limit(1);
+  if (!student || student.accountId !== requester.accountId) {
+    throw new Error("Student profile does not belong to this account.");
+  }
+
+  const limit = Math.max(1, Math.min(input.limit ?? 8, 20));
+  const events = await db.select().from(teacherActivityEvents).where(and(
+    eq(teacherActivityEvents.accountId, requester.accountId),
+    eq(teacherActivityEvents.studentProfileId, input.studentProfileId),
+    inArray(teacherActivityEvents.eventType, [
+      "grade_saved",
+      "points_awarded",
+      "points_used"
+    ])
+  )).orderBy(desc(teacherActivityEvents.occurredAt)).limit(limit);
+
+  const actorProfileIds = Array.from(new Set(
+    events
+      .map((event) => event.actorProfileId)
+      .filter((profileId): profileId is string => Boolean(profileId))
+  ));
+  const actors = actorProfileIds.length === 0
+    ? []
+    : await db.select({ id: profiles.id, name: profiles.firstName })
+      .from(profiles)
+      .where(inArray(profiles.id, actorProfileIds));
+  const actorNames = new Map(actors.map((actor) => [actor.id, actor.name]));
+
+  return {
+    events: events.map((event) => ({
+      id: event.id,
+      type: event.eventType === "grade_saved" ? "lesson_completed" : event.eventType,
+      actorName: event.actorProfileId
+        ? actorNames.get(event.actorProfileId) ?? "A teacher"
+        : "A teacher",
+      studentName: student.name,
+      subjectLabel: event.subjectLabel,
+      pointsAmount: typeof event.metadata?.pointsAmount === "number"
+        ? event.metadata.pointsAmount
+        : null,
+      pointsReason: typeof event.metadata?.pointsReason === "string"
+        ? event.metadata.pointsReason
+        : null,
+      pointSingularName: typeof event.metadata?.pointSingularName === "string"
+        ? event.metadata.pointSingularName
+        : null,
+      pointPluralName: typeof event.metadata?.pointPluralName === "string"
+        ? event.metadata.pointPluralName
+        : null,
+      occurredAt: event.occurredAt.toISOString()
+    }))
+  };
+}

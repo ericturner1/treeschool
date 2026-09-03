@@ -35,6 +35,18 @@ describe("mobile home payload", () => {
           totalBalance: 12,
         },
       },
+      recentActivity: [{
+        id: "activity-1",
+        type: "points_awarded",
+        actorName: "Eric",
+        studentName: "Maya",
+        subjectLabel: null,
+        pointsAmount: 5,
+        pointsReason: "Great reading",
+        pointSingularName: "point",
+        pointPluralName: "points",
+        occurredAt: "2026-09-02T11:30:00.000Z",
+      }],
       now: new Date("2026-09-02T12:00:00.000Z"),
       calendar: {
         timeZone: "UTC",
@@ -156,6 +168,18 @@ describe("mobile home payload", () => {
         title: "Week 2",
         downloaded: true,
       },
+      recentActivity: [{
+        id: "activity-1",
+        type: "points_awarded",
+        actorName: "Eric",
+        studentName: "Maya",
+        subjectLabel: null,
+        pointsAmount: 5,
+        pointsReason: "Great reading",
+        pointSingularName: "point",
+        pointPluralName: "points",
+        occurredAt: "2026-09-02T11:30:00.000Z",
+      }],
     });
   });
 

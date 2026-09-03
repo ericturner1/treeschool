@@ -98,6 +98,21 @@ export type TeacherActivity = {
   }>;
 };
 
+export type RecentAccountActivity = {
+  events: Array<{
+    id: string;
+    type: "lesson_completed" | "points_awarded" | "points_used";
+    actorName: string;
+    studentName: string;
+    subjectLabel: string | null;
+    pointsAmount: number | null;
+    pointsReason: string | null;
+    pointSingularName: string | null;
+    pointPluralName: string | null;
+    occurredAt: string;
+  }>;
+};
+
 export type StudentCurriculumAssignment = {
   id: string;
   slug: string | null;
@@ -254,6 +269,27 @@ export async function getAccountTeacherActivity(input: {
     throw new Error(payload?.error ?? "Failed to load teacher activity.");
   }
   return (await response.json()) as TeacherActivity;
+}
+
+export async function getRecentAccountActivity(input: {
+  userId: string;
+  profileId: string;
+  limit?: number;
+}) {
+  const params = new URLSearchParams({
+    userId: input.userId,
+    profileId: input.profileId,
+    limit: String(input.limit ?? 8)
+  });
+  const response = await backendFetch(
+    `${getBackendUrl()}/internal/accounts/activity/recent?${params.toString()}`,
+    { cache: "no-store" }
+  );
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(payload?.error ?? "Failed to load recent account activity.");
+  }
+  return (await response.json()) as RecentAccountActivity;
 }
 
 export async function updateOwnAccountName(input: { userId: string; name: string }) {
