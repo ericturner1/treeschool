@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import {
   attendanceEntrySubjects,
   attendanceEntries,
@@ -373,24 +373,38 @@ export async function recordPlanDayAttendance(input: {
   const requestedKeys = Array.from(new Set(input.subjectKeys ?? [])).filter((key) => availableSubjects.has(key));
   const selectedKeys = input.subjectKeys == null ? Array.from(availableSubjects.keys()) : requestedKeys;
   if (selectedKeys.length === 0) throw new Error("Select at least one subject taught that day.");
-  const existingSubjects = await db.select({
-    subjectKey: attendanceEntrySubjects.subjectKey
-  }).from(attendanceEntrySubjects)
-    .innerJoin(
-      attendanceEntries,
-      eq(attendanceEntries.id, attendanceEntrySubjects.attendanceEntryId)
-    )
-    .where(and(
-      eq(attendanceEntries.profileId, input.profileId),
-      eq(attendanceEntries.weeklyPlanId, input.weeklyPlanId),
-      eq(attendanceEntries.weeklyPlanDayNumber, input.dayNumber),
-      eq(attendanceEntries.entryKind, "plan_day")
-    ));
-  const existingSubjectKeys = new Set(existingSubjects.map((subject) => subject.subjectKey));
-  const newlyCompletedSubjectKeys = selectedKeys.filter((key) => !existingSubjectKeys.has(key));
+  const lessonTitles = new Map(selectedKeys.map((subjectKey) => [
+    subjectKey,
+    Array.from(new Set(rows
+      .filter((row) => {
+        const label = row.subjectLabel?.trim() || row.documentLabel;
+        return planSubjectKey({ subjectId: row.subjectId, subjectLabel: label }) === subjectKey;
+      })
+      .map((row) => row.itemLabel.trim())
+      .filter(Boolean)))
+      .join("; ") || availableSubjects.get(subjectKey) || "a lesson"
+  ]));
+  const actor = await getAccountMemberContext(input.parentUserId);
   const date = isoDate(safeDate(input.attendanceDate, new Date()));
   let savedEntry: typeof attendanceEntries.$inferSelect | undefined;
+  let newlyCompletedSubjectKeys: string[] = [];
   await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`plan-day-attendance:${input.profileId}:${input.weeklyPlanId}:${input.dayNumber}`}))`);
+    const existingSubjects = await tx.select({
+      subjectKey: attendanceEntrySubjects.subjectKey
+    }).from(attendanceEntrySubjects)
+      .innerJoin(
+        attendanceEntries,
+        eq(attendanceEntries.id, attendanceEntrySubjects.attendanceEntryId)
+      )
+      .where(and(
+        eq(attendanceEntries.profileId, input.profileId),
+        eq(attendanceEntries.weeklyPlanId, input.weeklyPlanId),
+        eq(attendanceEntries.weeklyPlanDayNumber, input.dayNumber),
+        eq(attendanceEntries.entryKind, "plan_day")
+      ));
+    const existingSubjectKeys = new Set(existingSubjects.map((subject) => subject.subjectKey));
+    newlyCompletedSubjectKeys = selectedKeys.filter((key) => !existingSubjectKeys.has(key));
     [savedEntry] = await tx.insert(attendanceEntries).values({
       profileId: input.profileId,
       learningYearId: rows[0]!.learningYearId,
@@ -418,10 +432,28 @@ export async function recordPlanDayAttendance(input: {
       subjectKey: key,
       subjectLabel: availableSubjects.get(key)!
     }))).onConflictDoNothing();
+    if (newlyCompletedSubjectKeys.length > 0) {
+      await tx.insert(teacherActivityEvents).values(newlyCompletedSubjectKeys.map((subjectKey) => ({
+        accountId: actor.accountId,
+        actorUserId: input.parentUserId,
+        actorProfileId: actor.profileId,
+        studentProfileId: input.profileId,
+        weeklyPlanId: input.weeklyPlanId,
+        eventType: "lesson_completed",
+        subjectKey,
+        subjectLabel: availableSubjects.get(subjectKey)!,
+        metadata: {
+          dayNumber: input.dayNumber,
+          activityTitle: lessonTitles.get(subjectKey) ?? null
+        }
+      })));
+    }
   });
   const completedNativeUnits = rows.filter((row) => {
     const label = row.subjectLabel?.trim() || row.documentLabel;
-    return selectedKeys.includes(planSubjectKey({ subjectId: row.subjectId, subjectLabel: label })) &&
+    return newlyCompletedSubjectKeys.includes(
+      planSubjectKey({ subjectId: row.subjectId, subjectLabel: label })
+    ) &&
       Boolean(row.nativeWorkbookVersionId && row.sourceUnitId);
   });
   const completedByVersion = new Map<string, string[]>();
@@ -443,7 +475,7 @@ export async function recordPlanDayAttendance(input: {
       selectedByUserId: input.parentUserId
     });
   }
-  for (const selectedKey of selectedKeys) {
+  for (const selectedKey of newlyCompletedSubjectKeys) {
     await applyAutomaticLessonCompletionPoint({
       profileId: input.profileId,
       actorUserId: input.parentUserId,
@@ -455,7 +487,12 @@ export async function recordPlanDayAttendance(input: {
     });
   }
   const weekStatus = await synchronizeWeekStatusFromAttendance(input.weeklyPlanId);
-  await db.insert(learningActivityEvents).values({ profileId: input.profileId, source: "attendance_plan_day" });
+  if (newlyCompletedSubjectKeys.length > 0) {
+    await db.insert(learningActivityEvents).values({
+      profileId: input.profileId,
+      source: "attendance_plan_day"
+    });
+  }
   await refreshStudentStreakCache(input.profileId);
   const weekNewlyCompleted = rows[0]!.weekStatus !== "completed" && weekStatus === "completed";
   if (newlyCompletedSubjectKeys.length > 0) {
@@ -469,14 +506,7 @@ export async function recordPlanDayAttendance(input: {
         dayNumber: input.dayNumber,
         lessons: newlyCompletedSubjectKeys.map((subjectKey) => ({
           subjectKey,
-          title: Array.from(new Set(rows
-            .filter((row) => {
-              const label = row.subjectLabel?.trim() || row.documentLabel;
-              return planSubjectKey({ subjectId: row.subjectId, subjectLabel: label }) === subjectKey;
-            })
-            .map((row) => row.itemLabel.trim())
-            .filter(Boolean)))
-            .join("; ") || availableSubjects.get(subjectKey) || "a lesson"
+          title: lessonTitles.get(subjectKey) ?? "a lesson"
         })),
         weekNewlyCompleted
       });

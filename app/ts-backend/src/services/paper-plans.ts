@@ -55,6 +55,7 @@ import {
 import { drawPdfText } from "./pdf-text-fonts";
 import { inspectPdfVisualQuality } from "./pdf-visual-quality";
 import { recordTeacherGradeActivity } from "./teacher-activity";
+import { gradeSaveChangesValue } from "./teacher-activity-model";
 import { normalizePlanSubjectLabel, planSubjectKey } from "./plan-subject-key";
 import {
   buildPageNumberMappingFromPdfLabels,
@@ -8599,17 +8600,20 @@ export async function setWeeklyPlanDaySubjectGrade(input: {
       updatedAt: new Date()
     }
   }).returning();
-  await recordTeacherGradeActivity({
-    actorUserId: input.parentUserId,
-    studentProfileId: year.profileId,
-    weeklyPlanId: input.weeklyPlanId,
-    eventType: "grade_saved",
-    subjectKey: input.subjectKey,
-    subjectLabel,
-    score,
-    previousScore: existingGrade?.score ?? null,
-    dayNumber: input.dayNumber
-  });
+  if (gradeSaveChangesValue(existingGrade?.score, score)) {
+    await recordTeacherGradeActivity({
+      actorUserId: input.parentUserId,
+      studentProfileId: year.profileId,
+      weeklyPlanId: input.weeklyPlanId,
+      eventType: "grade_saved",
+      subjectKey: input.subjectKey,
+      subjectLabel,
+      score,
+      previousScore: existingGrade?.score ?? null,
+      dayNumber: input.dayNumber,
+      activityTitle: title
+    });
+  }
   return saved;
 }
 

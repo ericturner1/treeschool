@@ -3,10 +3,13 @@ import {
   profiles,
   teacherActivityEvents,
   users,
+  weeklyPlanDaySubjectGrades,
   weeklyPlans
 } from "ts-db";
 import { db } from "../db";
 import {
+  isLessonCompletionActivity,
+  selectDistinctRecentActivityEvents,
   summarizeTeacherActivityEvents,
   type TeacherActivityEventType
 } from "./teacher-activity-model";
@@ -47,6 +50,7 @@ export async function recordTeacherGradeActivity(input: {
   score: number | null;
   previousScore?: number | null;
   dayNumber: number;
+  activityTitle?: string | null;
 }) {
   const actor = await accountMemberForUser(input.actorUserId);
   const [student] = await db.select({ accountId: profiles.accountId })
@@ -71,7 +75,8 @@ export async function recordTeacherGradeActivity(input: {
     score: input.score,
     metadata: {
       dayNumber: input.dayNumber,
-      previousScore: input.previousScore ?? null
+      previousScore: input.previousScore ?? null,
+      activityTitle: input.activityTitle?.trim() || null
     }
   }).returning({ id: teacherActivityEvents.id });
   return saved!;
@@ -221,50 +226,105 @@ export async function getRecentAccountActivity(input: {
   }
 
   const limit = Math.max(1, Math.min(input.limit ?? 10, 10));
-  const events = await db.select().from(teacherActivityEvents).where(and(
+  const candidates = await db.select().from(teacherActivityEvents).where(and(
     eq(teacherActivityEvents.accountId, requester.accountId),
     eq(teacherActivityEvents.studentProfileId, input.studentProfileId),
     inArray(teacherActivityEvents.eventType, [
+      "lesson_completed",
       "grade_saved",
       "points_awarded",
       "points_used"
     ])
-  )).orderBy(desc(teacherActivityEvents.occurredAt)).limit(limit);
+  )).orderBy(desc(teacherActivityEvents.occurredAt)).limit(Math.max(50, limit * 5));
+  const completionCandidates = candidates.filter((event) =>
+    event.eventType !== "grade_saved" || isLessonCompletionActivity(event)
+  );
+  const events = selectDistinctRecentActivityEvents(completionCandidates, limit);
 
   const actorProfileIds = Array.from(new Set(
     events
       .map((event) => event.actorProfileId)
       .filter((profileId): profileId is string => Boolean(profileId))
   ));
-  const actors = actorProfileIds.length === 0
-    ? []
-    : await db.select({ id: profiles.id, name: profiles.firstName })
-      .from(profiles)
-      .where(inArray(profiles.id, actorProfileIds));
+  const weekIds = Array.from(new Set(
+    events
+      .map((event) => event.weeklyPlanId)
+      .filter((weekId): weekId is string => Boolean(weekId))
+  ));
+  const [actors, grades, weeks] = await Promise.all([
+    actorProfileIds.length === 0
+      ? []
+      : db.select({ id: profiles.id, name: profiles.firstName })
+        .from(profiles)
+        .where(inArray(profiles.id, actorProfileIds)),
+    weekIds.length === 0
+      ? []
+      : db.select({
+        weeklyPlanId: weeklyPlanDaySubjectGrades.weeklyPlanId,
+        dayNumber: weeklyPlanDaySubjectGrades.dayNumber,
+        subjectKey: weeklyPlanDaySubjectGrades.subjectKey,
+        title: weeklyPlanDaySubjectGrades.title,
+        score: weeklyPlanDaySubjectGrades.score
+      }).from(weeklyPlanDaySubjectGrades)
+        .where(inArray(weeklyPlanDaySubjectGrades.weeklyPlanId, weekIds)),
+    weekIds.length === 0
+      ? []
+      : db.select({ id: weeklyPlans.id, weekNumber: weeklyPlans.weekNumber })
+        .from(weeklyPlans)
+        .where(inArray(weeklyPlans.id, weekIds))
+  ]);
   const actorNames = new Map(actors.map((actor) => [actor.id, actor.name]));
+  const weekNumbers = new Map(weeks.map((week) => [week.id, week.weekNumber]));
+  const gradeContexts = new Map(grades.map((grade) => [
+    `${grade.weeklyPlanId}:${grade.dayNumber}:${grade.subjectKey}`,
+    { title: grade.title, score: grade.score }
+  ]));
 
   return {
-    events: events.map((event) => ({
-      id: event.id,
-      type: event.eventType === "grade_saved" ? "lesson_completed" : event.eventType,
-      actorName: event.actorProfileId
-        ? actorNames.get(event.actorProfileId) ?? "A teacher"
-        : "A teacher",
-      studentName: student.name,
-      subjectLabel: event.subjectLabel,
-      pointsAmount: typeof event.metadata?.pointsAmount === "number"
-        ? event.metadata.pointsAmount
-        : null,
-      pointsReason: typeof event.metadata?.pointsReason === "string"
-        ? event.metadata.pointsReason
-        : null,
-      pointSingularName: typeof event.metadata?.pointSingularName === "string"
-        ? event.metadata.pointSingularName
-        : null,
-      pointPluralName: typeof event.metadata?.pointPluralName === "string"
-        ? event.metadata.pointPluralName
-        : null,
-      occurredAt: event.occurredAt.toISOString()
-    }))
+    events: events.map((event) => {
+      const dayNumber = typeof event.metadata?.dayNumber === "number"
+        ? event.metadata.dayNumber
+        : null;
+      const storedTitle = typeof event.metadata?.activityTitle === "string"
+        ? event.metadata.activityTitle.trim() || null
+        : null;
+      const gradeContext = event.weeklyPlanId && event.subjectKey && dayNumber != null
+        ? gradeContexts.get(`${event.weeklyPlanId}:${dayNumber}:${event.subjectKey}`) ?? null
+        : null;
+      const lessonTitle = storedTitle ?? gradeContext?.title ?? null;
+      const subjectAreaLabel = event.subjectLabel;
+      return {
+        id: event.id,
+        type: event.eventType === "grade_saved" ? "lesson_completed" : event.eventType,
+        actorName: event.actorProfileId
+          ? actorNames.get(event.actorProfileId) ?? "A teacher"
+          : "A teacher",
+        studentName: student.name,
+        // Older mobile builds use subjectLabel as the lesson label.
+        subjectLabel: isLessonCompletionActivity(event)
+          ? lessonTitle ?? subjectAreaLabel
+          : subjectAreaLabel,
+        subjectAreaLabel,
+        lessonTitle,
+        weekNumber: event.weeklyPlanId
+          ? weekNumbers.get(event.weeklyPlanId) ?? null
+          : null,
+        dayNumber,
+        score: event.score ?? gradeContext?.score ?? null,
+        pointsAmount: typeof event.metadata?.pointsAmount === "number"
+          ? event.metadata.pointsAmount
+          : null,
+        pointsReason: typeof event.metadata?.pointsReason === "string"
+          ? event.metadata.pointsReason
+          : null,
+        pointSingularName: typeof event.metadata?.pointSingularName === "string"
+          ? event.metadata.pointSingularName
+          : null,
+        pointPluralName: typeof event.metadata?.pointPluralName === "string"
+          ? event.metadata.pointPluralName
+          : null,
+        occurredAt: event.occurredAt.toISOString()
+      };
+    })
   };
 }

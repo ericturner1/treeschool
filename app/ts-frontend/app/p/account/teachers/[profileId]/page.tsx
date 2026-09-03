@@ -163,6 +163,7 @@ export default async function TeacherProfilePage(props: Props) {
                 <p className="rounded-[18px] bg-[#fffaf2] px-5 py-7 text-sm text-ink/60">No teaching activity has been recorded for this teacher yet.</p>
               ) : activity.events.map((event) => {
                 const manualAttendance = event.eventType === "attendance_manual";
+                const lessonCompleted = event.eventType === "lesson_completed";
                 const pointActivity = event.eventType === "points_awarded" || event.eventType === "points_used";
                 const pointUnit = event.pointsAmount === 1
                   ? event.pointSingularName ?? "point"
@@ -179,7 +180,8 @@ export default async function TeacherProfilePage(props: Props) {
                   : [
                       event.studentName,
                       event.weekNumber == null ? null : `Week ${event.weekNumber}`,
-                      event.dayNumber == null ? null : `Day ${event.dayNumber}`
+                      event.dayNumber == null ? null : `Day ${event.dayNumber}`,
+                      lessonCompleted ? event.subjectLabel : null
                     ].filter(Boolean).join(" · ");
                 return (
                   <article key={event.id} className="rounded-[18px] border border-[#e2d2b8] bg-white px-5 py-4">
@@ -192,6 +194,8 @@ export default async function TeacherProfilePage(props: Props) {
                               : `Recorded ${event.pointsAmount ?? 0} ${pointUnit} used by ${event.studentName ?? "a student"}`
                             : manualAttendance
                             ? `Recorded ${activityTypeLabel(event.activityType)}: ${event.activityTitle ?? "Learning activity"}`
+                            : lessonCompleted
+                            ? `Marked ${event.activityTitle ?? event.subjectLabel ?? "a lesson"} done for ${event.studentName ?? "a student"}`
                             : event.eventType === "grade_removed"
                             ? `Removed the grade for ${event.subjectLabel ?? "a lesson"}`
                             : `Saved ${event.score}% for ${event.subjectLabel ?? "a lesson"}`}

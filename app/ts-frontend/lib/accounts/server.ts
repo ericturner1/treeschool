@@ -80,7 +80,7 @@ export type TeacherActivity = {
   };
   events: Array<{
     id: string;
-    eventType: "grade_saved" | "grade_removed" | "attendance_manual" | "points_awarded" | "points_used";
+    eventType: "grade_saved" | "grade_removed" | "lesson_completed" | "attendance_manual" | "points_awarded" | "points_used";
     subjectLabel: string | null;
     score: number | null;
     studentName: string | null;
@@ -105,6 +105,11 @@ export type RecentAccountActivity = {
     actorName: string;
     studentName: string;
     subjectLabel: string | null;
+    subjectAreaLabel: string | null;
+    lessonTitle: string | null;
+    weekNumber: number | null;
+    dayNumber: number | null;
+    score: number | null;
     pointsAmount: number | null;
     pointsReason: string | null;
     pointSingularName: string | null;
