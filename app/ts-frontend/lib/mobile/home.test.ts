@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildMobileHomePayload, mobileSchoolDayStatus } from "./home";
 
 describe("mobile home payload", () => {
-  test("returns students and the first unfinished week with download state", () => {
+  test("returns every incomplete week and defaults to the next unstarted undownloaded week", () => {
     const payload = buildMobileHomePayload({
       students: [
         {
@@ -122,9 +122,47 @@ describe("mobile home payload", () => {
             subjectGrades: [],
           },
           {
-            id: "week-2",
-            weekNumber: 2,
-            title: "Week 2",
+            id: "week-10",
+            weekNumber: 10,
+            title: "Week 10",
+            summary: null,
+            status: "in_progress",
+            downloaded: true,
+            preservedForReplan: true,
+            pdfQualityStatus: "passed",
+            pdfPageCount: 12,
+            grade: null,
+            parentNotes: null,
+            items: [],
+            days: [],
+            scheduledDayCount: 5,
+            attendedDayCount: 2,
+            attendanceProgress: 40,
+            subjectGrades: [],
+          },
+          {
+            id: "week-11",
+            weekNumber: 11,
+            title: "Week 11",
+            summary: null,
+            status: "planned",
+            downloaded: false,
+            preservedForReplan: true,
+            pdfQualityStatus: "passed",
+            pdfPageCount: 12,
+            grade: null,
+            parentNotes: null,
+            items: [],
+            days: [],
+            scheduledDayCount: 0,
+            attendedDayCount: 0,
+            attendanceProgress: 0,
+            subjectGrades: [],
+          },
+          {
+            id: "week-12",
+            weekNumber: 12,
+            title: "Week 12",
             summary: null,
             status: "planned",
             downloaded: true,
@@ -167,11 +205,35 @@ describe("mobile home payload", () => {
         currentPeriodCompleted: false,
         showWarning: true,
       },
+      incompleteWeeks: [
+        {
+          id: "week-10",
+          weekNumber: 10,
+          title: "Week 10",
+          status: "in_progress",
+          downloaded: true,
+        },
+        {
+          id: "week-11",
+          weekNumber: 11,
+          title: "Week 11",
+          status: "planned",
+          downloaded: false,
+        },
+        {
+          id: "week-12",
+          weekNumber: 12,
+          title: "Week 12",
+          status: "planned",
+          downloaded: true,
+        },
+      ],
+      defaultWeekId: "week-11",
       nextWeek: {
-        id: "week-2",
-        weekNumber: 2,
-        title: "Week 2",
-        downloaded: true,
+        id: "week-11",
+        weekNumber: 11,
+        title: "Week 11",
+        downloaded: false,
       },
       recentActivity: [{
         id: "activity-1",

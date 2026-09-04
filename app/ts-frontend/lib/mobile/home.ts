@@ -53,10 +53,24 @@ export function buildMobileHomePayload(input: {
   recentActivity: RecentAccountActivity["events"];
   now?: Date;
 }) {
-  const nextWeek = input.plan.weeks.find(
+  const incompleteWeeks = input.plan.weeks.filter(
     (week) => week.status !== "completed" && week.status !== "skipped",
-  );
+  ).sort((left, right) => left.weekNumber - right.weekNumber);
+  const defaultWeek = incompleteWeeks.find(
+    (week) => week.status === "planned" && !week.downloaded,
+  ) ?? incompleteWeeks.find(
+    (week) => week.status === "planned",
+  ) ?? incompleteWeeks.find(
+    (week) => !week.downloaded,
+  ) ?? incompleteWeeks[0];
   const streak = input.calendar.streak;
+  const weekDownloadOptions = incompleteWeeks.map((week) => ({
+    id: week.id,
+    weekNumber: week.weekNumber,
+    title: week.title,
+    status: week.status,
+    downloaded: week.downloaded,
+  }));
 
   return {
     students: input.students.map((student) => ({
@@ -84,12 +98,15 @@ export function buildMobileHomePayload(input: {
       currentPeriodCompleted: streak.currentPeriodCompleted,
       showWarning: shouldShowStreakWarning(streak),
     },
-    nextWeek: nextWeek
+    incompleteWeeks: weekDownloadOptions,
+    defaultWeekId: defaultWeek?.id ?? null,
+    // Keep the original field while installed clients transition to the dropdown.
+    nextWeek: defaultWeek
       ? {
-          id: nextWeek.id,
-          weekNumber: nextWeek.weekNumber,
-          title: nextWeek.title,
-          downloaded: nextWeek.downloaded,
+          id: defaultWeek.id,
+          weekNumber: defaultWeek.weekNumber,
+          title: defaultWeek.title,
+          downloaded: defaultWeek.downloaded,
         }
       : null,
     recentActivity: input.recentActivity,
