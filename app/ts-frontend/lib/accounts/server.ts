@@ -101,7 +101,7 @@ export type TeacherActivity = {
 export type RecentAccountActivity = {
   events: Array<{
     id: string;
-    type: "lesson_completed" | "points_awarded" | "points_used";
+    type: "lesson_completed" | "points_awarded" | "points_used" | "week_pdf_downloaded";
     actorName: string;
     studentName: string;
     subjectLabel: string | null;
@@ -280,11 +280,13 @@ export async function getRecentAccountActivity(input: {
   userId: string;
   profileId: string;
   limit?: number;
+  includePdfDownloads?: boolean;
 }) {
   const params = new URLSearchParams({
     userId: input.userId,
     profileId: input.profileId,
-    limit: String(input.limit ?? 10)
+    limit: String(input.limit ?? 10),
+    ...(input.includePdfDownloads ? { includePdfDownloads: "1" } : {})
   });
   const response = await backendFetch(
     `${getBackendUrl()}/internal/accounts/activity/recent?${params.toString()}`,

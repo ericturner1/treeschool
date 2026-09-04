@@ -94,13 +94,21 @@ describe("recent account activity", () => {
         weeklyPlanId: null,
         subjectKey: null,
         metadata: { pointTransactionId: "transaction-1" }
+      },
+      {
+        id: "week-pdf:download-1",
+        eventType: "week_pdf_downloaded",
+        weeklyPlanId: "week-1",
+        subjectKey: null,
+        metadata: { downloadEventId: "download-1" }
       }
     ];
 
     expect(selectDistinctRecentActivityEvents(events, 10).map((event) => event.id)).toEqual([
       "day-3-newest",
       "day-2-newest",
-      "points-newest"
+      "points-newest",
+      "week-pdf:download-1"
     ]);
   });
 });

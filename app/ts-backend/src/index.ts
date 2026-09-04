@@ -2771,6 +2771,7 @@ const server = Bun.serve({
       const profileId = url.searchParams.get("profileId");
       const limitParam = url.searchParams.get("limit");
       const requestedLimit = limitParam == null ? undefined : Number(limitParam);
+      const includePdfDownloads = url.searchParams.get("includePdfDownloads") === "1";
       if (!userId || !profileId) {
         return Response.json({ error: "userId and profileId are required." }, { status: 400 });
       }
@@ -2780,7 +2781,8 @@ const server = Bun.serve({
           studentProfileId: profileId,
           limit: requestedLimit != null && Number.isInteger(requestedLimit)
             ? requestedLimit
-            : undefined
+            : undefined,
+          includePdfDownloads
         }));
       } catch (error) {
         return Response.json(

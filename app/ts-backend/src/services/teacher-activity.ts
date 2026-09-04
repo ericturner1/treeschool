@@ -1,9 +1,11 @@
 import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import {
+  learningYears,
   profiles,
   teacherActivityEvents,
   users,
   weeklyPlanDaySubjectGrades,
+  weeklyPlanDownloadEvents,
   weeklyPlans
 } from "ts-db";
 import { db } from "../db";
@@ -212,6 +214,7 @@ export async function getRecentAccountActivity(input: {
   requesterUserId: string;
   studentProfileId: string;
   limit?: number;
+  includePdfDownloads?: boolean;
 }) {
   const requester = await accountMemberForUser(input.requesterUserId);
   const [student] = await db.select({
@@ -226,7 +229,7 @@ export async function getRecentAccountActivity(input: {
   }
 
   const limit = Math.max(1, Math.min(input.limit ?? 10, 10));
-  const candidates = await db.select().from(teacherActivityEvents).where(and(
+  const teacherCandidates = await db.select().from(teacherActivityEvents).where(and(
     eq(teacherActivityEvents.accountId, requester.accountId),
     eq(teacherActivityEvents.studentProfileId, input.studentProfileId),
     inArray(teacherActivityEvents.eventType, [
@@ -236,6 +239,41 @@ export async function getRecentAccountActivity(input: {
       "points_used"
     ])
   )).orderBy(desc(teacherActivityEvents.occurredAt)).limit(Math.max(50, limit * 5));
+  const downloadRows = input.includePdfDownloads
+    ? await db.select({
+      id: weeklyPlanDownloadEvents.id,
+      actorUserId: weeklyPlanDownloadEvents.downloadedByUserId,
+      weeklyPlanId: weeklyPlanDownloadEvents.weeklyPlanId,
+      format: weeklyPlanDownloadEvents.format,
+      layout: weeklyPlanDownloadEvents.layout,
+      occurredAt: weeklyPlanDownloadEvents.downloadedAt
+    }).from(weeklyPlanDownloadEvents)
+      .innerJoin(weeklyPlans, eq(weeklyPlans.id, weeklyPlanDownloadEvents.weeklyPlanId))
+      .innerJoin(learningYears, eq(learningYears.id, weeklyPlans.learningYearId))
+      .where(eq(learningYears.profileId, input.studentProfileId))
+      .orderBy(desc(weeklyPlanDownloadEvents.downloadedAt))
+      .limit(Math.max(50, limit * 5))
+    : [];
+  const downloadCandidates = downloadRows.map((event) => ({
+    id: `week-pdf:${event.id}`,
+    accountId: requester.accountId,
+    actorUserId: event.actorUserId,
+    actorProfileId: null,
+    studentProfileId: input.studentProfileId,
+    weeklyPlanId: event.weeklyPlanId,
+    eventType: "week_pdf_downloaded",
+    subjectKey: null,
+    subjectLabel: null,
+    score: null,
+    metadata: {
+      downloadEventId: event.id,
+      format: event.format,
+      layout: event.layout
+    } as Record<string, unknown>,
+    occurredAt: event.occurredAt
+  }));
+  const candidates = [...teacherCandidates, ...downloadCandidates]
+    .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
   const completionCandidates = candidates.filter((event) =>
     event.eventType !== "grade_saved" || isLessonCompletionActivity(event)
   );
@@ -246,17 +284,30 @@ export async function getRecentAccountActivity(input: {
       .map((event) => event.actorProfileId)
       .filter((profileId): profileId is string => Boolean(profileId))
   ));
+  const actorUserIds = Array.from(new Set(
+    events
+      .map((event) => event.actorUserId)
+      .filter((userId): userId is string => Boolean(userId))
+  ));
   const weekIds = Array.from(new Set(
     events
       .map((event) => event.weeklyPlanId)
       .filter((weekId): weekId is string => Boolean(weekId))
   ));
-  const [actors, grades, weeks] = await Promise.all([
+  const [actors, userActors, grades, weeks] = await Promise.all([
     actorProfileIds.length === 0
       ? []
       : db.select({ id: profiles.id, name: profiles.firstName })
         .from(profiles)
         .where(inArray(profiles.id, actorProfileIds)),
+    actorUserIds.length === 0
+      ? []
+      : db.select({ userId: profiles.userId, name: profiles.firstName })
+        .from(profiles)
+        .where(and(
+          inArray(profiles.userId, actorUserIds),
+          eq(profiles.role, "PARENT")
+        )),
     weekIds.length === 0
       ? []
       : db.select({
@@ -274,6 +325,7 @@ export async function getRecentAccountActivity(input: {
         .where(inArray(weeklyPlans.id, weekIds))
   ]);
   const actorNames = new Map(actors.map((actor) => [actor.id, actor.name]));
+  const actorNamesByUserId = new Map(userActors.map((actor) => [actor.userId, actor.name]));
   const weekNumbers = new Map(weeks.map((week) => [week.id, week.weekNumber]));
   const gradeContexts = new Map(grades.map((grade) => [
     `${grade.weeklyPlanId}:${grade.dayNumber}:${grade.subjectKey}`,
@@ -298,7 +350,9 @@ export async function getRecentAccountActivity(input: {
         type: event.eventType === "grade_saved" ? "lesson_completed" : event.eventType,
         actorName: event.actorProfileId
           ? actorNames.get(event.actorProfileId) ?? "A teacher"
-          : "A teacher",
+          : event.actorUserId
+            ? actorNamesByUserId.get(event.actorUserId) ?? "A teacher"
+            : "A teacher",
         studentName: student.name,
         // Older mobile builds use subjectLabel as the lesson label.
         subjectLabel: isLessonCompletionActivity(event)
