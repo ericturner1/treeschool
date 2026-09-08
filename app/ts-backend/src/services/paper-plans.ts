@@ -2056,6 +2056,54 @@ function splitIndependentPracticeCollection(
   });
 }
 
+function isChapterDividerTitle(value: string) {
+  const normalized = value.normalize("NFKC").trim();
+  return (
+    /^(?:chapter|unit|part|section)\s+(?:\d+|[ivxlcdm]+)\b/i.test(normalized) ||
+    /^第\s*[0-9一二三四五六七八九十百]+\s*(?:章|課|部)/u.test(normalized) ||
+    /^だい\s*[0-9一二三四五六七八九十百]+\s*(?:しょう|か)/u.test(normalized)
+  );
+}
+
+function isStandaloneChapterDividerSectionGroup(
+  sectionGroup: DocumentAnalysis["sections"]
+) {
+  const pageCount = sectionGroup.reduce(
+    (total, section) => total + section.endPage - section.startPage + 1,
+    0
+  );
+  return (
+    pageCount <= 2 &&
+    sectionGroup.every((section) => section.category === "supporting_content") &&
+    isChapterDividerTitle(sectionGroup[0]?.title ?? "")
+  );
+}
+
+function mergeChapterDividerSectionGroups(
+  sectionGroups: Array<DocumentAnalysis["sections"]>
+) {
+  const merged: Array<DocumentAnalysis["sections"]> = [];
+  for (let index = 0; index < sectionGroups.length; index += 1) {
+    const current = sectionGroups[index]!;
+    const next = sectionGroups[index + 1];
+    const currentLastPage = current.at(-1)?.endPage;
+    const nextFirstPage = next?.[0]?.startPage;
+    if (
+      next &&
+      isStandaloneChapterDividerSectionGroup(current) &&
+      currentLastPage != null &&
+      nextFirstPage === currentLastPage + 1 &&
+      !next.every((section) => section.category === "supporting_content")
+    ) {
+      merged.push([...current, ...next]);
+      index += 1;
+    } else {
+      merged.push(current);
+    }
+  }
+  return merged;
+}
+
 export function buildLearningUnitMetadata(input: {
   label: string;
   role: string;
@@ -2096,16 +2144,19 @@ export function buildLearningUnitMetadata(input: {
     }
   }
 
-  for (const sectionGroup of sectionGroups) {
+  for (const sectionGroup of mergeChapterDividerSectionGroups(sectionGroups)) {
     const firstSection = sectionGroup[0]!;
-    const leafTitle = learningUnitBaseTitle(firstSection.title);
+    const titleSection = sectionGroup.find((section) =>
+      !isStandaloneChapterDividerSectionGroup([section])
+    ) ?? firstSection;
+    const leafTitle = learningUnitBaseTitle(titleSection.title);
     const idStem = normalizePlanSubjectLabel(leafTitle) || "teaching-unit";
     const id = `unit-${String(learningUnits.length + 1).padStart(4, "0")}-${idStem}`;
-    const openingText = input.pages[firstSection.startPage - 1]?.text ?? "";
-    const titleScore = pageTitleMatchScore(openingText, firstSection.title);
+    const openingText = input.pages[titleSection.startPage - 1]?.text ?? "";
+    const titleScore = pageTitleMatchScore(openingText, titleSection.title);
     const inferredBoundaryEvidence: BoundaryEvidence[] = titleScore >= 0.6 ? [{
       source: "page_semantics",
-      pdfPageNumber: firstSection.startPage,
+      pdfPageNumber: titleSection.startPage,
       detail: `The opening page matched the unit title with score ${titleScore.toFixed(2)}.`,
       confidence: titleScore >= 0.9 ? "high" : "medium"
     }] : [];
@@ -3421,7 +3472,46 @@ function learningUnitsFromAnalysis(
         : []
     }];
   }).sort((left, right) => left.sequenceOrder - right.sequenceOrder);
-  return units.length === record.learningUnits.length ? units : null;
+  if (units.length !== record.learningUnits.length) return null;
+
+  const merged: DocumentLearningUnit[] = [];
+  for (let index = 0; index < units.length; index += 1) {
+    const current = units[index]!;
+    const next = units[index + 1];
+    const currentLastPage = current.components.at(-1)?.pdfPageEnd;
+    const nextFirstPage = next?.components[0]?.pdfPageStart;
+    const isReferenceOnly = current.components.every((component) => component.role === "reference");
+    const currentPageCount = current.components.reduce(
+      (total, component) => total + component.pdfPageEnd - component.pdfPageStart + 1,
+      0
+    );
+    if (
+      next &&
+      isReferenceOnly &&
+      currentPageCount <= 2 &&
+      isChapterDividerTitle(current.title) &&
+      currentLastPage != null &&
+      nextFirstPage === currentLastPage + 1 &&
+      next.components.some((component) => component.role !== "reference")
+    ) {
+      const confidenceOrder = { low: 0, medium: 1, high: 2 } as const;
+      merged.push({
+        ...next,
+        sequenceOrder: current.sequenceOrder,
+        components: [...current.components, ...next.components],
+        estimatedMinutes: current.estimatedMinutes + next.estimatedMinutes,
+        conceptLabels: Array.from(new Set(next.conceptLabels)),
+        boundaryConfidence: confidenceOrder[current.boundaryConfidence] < confidenceOrder[next.boundaryConfidence]
+          ? current.boundaryConfidence
+          : next.boundaryConfidence,
+        boundaryEvidence: [...current.boundaryEvidence, ...next.boundaryEvidence]
+      });
+      index += 1;
+    } else {
+      merged.push(current);
+    }
+  }
+  return merged.map((unit, sequenceOrder) => ({ ...unit, sequenceOrder }));
 }
 
 function pageLedgerFromAnalysis(analysis: unknown): DocumentPageLedgerEntry[] | null {

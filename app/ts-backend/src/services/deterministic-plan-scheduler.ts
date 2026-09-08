@@ -44,7 +44,7 @@ export type DeterministicScheduleResult = {
   };
 };
 
-export const DETERMINISTIC_SCHEDULING_ALGORITHM_VERSION = 6;
+export const DETERMINISTIC_SCHEDULING_ALGORITHM_VERSION = 7;
 
 type WeekAssignment = {
   unit: DeterministicSchedulerUnit;

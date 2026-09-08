@@ -312,6 +312,150 @@ Chapter 5: Shapes and Fractions
     expect(new Set(result.pageLedger.slice(6).map((page) => page.learningUnitId)).size).toBe(1);
   });
 
+  test("attaches a chapter divider to the instructional lesson that follows it", () => {
+    const chapterPages = [
+      "だい2しょう：にごる おと・はんだくおん",
+      "2.1 Voiced Sounds (Ga, Za, Da, Ba)",
+      "が ざ だ ば practice",
+      "Read and write the voiced sounds",
+      "Voiced sounds review"
+    ].map((text, pageIndex) => ({ pageIndex, label: null, text }));
+    const result = buildLearningUnitMetadata({
+      label: "国語B",
+      role: "student",
+      pageCount: chapterPages.length,
+      pages: chapterPages,
+      pageNumberMapping: null,
+      sections: [
+        {
+          title: "Chapter 2: Voiced and Semi-voiced Sounds",
+          startPage: 1,
+          endPage: 1,
+          estimatedMinutes: 1,
+          notes: "Chapter divider",
+          category: "supporting_content",
+          includeInPlan: true,
+          classificationConfidence: "high",
+          exclusionReason: null,
+          supportScope: "unit",
+          boundaryConfidence: "high",
+          boundaryEvidence: [],
+          pageSelectionAudit: createPageSelectionAudit(null, 1, 1)
+        },
+        {
+          title: "2.1 Voiced Sounds (Ga, Za, Da, Ba)",
+          startPage: 2,
+          endPage: 5,
+          estimatedMinutes: 25,
+          notes: "",
+          category: "concept_practice",
+          includeInPlan: true,
+          classificationConfidence: "high",
+          exclusionReason: null,
+          supportScope: null,
+          boundaryConfidence: "high",
+          boundaryEvidence: [],
+          pageSelectionAudit: createPageSelectionAudit(null, 2, 5)
+        }
+      ]
+    });
+
+    expect(result.documentQuality.status).toBe("passed");
+    expect(result.learningUnits).toHaveLength(1);
+    expect(result.learningUnits[0]?.title).toBe("2.1 Voiced Sounds (Ga, Za, Da, Ba)");
+    expect(result.learningUnits[0]?.components.map((component) => [
+      component.pdfPageStart,
+      component.pdfPageEnd,
+      component.role
+    ])).toEqual([
+      [1, 1, "reference"],
+      [2, 5, "practice"]
+    ]);
+    expect(new Set(result.pageLedger.map((page) => page.learningUnitId)).size).toBe(1);
+  });
+
+  test("normalizes legacy metadata that stored a chapter divider as its own unit", () => {
+    const audit = (startPage: number, endPage: number) =>
+      createPageSelectionAudit(null, startPage, endPage);
+    const week = normalizeGeneratedWeek({
+      weekNumber: 1,
+      summary: "Begin Chapter 2.",
+      items: [{
+        documentId: "kokugo-b",
+        learningUnitId: "unit-0006-lesson-2-1",
+        label: "2.1 Voiced Sounds (Ga, Za, Da, Ba)",
+        subjectTitle: "Japanese Language",
+        dayNumber: 1,
+        conceptLabels: ["Voiced sounds"],
+        conceptRedundant: false,
+        redundancyReason: null
+      }]
+    }, [{
+      id: "kokugo-b",
+      label: "国語B",
+      pageCount: 5,
+      subjectId: null,
+      subjectLabel: "Japanese Language",
+      documentRole: "student",
+      analysisJson: {
+        structureVersion: 3,
+        documentQuality: { status: "passed" },
+        learningUnits: [
+          {
+            id: "unit-0005-chapter-2",
+            title: "Chapter 2: Voiced and Semi-voiced Sounds",
+            sequenceOrder: 4,
+            components: [{
+              pdfPageStart: 1,
+              pdfPageEnd: 1,
+              category: "supporting_content",
+              role: "reference",
+              includeInPacket: true,
+              pageNumberConversionAudit: audit(1, 1)
+            }],
+            splittable: false,
+            approvedSplitPoints: [],
+            estimatedMinutes: 1,
+            conceptLabels: ["Chapter 2"],
+            boundaryConfidence: "high",
+            boundaryEvidence: []
+          },
+          {
+            id: "unit-0006-lesson-2-1",
+            title: "2.1 Voiced Sounds (Ga, Za, Da, Ba)",
+            sequenceOrder: 5,
+            components: [{
+              pdfPageStart: 2,
+              pdfPageEnd: 5,
+              category: "concept_practice",
+              role: "practice",
+              includeInPacket: true,
+              pageNumberConversionAudit: audit(2, 5)
+            }],
+            splittable: false,
+            approvedSplitPoints: [],
+            estimatedMinutes: 25,
+            conceptLabels: ["Voiced sounds"],
+            boundaryConfidence: "high",
+            boundaryEvidence: []
+          }
+        ]
+      }
+    }], 1, 4);
+
+    expect(week.items).toHaveLength(2);
+    expect(week.items.map((item) => [item.firstPageIndex, item.lastPageIndex])).toEqual([
+      [0, 0],
+      [1, 4]
+    ]);
+    expect(new Set(week.items.map((item) => item.sourceUnitId))).toEqual(
+      new Set(["unit-0006-lesson-2-1"])
+    );
+    expect(new Set(week.items.map((item) => item.label))).toEqual(
+      new Set(["2.1 Voiced Sounds (Ga, Za, Da, Ba)"])
+    );
+  });
+
   test("splits an explicit one-page-per-letter practice collection into schedulable units", () => {
     const result = buildLearningUnitMetadata({
       label: "Cursive",
