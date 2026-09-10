@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatDateTimeInTimeZone } from "./date-time";
+import { dateKeyInTimeZone, formatDateTimeInTimeZone } from "./date-time";
 
 const timestamp = "2026-07-25T02:07:17.196Z";
 
@@ -14,5 +14,14 @@ describe("formatDateTimeInTimeZone", () => {
   test("falls back safely when a stored timezone is invalid", () => {
     const fallback = formatDateTimeInTimeZone(timestamp, "not/a-timezone");
     expect(fallback).toContain("2:07");
+  });
+});
+
+describe("dateKeyInTimeZone", () => {
+  test("uses the configured local calendar day", () => {
+    const instant = "2026-09-10T15:30:00.000Z";
+
+    expect(dateKeyInTimeZone(instant, "Asia/Tokyo")).toBe("2026-09-11");
+    expect(dateKeyInTimeZone(instant, "America/Los_Angeles")).toBe("2026-09-10");
   });
 });

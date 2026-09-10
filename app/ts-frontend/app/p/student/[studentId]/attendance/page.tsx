@@ -4,8 +4,10 @@ import { redirect } from "next/navigation";
 import { ParentModeGuard } from "../../../parent-mode-guard";
 import { ActivitySquareGrid } from "../../../../../components/activity-square-grid";
 import { PremiumFeatureLock } from "../../../../../components/premium-feature-lock";
+import { getStudentStreakSettings } from "../../../../../lib/accounts/server";
 import { getStudentAttendance } from "../../../../../lib/attendance/server";
 import { getParentBillingOverview } from "../../../../../lib/billing/server";
+import { dateKeyInTimeZone } from "../../../../../lib/date-time";
 import { getParentStudentPageData, studentRoutePath } from "../student-page-data";
 import { ReportDownloadButton } from "../report-download-button";
 import { StudentShell } from "../student-shell";
@@ -38,12 +40,15 @@ export default async function AttendancePage(props: Props) {
   }
   const canDeleteAttendance = parentProfile?.accountRole !== "TEACHER";
   const basePath = studentRoutePath(studentRouteSegment, "/attendance");
-  const billing = await getParentBillingOverview({ userId: currentUser.id });
+  const [billing, streakSettings] = await Promise.all([
+    getParentBillingOverview({ userId: currentUser.id }),
+    getStudentStreakSettings({ parentUserId: currentUser.id, profileId: student.id }),
+  ]);
   const attendance = billing.featureAccess.allowed ? await getStudentAttendance({
     parentUserId: currentUser.id, profileId: student.id, yearId: searchParams?.yearId,
     dateFrom: searchParams?.dateFrom, dateTo: searchParams?.dateTo
   }) : null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dateKeyInTimeZone(new Date(), streakSettings.timeZone);
 
   return (
     <ParentModeGuard lang={searchParams?.lang} redirectTo={basePath}>
