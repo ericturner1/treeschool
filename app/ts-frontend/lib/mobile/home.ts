@@ -59,7 +59,7 @@ export function buildMobileHomePayload(input: {
   const incompleteWeeks = orderedWeeks.filter(
     (week) => week.status !== "completed" && week.status !== "skipped",
   );
-  const currentWeek = orderedWeeks.find(
+  const currentWeek = [...orderedWeeks].reverse().find(
     (week) => week.status === "in_progress",
   ) ?? orderedWeeks.find(
     (week) => week.status === "planned",
