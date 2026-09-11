@@ -134,10 +134,31 @@ describe("mobile home payload", () => {
             grade: null,
             parentNotes: null,
             items: [],
-            days: [],
-            scheduledDayCount: 5,
-            attendedDayCount: 2,
-            attendanceProgress: 40,
+            days: [
+              {
+                dayNumber: 1,
+                status: "completed",
+                attendanceProgress: 100,
+                attendanceLogged: true,
+                attendanceLoggedToday: false,
+                attendedSubjectKeys: ["math"],
+                attendanceDates: ["2026-09-01"],
+                subjects: [],
+              },
+              {
+                dayNumber: 2,
+                status: "in_progress",
+                attendanceProgress: 50,
+                attendanceLogged: true,
+                attendanceLoggedToday: false,
+                attendedSubjectKeys: ["reading"],
+                attendanceDates: ["2026-09-02"],
+                subjects: [],
+              },
+            ],
+            scheduledDayCount: 2,
+            attendedDayCount: 1,
+            attendanceProgress: 75,
             subjectGrades: [],
           },
           {
@@ -204,6 +225,11 @@ describe("mobile home payload", () => {
         currentPeriodPaused: false,
         currentPeriodCompleted: false,
         showWarning: true,
+      },
+      planProgress: {
+        currentWeekNumber: 10,
+        currentWeekTitle: "Week 10",
+        yearProgressPercent: 75,
       },
       incompleteWeeks: [
         {

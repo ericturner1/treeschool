@@ -53,9 +53,28 @@ export function buildMobileHomePayload(input: {
   recentActivity: RecentAccountActivity["events"];
   now?: Date;
 }) {
-  const incompleteWeeks = input.plan.weeks.filter(
+  const orderedWeeks = [...input.plan.weeks].sort(
+    (left, right) => left.weekNumber - right.weekNumber,
+  );
+  const incompleteWeeks = orderedWeeks.filter(
     (week) => week.status !== "completed" && week.status !== "skipped",
-  ).sort((left, right) => left.weekNumber - right.weekNumber);
+  );
+  const currentWeek = orderedWeeks.find(
+    (week) => week.status === "in_progress",
+  ) ?? orderedWeeks.find(
+    (week) => week.status === "planned",
+  ) ?? [...orderedWeeks].reverse().find(
+    (week) => week.status === "completed",
+  );
+  const dayProgressValues = orderedWeeks.flatMap((week) =>
+    week.days.map((day) => day.attendanceProgress)
+  );
+  const yearProgressPercent = dayProgressValues.length === 0
+    ? 0
+    : Math.round(
+        dayProgressValues.reduce((sum, value) => sum + value, 0) /
+          dayProgressValues.length,
+      );
   const defaultWeek = incompleteWeeks.find(
     (week) => week.status === "planned" && !week.downloaded,
   ) ?? incompleteWeeks.find(
@@ -98,6 +117,13 @@ export function buildMobileHomePayload(input: {
       currentPeriodCompleted: streak.currentPeriodCompleted,
       showWarning: shouldShowStreakWarning(streak),
     },
+    planProgress: currentWeek
+      ? {
+          currentWeekNumber: currentWeek.weekNumber,
+          currentWeekTitle: currentWeek.title,
+          yearProgressPercent,
+        }
+      : null,
     incompleteWeeks: weekDownloadOptions,
     defaultWeekId: defaultWeek?.id ?? null,
     // Keep the original field while installed clients transition to the dropdown.
