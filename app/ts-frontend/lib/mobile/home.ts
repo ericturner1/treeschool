@@ -121,6 +121,7 @@ export function buildMobileHomePayload(input: {
       ? {
           currentWeekNumber: currentWeek.weekNumber,
           currentWeekTitle: currentWeek.title,
+          currentWeekProgressPercent: currentWeek.attendanceProgress,
           yearProgressPercent,
         }
       : null,

@@ -240,6 +240,7 @@ describe("mobile home payload", () => {
       planProgress: {
         currentWeekNumber: 11,
         currentWeekTitle: "Week 11",
+        currentWeekProgressPercent: 50,
         yearProgressPercent: 67,
       },
       incompleteWeeks: [
