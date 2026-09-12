@@ -52,6 +52,12 @@ describe("mobile home payload", () => {
         pointPluralName: "points",
         occurredAt: "2026-09-02T11:30:00.000Z",
       }],
+      pacing: {
+        status: "behind",
+        scheduledTeachingDays: 180,
+        expectedTeachingDays: 144,
+        behindWeeks: 1.4,
+      },
       now: new Date("2026-09-02T12:00:00.000Z"),
       calendar: {
         timeZone: "UTC",
@@ -242,6 +248,8 @@ describe("mobile home payload", () => {
         currentWeekTitle: "Week 11",
         currentWeekProgressPercent: 50,
         yearProgressPercent: 67,
+        yearTargetProgressPercent: 80,
+        weeksBehind: 1.4,
       },
       incompleteWeeks: [
         {

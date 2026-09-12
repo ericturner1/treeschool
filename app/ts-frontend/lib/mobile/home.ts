@@ -51,6 +51,12 @@ export function buildMobileHomePayload(input: {
     };
   };
   recentActivity: RecentAccountActivity["events"];
+  pacing?: {
+    status: "before_start" | "on_track" | "ahead" | "behind" | "complete";
+    scheduledTeachingDays: number;
+    expectedTeachingDays: number;
+    behindWeeks: number;
+  } | null;
   now?: Date;
 }) {
   const orderedWeeks = [...input.plan.weeks].sort(
@@ -75,6 +81,14 @@ export function buildMobileHomePayload(input: {
         dayProgressValues.reduce((sum, value) => sum + value, 0) /
           dayProgressValues.length,
       );
+  const expectedYearProgressPercent = input.pacing?.scheduledTeachingDays
+    ? Math.round(
+        (input.pacing.expectedTeachingDays / input.pacing.scheduledTeachingDays) * 100,
+      )
+    : yearProgressPercent;
+  const weeksBehind = input.pacing?.status === "behind"
+    ? Math.max(0, input.pacing.behindWeeks)
+    : 0;
   const defaultWeek = incompleteWeeks.find(
     (week) => week.status === "planned" && !week.downloaded,
   ) ?? incompleteWeeks.find(
@@ -123,6 +137,11 @@ export function buildMobileHomePayload(input: {
           currentWeekTitle: currentWeek.title,
           currentWeekProgressPercent: currentWeek.attendanceProgress,
           yearProgressPercent,
+          yearTargetProgressPercent: Math.max(
+            0,
+            Math.min(100, expectedYearProgressPercent),
+          ),
+          weeksBehind,
         }
       : null,
     incompleteWeeks: weekDownloadOptions,

@@ -6,6 +6,7 @@ import { buildMobileHomePayload } from "../../../../lib/mobile/home";
 import { getPaperPlan } from "../../../../lib/paper-plans/server";
 import { getStudentPoints } from "../../../../lib/points/server";
 import { publicErrorMessage } from "../../../../lib/security/request-guards";
+import { getStudentOverviewMetrics } from "../../../../lib/student-overview/server";
 
 export async function GET(request: Request) {
   const currentUser = await getRequestUser(request);
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
     }
 
     const calendarDate = new Date().toISOString().slice(0, 10);
-    const [plan, calendar, points, recentActivity] = await Promise.all([
+    const [plan, calendar, points, recentActivity, overview] = await Promise.all([
       getPaperPlan({
         parentUserId: currentUser.id,
         profileId: selected.id,
@@ -54,6 +55,10 @@ export async function GET(request: Request) {
         limit: 10,
         includePdfDownloads,
       }),
+      getStudentOverviewMetrics({
+        parentUserId: currentUser.id,
+        profileId: selected.id,
+      }),
     ]);
     return NextResponse.json(
       buildMobileHomePayload({
@@ -63,6 +68,7 @@ export async function GET(request: Request) {
         calendar,
         points,
         recentActivity: recentActivity.events,
+        pacing: overview.pacing,
       }),
     );
   } catch (error) {
