@@ -16,6 +16,7 @@ import {
   deleteAttendanceAction,
   updateManualAttendanceAction
 } from "./actions";
+import { AttendanceSubjectPicker } from "./attendance-subject-picker";
 
 type Props = {
   params: Promise<{ studentId?: string }>;
@@ -123,6 +124,21 @@ export default async function AttendancePage(props: Props) {
                   explanation="Lighter squares are quieter days; darker squares have more recorded learning."
                 />
               </div>
+              {attendance.subjects.length > 0 ? (
+                <div className="mt-5">
+                  <h3 className="text-sm font-semibold text-ink">Learning by subject</h3>
+                  <p className="mt-1 text-xs leading-5 text-ink/52">Workbook lessons and other learning share the same subject totals.</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {attendance.subjects.map((subject) => (
+                      <div key={subject.subjectKey} className="rounded-[16px] border border-[#dce6d2] bg-[#f7faf3] px-4 py-3">
+                        <p className="font-semibold text-ink">{subject.subjectLabel}</p>
+                        {subject.subjectKind === "custom_elective" ? <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#6d9651]">Custom elective</p> : null}
+                        <p className="mt-1 text-xs text-ink/55">{subject.activities} {subject.activities === 1 ? "activity" : "activities"} · {subject.learningDays} {subject.learningDays === 1 ? "day" : "days"}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             <section className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.25fr)]">
@@ -133,8 +149,8 @@ export default async function AttendancePage(props: Props) {
                   <input type="hidden" name="profileId" value={student.id} /><input type="hidden" name="learningYearId" value={attendance.selectedYearId ?? ""} />
                   <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold text-ink">Date<input required type="date" name="attendanceDate" defaultValue={today} className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label><label className="text-sm font-semibold text-ink">Type<select name="activityType" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5"><option value="field_trip">Field trip</option><option value="co_op">Co-op</option><option value="project">Project</option><option value="library">Library</option><option value="sport">Physical education</option><option value="subject">Subject study</option><option value="other">Other learning</option></select></label></div>
                   <label className="text-sm font-semibold text-ink">What did you do?<input required name="title" placeholder="Example: Natural history museum visit" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label>
-                  <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold text-ink">Subject <span className="font-normal text-ink/45">(optional)</span><input name="subjectLabel" placeholder="Science" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label><label className="text-sm font-semibold text-ink">Minutes <span className="font-normal text-ink/45">(optional)</span><input name="minutes" type="number" min="1" max="1440" placeholder="90" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label></div>
-                  <label className="text-sm font-semibold text-ink">Extra credit points <span className="font-normal text-ink/45">(optional)</span><input name="extraCreditPoints" type="number" min="1" max="100" step="1" placeholder="5" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /><span className="mt-1.5 block text-xs font-normal leading-5 text-ink/50">Adds bonus points to this subject’s grade average. A subject is required when extra credit is entered.</span></label>
+                  <div className="grid gap-3 sm:grid-cols-2"><AttendanceSubjectPicker masterSubjects={attendance.subjectOptions.masterSubjects} customElectives={attendance.subjectOptions.customElectives} /><label className="text-sm font-semibold text-ink">Minutes <span className="font-normal text-ink/45">(optional)</span><input name="minutes" type="number" min="1" max="1440" placeholder="90" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label></div>
+                  <label className="text-sm font-semibold text-ink">Extra credit points <span className="font-normal text-ink/45">(optional)</span><input name="extraCreditPoints" type="number" min="1" max="100" step="1" placeholder="5" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /><span className="mt-1.5 block text-xs font-normal leading-5 text-ink/50">Adds bonus points to the selected subject’s grade average.</span></label>
                   <label className="text-sm font-semibold text-ink">Notes <span className="font-normal text-ink/45">(optional)</span><textarea name="notes" rows={3} className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label>
                   <button type="submit" className="cta-button cta-button--light justify-self-start">Record learning day</button>
                 </form>
@@ -148,7 +164,7 @@ export default async function AttendancePage(props: Props) {
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                           <p className="font-semibold text-ink">{entry.title}</p>
-                          <p className="mt-1 text-sm text-ink/58">{displayDate(entry.date)} · {activityLabel(entry.activityType, entry.entryKind)}{entry.subjectLabels.length > 0 ? ` · ${entry.subjectLabels.join(", ")}` : entry.subjectLabel ? ` · ${entry.subjectLabel}` : ""}{entry.minutes ? ` · ${entry.minutes} min` : ""}</p>
+                          <p className="mt-1 text-sm text-ink/58">{displayDate(entry.date)} · {activityLabel(entry.activityType, entry.entryKind)}{entry.subjectAreaLabels.length > 0 ? ` · ${entry.subjectAreaLabels.join(", ")}` : ""}{entry.minutes ? ` · ${entry.minutes} min` : ""}</p>
                           {entry.extraCreditPoints ? <span className="mt-2 inline-flex rounded-full bg-[#f3e6c8] px-2.5 py-1 text-xs font-bold text-[#765632]">+{entry.extraCreditPoints} extra credit {entry.extraCreditPoints === 1 ? "point" : "points"}</span> : null}
                           {entry.notes ? <p className="mt-2 text-sm leading-6 text-ink/65">{entry.notes}</p> : null}
                         </div>
@@ -170,10 +186,15 @@ export default async function AttendancePage(props: Props) {
                             </div>
                             <label className="text-sm font-semibold text-ink">What did you do?<input required name="title" defaultValue={entry.title} className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label>
                             <div className="grid gap-3 sm:grid-cols-2">
-                              <label className="text-sm font-semibold text-ink">Subject <span className="font-normal text-ink/45">(optional)</span><input name="subjectLabel" defaultValue={entry.subjectLabel ?? ""} placeholder="Science" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label>
+                              <AttendanceSubjectPicker
+                                masterSubjects={attendance.subjectOptions.masterSubjects}
+                                customElectives={attendance.subjectOptions.customElectives}
+                                defaultSelection={entry.subjectKey?.startsWith("custom_elective:") ? entry.subjectKey : entry.curriculumAreaKey ? `area:${entry.curriculumAreaKey}` : ""}
+                                defaultLabel={entry.subjectLabel}
+                              />
                               <label className="text-sm font-semibold text-ink">Minutes <span className="font-normal text-ink/45">(optional)</span><input name="minutes" type="number" min="1" max="1440" defaultValue={entry.minutes ?? ""} placeholder="90" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label>
                             </div>
-                            <label className="text-sm font-semibold text-ink">Extra credit points <span className="font-normal text-ink/45">(optional)</span><input name="extraCreditPoints" type="number" min="1" max="100" step="1" defaultValue={entry.extraCreditPoints ?? ""} placeholder="5" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /><span className="mt-1.5 block text-xs font-normal leading-5 text-ink/50">Adds bonus points to this subject’s grade average.</span></label>
+                            <label className="text-sm font-semibold text-ink">Extra credit points <span className="font-normal text-ink/45">(optional)</span><input name="extraCreditPoints" type="number" min="1" max="100" step="1" defaultValue={entry.extraCreditPoints ?? ""} placeholder="5" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /><span className="mt-1.5 block text-xs font-normal leading-5 text-ink/50">Adds bonus points to the selected subject’s grade average.</span></label>
                             <label className="text-sm font-semibold text-ink">Notes <span className="font-normal text-ink/45">(optional)</span><textarea name="notes" rows={3} defaultValue={entry.notes ?? ""} className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label>
                             <button type="submit" className="cta-button cta-button--light cta-button--small justify-self-start">Save changes</button>
                           </form>

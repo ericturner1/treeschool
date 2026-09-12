@@ -2042,6 +2042,35 @@ export const learningYears = pgTable("learning_years", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });
 
+export const learningYearCustomElectives = pgTable(
+  "learning_year_custom_electives",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    learningYearId: uuid("learning_year_id")
+      .notNull()
+      .references(() => learningYears.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    normalizedLabel: text("normalized_label").notNull(),
+    active: boolean("active").notNull().default(true),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null"
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    learningYearLabelUnique: unique("learning_year_custom_electives_year_label_unique").on(
+      table.learningYearId,
+      table.normalizedLabel
+    ),
+    learningYearActiveIndex: index("learning_year_custom_electives_year_active_idx").on(
+      table.learningYearId,
+      table.active,
+      table.label
+    )
+  })
+);
+
 export const learningYearSubjectPreferences = pgTable(
   "learning_year_subject_preferences",
   {
@@ -2670,6 +2699,7 @@ export const attendanceEntries = pgTable(
     activityType: text("activity_type").notNull().default("lesson"),
     subjectKey: text("subject_key"),
     subjectLabel: text("subject_label"),
+    curriculumAreaKey: text("curriculum_area_key"),
     title: text("title").notNull(),
     notes: text("notes"),
     minutes: integer("minutes"),
@@ -2690,6 +2720,11 @@ export const attendanceEntries = pgTable(
       table.weeklyPlanId,
       table.weeklyPlanDayNumber,
       table.attendanceDate
+    ),
+    profileAreaDateIndex: index("attendance_entries_profile_area_date_idx").on(
+      table.profileId,
+      table.curriculumAreaKey,
+      table.attendanceDate
     )
   })
 );
@@ -2703,13 +2738,15 @@ export const attendanceEntrySubjects = pgTable(
       .references(() => attendanceEntries.id, { onDelete: "cascade" }),
     subjectKey: text("subject_key").notNull(),
     subjectLabel: text("subject_label").notNull(),
+    curriculumAreaKey: text("curriculum_area_key").notNull().default("other"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
   },
   (table) => ({
     entrySubjectUnique: unique("attendance_entry_subjects_entry_subject_unique").on(
       table.attendanceEntryId,
       table.subjectKey
-    )
+    ),
+    areaIndex: index("attendance_entry_subjects_area_idx").on(table.curriculumAreaKey)
   })
 );
 

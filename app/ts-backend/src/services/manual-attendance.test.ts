@@ -6,7 +6,7 @@ describe("manual attendance editing", () => {
     expect(normalizeManualAttendanceFields({
       attendanceDate: "2026-07-27",
       activityType: "field_trip",
-      subjectLabel: "  Science  ",
+      curriculumAreaKey: "science",
       title: "  Visited the natural history museum  ",
       notes: "  Studied dinosaur fossils.  ",
       minutes: 90,
@@ -14,6 +14,9 @@ describe("manual attendance editing", () => {
     })).toEqual({
       attendanceDate: "2026-07-27",
       activityType: "field_trip",
+      curriculumAreaKey: "science",
+      customElectiveId: null,
+      customElectiveName: null,
       subjectLabel: "Science",
       title: "Visited the natural history museum",
       notes: "Studied dinosaur fossils.",
@@ -22,7 +25,54 @@ describe("manual attendance editing", () => {
     });
   });
 
-  test("allows optional fields to be cleared", () => {
+  test("accepts either an existing or a newly named custom elective", () => {
+    expect(normalizeManualAttendanceFields({
+      attendanceDate: "2026-07-27",
+      activityType: "subject",
+      customElectiveId: "1aab2716-a14d-4aa3-98cb-7dd0076fa2d1",
+      title: "Piano practice"
+    })).toMatchObject({
+      curriculumAreaKey: null,
+      customElectiveId: "1aab2716-a14d-4aa3-98cb-7dd0076fa2d1",
+      customElectiveName: null,
+      subjectLabel: null
+    });
+    expect(normalizeManualAttendanceFields({
+      attendanceDate: "2026-07-27",
+      activityType: "subject",
+      customElectiveName: "  Piano  ",
+      title: "Piano practice"
+    })).toMatchObject({
+      curriculumAreaKey: null,
+      customElectiveId: null,
+      customElectiveName: "Piano",
+      subjectLabel: "Piano"
+    });
+  });
+
+  test("rejects ambiguous or invalid custom elective choices", () => {
+    expect(() => normalizeManualAttendanceFields({
+      attendanceDate: "2026-07-27",
+      activityType: "subject",
+      curriculumAreaKey: "arts_and_music",
+      customElectiveName: "Piano",
+      title: "Piano practice"
+    })).toThrow("Choose one subject");
+    expect(() => normalizeManualAttendanceFields({
+      attendanceDate: "2026-07-27",
+      activityType: "subject",
+      customElectiveId: "not-an-id",
+      title: "Piano practice"
+    })).toThrow("Choose a valid custom elective");
+    expect(() => normalizeManualAttendanceFields({
+      attendanceDate: "2026-07-27",
+      activityType: "subject",
+      customElectiveName: "  ",
+      title: "Piano practice"
+    })).toThrow("Add a name for the custom elective");
+  });
+
+  test("uses Other when an older client omits the subject area", () => {
     expect(normalizeManualAttendanceFields({
       attendanceDate: "2026-07-27",
       activityType: "other",
@@ -31,24 +81,29 @@ describe("manual attendance editing", () => {
       notes: "",
       minutes: null
     })).toMatchObject({
-      subjectLabel: null,
+      curriculumAreaKey: "other",
+      subjectLabel: "Other",
       notes: null,
       minutes: null,
       extraCreditPoints: null
     });
   });
 
-  test("requires a subject and valid whole-number points for extra credit", () => {
-    expect(() => normalizeManualAttendanceFields({
+  test("maps legacy subject labels and requires valid whole-number extra credit", () => {
+    expect(normalizeManualAttendanceFields({
       attendanceDate: "2026-07-27",
       activityType: "project",
-      title: "Science fair display",
+      subjectLabel: "Math",
+      title: "Math game",
       extraCreditPoints: 5
-    })).toThrow("Choose a subject before adding extra credit.");
+    })).toMatchObject({
+      curriculumAreaKey: "mathematics",
+      subjectLabel: "Mathematics"
+    });
     expect(() => normalizeManualAttendanceFields({
       attendanceDate: "2026-07-27",
       activityType: "project",
-      subjectLabel: "Science",
+      curriculumAreaKey: "science",
       title: "Science fair display",
       extraCreditPoints: 2.5
     })).toThrow("Extra credit must be a whole number");

@@ -281,6 +281,7 @@ export async function saveWorkbookStudioRuleAction(
 
 export async function createWorkbookStudioProjectAction(input: {
   courseId: string;
+  curriculumAreaKey: string;
   title: string;
   languageCode: string;
   localeCode: string | null;

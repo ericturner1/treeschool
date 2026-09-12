@@ -255,6 +255,7 @@ export type WorkbookStudioProject = {
   title: string;
   subjectKey: string;
   subjectLabel: string;
+  curriculumAreaKey: string;
   gradeMin: number;
   gradeMax: number;
   languageCode: string;
@@ -304,6 +305,7 @@ export type WorkbookStudioSummary = {
     pipelineKey: string | null;
     subjectKey: string;
     subjectLabel: string;
+    curriculumAreaKey: string;
     subjectAcademicStandardKey: string;
   }>;
   curriculumSubjects: Array<{

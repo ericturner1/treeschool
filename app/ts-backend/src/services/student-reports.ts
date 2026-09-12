@@ -18,6 +18,10 @@ import {
   learningUnitMinuteEstimates,
   logicalPlanItemKey,
 } from "./learning-time-estimates";
+import {
+  curriculumAreaLabel,
+  resolveCurriculumAreaKey,
+} from "./native-workbook-taxonomy";
 import { planSubjectKey } from "./plan-subject-key";
 import {
   buildAttendanceReportPdf,
@@ -93,6 +97,25 @@ async function getReportContext(input: {
 }
 
 type AttendanceEntryRow = typeof attendanceEntries.$inferSelect;
+const CUSTOM_ELECTIVE_PREFIX = "custom_elective:";
+
+function attendanceSubjectLabel(input: {
+  subjectKey?: string | null;
+  subjectLabel?: string | null;
+  curriculumAreaKey?: string | null;
+}) {
+  if (
+    input.subjectKey?.startsWith(CUSTOM_ELECTIVE_PREFIX) &&
+    input.subjectLabel
+  ) {
+    return input.subjectLabel;
+  }
+  if (!input.curriculumAreaKey && !input.subjectLabel) return null;
+  return curriculumAreaLabel(
+    resolveCurriculumAreaKey(input.curriculumAreaKey, input.subjectLabel),
+  );
+}
+
 type PlanItemRow = {
   id: string;
   weeklyPlanId: string;
@@ -108,7 +131,14 @@ type PlanItemRow = {
 
 function groupAttendanceDays(input: {
   entries: AttendanceEntryRow[];
-  subjectsByEntryId: Map<string, Array<{ subjectKey: string; subjectLabel: string }>>;
+  subjectsByEntryId: Map<
+    string,
+    Array<{
+      subjectKey: string;
+      subjectLabel: string;
+      curriculumAreaKey: string;
+    }>
+  >;
   itemsByEntryId: Map<string, PlanItemRow[]>;
   documentsById: Map<string, typeof contentDocuments.$inferSelect>;
   estimatedMinutesByItemId: Map<string, number>;
@@ -130,15 +160,35 @@ function groupAttendanceDays(input: {
       minutes: 0,
     };
     const entrySubjects = input.subjectsByEntryId.get(entry.id) ?? [];
-    for (const subject of entrySubjects) day.subjectLabels.add(subject.subjectLabel);
-    if (entry.subjectLabel) day.subjectLabels.add(entry.subjectLabel);
+    const hasStoredSubject =
+      entrySubjects.length > 0 || Boolean(entry.curriculumAreaKey || entry.subjectLabel);
+    for (const subject of entrySubjects) {
+      day.subjectLabels.add(
+        curriculumAreaLabel(
+          resolveCurriculumAreaKey(
+            subject.curriculumAreaKey,
+            subject.subjectLabel,
+          ),
+        ),
+      );
+    }
+    if (entry.subjectLabel || entry.curriculumAreaKey) {
+      const label = attendanceSubjectLabel(entry);
+      if (label) day.subjectLabels.add(label);
+    }
     if (entry.entryKind === "manual") {
       day.otherActivities.add(entry.title);
     } else {
       for (const item of input.itemsByEntryId.get(entry.id) ?? []) {
         day.lessonsCompleted.add(item.label);
         const document = input.documentsById.get(item.documentId);
-        if (document?.subjectLabel) day.subjectLabels.add(document.subjectLabel);
+        if (!hasStoredSubject && document?.subjectLabel) {
+          day.subjectLabels.add(
+            curriculumAreaLabel(
+              resolveCurriculumAreaKey(null, document.subjectLabel),
+            ),
+          );
+        }
         const lessonKey = logicalPlanItemKey(item);
         if (!countedLessonKeys.has(lessonKey)) {
           countedLessonKeys.add(lessonKey);
@@ -197,10 +247,21 @@ export async function buildStudentAttendanceReport(input: {
     ? []
     : await db.select().from(attendanceEntrySubjects)
       .where(inArray(attendanceEntrySubjects.attendanceEntryId, entries.map((entry) => entry.id)));
-  const subjectsByEntryId = new Map<string, Array<{ subjectKey: string; subjectLabel: string }>>();
+  const subjectsByEntryId = new Map<
+    string,
+    Array<{
+      subjectKey: string;
+      subjectLabel: string;
+      curriculumAreaKey: string;
+    }>
+  >();
   for (const subject of entrySubjects) {
     const current = subjectsByEntryId.get(subject.attendanceEntryId) ?? [];
-    current.push({ subjectKey: subject.subjectKey, subjectLabel: subject.subjectLabel });
+    current.push({
+      subjectKey: subject.subjectKey,
+      subjectLabel: subject.subjectLabel,
+      curriculumAreaKey: subject.curriculumAreaKey,
+    });
     subjectsByEntryId.set(subject.attendanceEntryId, current);
   }
 

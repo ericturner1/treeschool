@@ -2,6 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import {
+  CURRICULUM_AREAS,
+  curriculumAreaLabel,
+} from "../../../lib/native-workbooks/curriculum-areas";
 import type { WorkbookStudioSummary } from "../../../lib/workbook-studio/server";
 import { createWorkbookStudioProjectAction } from "./actions";
 
@@ -27,6 +31,8 @@ export function StudioProjectCreator({
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [mode, setMode] = useState<"manual" | "generate">("manual");
+  const [curriculumAreaKey, setCurriculumAreaKey] = useState("");
+  const [courseId, setCourseId] = useState("");
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const workflowPrompts = prompts.filter(
@@ -112,6 +118,7 @@ export function StudioProjectCreator({
                   startTransition(async () => {
                     const result = await createWorkbookStudioProjectAction({
                       courseId: String(formData.get("courseId") ?? ""),
+                      curriculumAreaKey,
                       title: String(formData.get("title") ?? ""),
                       languageCode: String(
                         formData.get("languageCode") ?? "en",
@@ -148,15 +155,49 @@ export function StudioProjectCreator({
                 </label>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1.5 text-sm font-bold sm:col-span-2">
+                    Master subject
+                    <select
+                      value={curriculumAreaKey}
+                      required
+                      onChange={(event) => {
+                        setCurriculumAreaKey(event.target.value);
+                        setCourseId("");
+                      }}
+                      className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
+                    >
+                      <option value="">Choose a master subject</option>
+                      {CURRICULUM_AREAS.map((area) => (
+                        <option key={area.value} value={area.value}>
+                          {area.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="font-normal leading-5 text-ink/55">
+                      All workbook lessons will count toward this master subject
+                      in attendance and reports.
+                    </span>
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-bold sm:col-span-2">
                     Course
                     <select
                       name="courseId"
                       required
+                      value={courseId}
+                      disabled={!curriculumAreaKey}
+                      onChange={(event) => setCourseId(event.target.value)}
                       className="rounded-[13px] border border-[#d8c8ae] bg-white px-4 py-3 font-normal"
                     >
-                      <option value="">Choose a course</option>
+                      <option value="">
+                        {curriculumAreaKey
+                          ? `Choose a ${curriculumAreaLabel(curriculumAreaKey)} course`
+                          : "Choose a master subject first"}
+                      </option>
                       {courses
-                        .filter((course) => course.status !== "retired")
+                        .filter(
+                          (course) =>
+                            course.status !== "retired" &&
+                            course.curriculumAreaKey === curriculumAreaKey,
+                        )
                         .map((course) => {
                           const curriculum = curricula.find(
                             (candidate) => candidate.id === course.curriculumId,

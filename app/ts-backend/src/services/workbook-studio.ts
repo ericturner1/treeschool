@@ -68,6 +68,7 @@ import {
   workbookThemeTokensSchema,
   type WorkbookThemeTokens,
 } from "./workbook-theme-compiler";
+import { CURRICULUM_AREA_KEYS } from "./native-workbook-taxonomy";
 
 const uuidSchema = z.string().uuid();
 
@@ -75,6 +76,7 @@ const projectInputSchema = z
   .object({
     userId: uuidSchema,
     courseId: uuidSchema,
+    curriculumAreaKey: z.enum(CURRICULUM_AREA_KEYS).nullable().default(null),
     catalogPlanKey: z.string().trim().min(1).max(160).nullable().default(null),
     title: z.string().trim().min(1).max(180),
     gradeMin: z.number().int().min(0).max(20).nullable().default(null),
@@ -310,6 +312,7 @@ export async function listAdminWorkbookStudio(userId: string) {
         curriculumId: workbookCourses.curriculumId,
         subjectKey: curriculumSubjects.key,
         subjectLabel: curriculumSubjects.label,
+        curriculumAreaKey: curriculumSubjects.curriculumAreaKey,
         courseStableKey: workbookCourses.stableKey,
       })
       .from(workbookProjects)
@@ -328,6 +331,7 @@ export async function listAdminWorkbookStudio(userId: string) {
         course: workbookCourses,
         subjectKey: curriculumSubjects.key,
         subjectLabel: curriculumSubjects.label,
+        curriculumAreaKey: curriculumSubjects.curriculumAreaKey,
         subjectAcademicStandardKey: curriculumSubjects.academicStandardKey,
       })
       .from(workbookCourses)
@@ -515,6 +519,7 @@ export async function getAdminWorkbookStudioProject(input: {
       curriculumId: workbookCourses.curriculumId,
       subjectKey: curriculumSubjects.key,
       subjectLabel: curriculumSubjects.label,
+      curriculumAreaKey: curriculumSubjects.curriculumAreaKey,
       courseStableKey: workbookCourses.stableKey,
     })
     .from(workbookProjects)
@@ -987,6 +992,7 @@ export async function createWorkbookStudioProject(
       curriculum: workbookCurricula,
       subjectKey: curriculumSubjects.key,
       subjectLabel: curriculumSubjects.label,
+      curriculumAreaKey: curriculumSubjects.curriculumAreaKey,
     })
     .from(workbookCourses)
     .leftJoin(
@@ -1000,6 +1006,12 @@ export async function createWorkbookStudioProject(
     .where(eq(workbookCourses.id, input.courseId))
     .limit(1);
   if (!courseContext) throw new Error("Choose a valid course.");
+  if (
+    input.curriculumAreaKey &&
+    input.curriculumAreaKey !== courseContext.curriculumAreaKey
+  ) {
+    throw new Error("Choose a course from the selected subject area.");
+  }
   if (courseContext.course.status === "retired") {
     throw new Error("A retired course cannot receive new workbooks.");
   }

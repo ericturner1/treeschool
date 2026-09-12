@@ -1,10 +1,12 @@
-import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import {
   attendanceEntrySubjects,
   attendanceEntries,
   contentDocuments,
   learningActivityEvents,
+  learningYearCustomElectives,
   learningYears,
+  nativeWorkbooks,
   nativeWorkbookVersions,
   teacherActivityEvents,
   weeklyPlanItems,
@@ -31,6 +33,11 @@ import {
   type ManualAttendanceFields
 } from "./manual-attendance";
 import { planSubjectKey } from "./plan-subject-key";
+import {
+  curriculumAreaLabel,
+  resolveCurriculumAreaKey,
+  type CurriculumAreaKey
+} from "./native-workbook-taxonomy";
 import { notifyPlanCompletion } from "./mobile-push-notifications";
 import {
   estimatePlanItemMinutes,
@@ -39,6 +46,7 @@ import {
 } from "./learning-time-estimates";
 
 const DAY_MS = 86_400_000;
+const CUSTOM_ELECTIVE_PREFIX = "custom_elective:";
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -48,6 +56,55 @@ function safeDate(value: string | null | undefined, fallback: Date) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return fallback;
   const parsed = new Date(`${value}T00:00:00.000Z`);
   return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+}
+
+function plannedSubject(input: {
+  subjectId?: string | null;
+  subjectLabel?: string | null;
+  documentLabel: string;
+  curriculumAreaKey?: string | null;
+}) {
+  const subjectLabel = input.subjectLabel?.trim() || input.documentLabel;
+  const curriculumAreaKey = resolveCurriculumAreaKey(input.curriculumAreaKey, subjectLabel);
+  return {
+    subjectKey: planSubjectKey({ subjectId: input.subjectId, subjectLabel }),
+    subjectLabel,
+    curriculumAreaKey,
+    curriculumAreaLabel: curriculumAreaLabel(curriculumAreaKey)
+  };
+}
+
+function normalizedCustomElectiveLabel(value: string) {
+  return value.normalize("NFKC").trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
+}
+
+function storedAttendanceSubject(input: {
+  subjectKey?: string | null;
+  subjectLabel?: string | null;
+  curriculumAreaKey?: string | null;
+}) {
+  if (
+    input.subjectKey?.startsWith(CUSTOM_ELECTIVE_PREFIX) &&
+    input.subjectLabel
+  ) {
+    return {
+      subjectKey: input.subjectKey,
+      subjectLabel: input.subjectLabel,
+      curriculumAreaKey: null,
+      subjectKind: "custom_elective" as const,
+    };
+  }
+  if (!input.curriculumAreaKey && !input.subjectLabel) return null;
+  const curriculumAreaKey = resolveCurriculumAreaKey(
+    input.curriculumAreaKey,
+    input.subjectLabel,
+  );
+  return {
+    subjectKey: `area:${curriculumAreaKey}`,
+    subjectLabel: curriculumAreaLabel(curriculumAreaKey),
+    curriculumAreaKey,
+    subjectKind: "master" as const,
+  };
 }
 
 async function verifyStudent(parentUserId: string, profileId: string) {
@@ -163,6 +220,51 @@ export async function getStudentAttendance(input: {
     .where(eq(learningYears.profileId, input.profileId))
     .orderBy(desc(learningYears.startDate), desc(learningYears.createdAt));
   const selectedYear = years.find((year) => year.id === input.yearId) ?? years[0] ?? null;
+  const [activeWorkbookSubjectRows, customElectiveRows] = selectedYear
+    ? await Promise.all([
+        db
+          .select({ curriculumAreaKey: nativeWorkbooks.curriculumAreaKey })
+          .from(contentDocuments)
+          .innerJoin(
+            nativeWorkbookVersions,
+            eq(nativeWorkbookVersions.id, contentDocuments.nativeWorkbookVersionId),
+          )
+          .innerJoin(
+            nativeWorkbooks,
+            eq(nativeWorkbooks.id, nativeWorkbookVersions.workbookId),
+          )
+          .where(
+            and(
+              eq(contentDocuments.learningYearId, selectedYear.id),
+              eq(contentDocuments.documentRole, "student"),
+              isNull(contentDocuments.removedAt),
+            ),
+          ),
+        db
+          .select({
+            id: learningYearCustomElectives.id,
+            label: learningYearCustomElectives.label,
+          })
+          .from(learningYearCustomElectives)
+          .where(
+            and(
+              eq(learningYearCustomElectives.learningYearId, selectedYear.id),
+              eq(learningYearCustomElectives.active, true),
+            ),
+          )
+          .orderBy(asc(learningYearCustomElectives.label)),
+      ])
+    : [[], []];
+  const activeMasterSubjects = Array.from(
+    new Set(activeWorkbookSubjectRows.map((row) =>
+      resolveCurriculumAreaKey(row.curriculumAreaKey, null)
+    )),
+  )
+    .map((curriculumAreaKey) => ({
+      curriculumAreaKey,
+      subjectLabel: curriculumAreaLabel(curriculumAreaKey),
+    }))
+    .sort((left, right) => left.subjectLabel.localeCompare(right.subjectLabel));
   const today = new Date();
   const defaultTo = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
   const defaultFrom = selectedYear?.startDate ?? new Date(defaultTo.getTime() - 364 * DAY_MS);
@@ -189,22 +291,44 @@ export async function getStudentAttendance(input: {
   const learningTime = await estimatedCompletedLearningMinutes(rows, subjectsByEntryId);
 
   const dailyMap = new Map<string, { count: number; minutes: number }>();
-  const subjectMap = new Map<string, { subjectKey: string; subjectLabel: string; days: Set<string>; activities: number }>();
+  const subjectMap = new Map<string, {
+    subjectKey: string;
+    curriculumAreaKey: CurriculumAreaKey | null;
+    subjectLabel: string;
+    subjectKind: "master" | "custom_elective";
+    days: Set<string>;
+    activities: number;
+  }>();
   for (const row of rows) {
     const day = dailyMap.get(row.attendanceDate) ?? { count: 0, minutes: 0 };
     day.count += 1;
     day.minutes += row.minutes ?? 0;
     dailyMap.set(row.attendanceDate, day);
-    const rowSubjects = subjectsByEntryId.get(row.id) ?? (row.subjectLabel ? [{
-      subjectKey: row.subjectKey ?? planSubjectKey({ subjectLabel: row.subjectLabel }),
-      subjectLabel: row.subjectLabel
-    }] : []);
-    for (const rowSubject of rowSubjects) {
-      const key = rowSubject.subjectKey;
-      const subject = subjectMap.get(key) ?? { subjectKey: key, subjectLabel: rowSubject.subjectLabel, days: new Set(), activities: 0 };
+    const storedSubjects = subjectsByEntryId.get(row.id) ?? [];
+    const rowSubjects = new Map<
+      string,
+      NonNullable<ReturnType<typeof storedAttendanceSubject>>
+    >();
+    for (const rowSubject of storedSubjects) {
+      const subject = storedAttendanceSubject(rowSubject);
+      if (subject) rowSubjects.set(subject.subjectKey, subject);
+    }
+    if (storedSubjects.length === 0 && (row.curriculumAreaKey || row.subjectLabel)) {
+      const subject = storedAttendanceSubject(row);
+      if (subject) rowSubjects.set(subject.subjectKey, subject);
+    }
+    for (const rowSubject of rowSubjects.values()) {
+      const subject = subjectMap.get(rowSubject.subjectKey) ?? {
+        subjectKey: rowSubject.subjectKey,
+        curriculumAreaKey: rowSubject.curriculumAreaKey,
+        subjectLabel: rowSubject.subjectLabel,
+        subjectKind: rowSubject.subjectKind,
+        days: new Set(),
+        activities: 0
+      };
       subject.days.add(row.attendanceDate);
       subject.activities += 1;
-      subjectMap.set(key, subject);
+      subjectMap.set(rowSubject.subjectKey, subject);
     }
   }
 
@@ -230,10 +354,16 @@ export async function getStudentAttendance(input: {
       activities: rows.length,
       estimatedMinutes: learningTime.totalMinutes
     },
+    subjectOptions: {
+      masterSubjects: activeMasterSubjects,
+      customElectives: customElectiveRows,
+    },
     days,
     subjects: Array.from(subjectMap.values()).map((subject) => ({
       subjectKey: subject.subjectKey,
+      curriculumAreaKey: subject.curriculumAreaKey,
       subjectLabel: subject.subjectLabel,
+      subjectKind: subject.subjectKind,
       learningDays: subject.days.size,
       activities: subject.activities
     })).sort((a, b) => b.activities - a.activities),
@@ -242,8 +372,21 @@ export async function getStudentAttendance(input: {
       date: row.attendanceDate,
       entryKind: row.entryKind,
       activityType: row.activityType,
+      subjectKey: row.subjectKey,
+      curriculumAreaKey: row.curriculumAreaKey,
       subjectLabel: row.subjectLabel,
       subjectLabels: (subjectsByEntryId.get(row.id) ?? []).map((subject) => subject.subjectLabel),
+      subjectAreaLabels: Array.from(new Set([
+        ...(subjectsByEntryId.get(row.id) ?? []).flatMap((subject) => {
+          const stored = storedAttendanceSubject(subject);
+          return stored ? [stored.subjectLabel] : [];
+        }),
+        ...(row.curriculumAreaKey || row.subjectLabel
+          ? [storedAttendanceSubject(row)?.subjectLabel].filter(
+              (label): label is string => Boolean(label),
+            )
+          : [])
+      ])),
       weeklyPlanDayNumber: row.weeklyPlanDayNumber,
       title: row.title,
       notes: row.notes,
@@ -352,11 +495,17 @@ export async function recordPlanDayAttendance(input: {
     subjectLabel: contentDocuments.subjectLabel,
     documentLabel: contentDocuments.label,
     nativeWorkbookVersionId: contentDocuments.nativeWorkbookVersionId,
+    curriculumAreaKey: nativeWorkbooks.curriculumAreaKey,
     sourceUnitId: weeklyPlanItems.sourceUnitId
   }).from(weeklyPlanItems)
     .innerJoin(weeklyPlans, eq(weeklyPlans.id, weeklyPlanItems.weeklyPlanId))
     .innerJoin(learningYears, eq(learningYears.id, weeklyPlans.learningYearId))
     .innerJoin(contentDocuments, eq(contentDocuments.id, weeklyPlanItems.documentId))
+    .leftJoin(
+      nativeWorkbookVersions,
+      eq(nativeWorkbookVersions.id, contentDocuments.nativeWorkbookVersionId)
+    )
+    .leftJoin(nativeWorkbooks, eq(nativeWorkbooks.id, nativeWorkbookVersions.workbookId))
     .where(and(
       eq(weeklyPlanItems.weeklyPlanId, input.weeklyPlanId),
       eq(weeklyPlanItems.dayNumber, input.dayNumber),
@@ -365,10 +514,10 @@ export async function recordPlanDayAttendance(input: {
   if (rows.length === 0 || rows[0]?.profileId !== input.profileId) {
     throw new Error("Planned school day not found.");
   }
-  const availableSubjects = new Map<string, string>();
+  const availableSubjects = new Map<string, ReturnType<typeof plannedSubject>>();
   for (const row of rows) {
-    const label = row.subjectLabel?.trim() || row.documentLabel;
-    availableSubjects.set(planSubjectKey({ subjectId: row.subjectId, subjectLabel: label }), label);
+    const subject = plannedSubject(row);
+    availableSubjects.set(subject.subjectKey, subject);
   }
   const requestedKeys = Array.from(new Set(input.subjectKeys ?? [])).filter((key) => availableSubjects.has(key));
   const selectedKeys = input.subjectKeys == null ? Array.from(availableSubjects.keys()) : requestedKeys;
@@ -382,7 +531,7 @@ export async function recordPlanDayAttendance(input: {
       })
       .map((row) => row.itemLabel.trim())
       .filter(Boolean)))
-      .join("; ") || availableSubjects.get(subjectKey) || "a lesson"
+      .join("; ") || availableSubjects.get(subjectKey)?.subjectLabel || "a lesson"
   ]));
   const actor = await getAccountMemberContext(input.parentUserId);
   const date = isoDate(safeDate(input.attendanceDate, new Date()));
@@ -430,7 +579,8 @@ export async function recordPlanDayAttendance(input: {
     await tx.insert(attendanceEntrySubjects).values(selectedKeys.map((key) => ({
       attendanceEntryId: savedEntry!.id,
       subjectKey: key,
-      subjectLabel: availableSubjects.get(key)!
+      subjectLabel: availableSubjects.get(key)!.subjectLabel,
+      curriculumAreaKey: availableSubjects.get(key)!.curriculumAreaKey
     }))).onConflictDoNothing();
     if (newlyCompletedSubjectKeys.length > 0) {
       await tx.insert(teacherActivityEvents).values(newlyCompletedSubjectKeys.map((subjectKey) => ({
@@ -441,9 +591,10 @@ export async function recordPlanDayAttendance(input: {
         weeklyPlanId: input.weeklyPlanId,
         eventType: "lesson_completed",
         subjectKey,
-        subjectLabel: availableSubjects.get(subjectKey)!,
+        subjectLabel: availableSubjects.get(subjectKey)!.subjectLabel,
         metadata: {
           dayNumber: input.dayNumber,
+          curriculumAreaKey: availableSubjects.get(subjectKey)!.curriculumAreaKey,
           activityTitle: lessonTitles.get(subjectKey) ?? null
         }
       })));
@@ -483,7 +634,7 @@ export async function recordPlanDayAttendance(input: {
       weekNumber: rows[0]!.weekNumber,
       dayNumber: input.dayNumber,
       subjectKey: selectedKey,
-      subjectLabel: availableSubjects.get(selectedKey)!
+      subjectLabel: availableSubjects.get(selectedKey)!.subjectLabel
     });
   }
   const weekStatus = await synchronizeWeekStatusFromAttendance(input.weeklyPlanId);
@@ -648,15 +799,22 @@ export async function recordPlanItemAttendance(input: {
     subjectLabel: contentDocuments.subjectLabel,
     documentLabel: contentDocuments.label,
     nativeWorkbookVersionId: contentDocuments.nativeWorkbookVersionId,
+    curriculumAreaKey: nativeWorkbooks.curriculumAreaKey,
     sourceUnitId: weeklyPlanItems.sourceUnitId
   }).from(weeklyPlanItems)
     .innerJoin(weeklyPlans, eq(weeklyPlans.id, weeklyPlanItems.weeklyPlanId))
     .innerJoin(learningYears, eq(learningYears.id, weeklyPlans.learningYearId))
     .innerJoin(contentDocuments, eq(contentDocuments.id, weeklyPlanItems.documentId))
+    .leftJoin(
+      nativeWorkbookVersions,
+      eq(nativeWorkbookVersions.id, contentDocuments.nativeWorkbookVersionId)
+    )
+    .leftJoin(nativeWorkbooks, eq(nativeWorkbooks.id, nativeWorkbookVersions.workbookId))
     .where(eq(weeklyPlanItems.id, input.weeklyPlanItemId)).limit(1);
   if (!item || item.profileId !== input.profileId) throw new Error("Plan activity not found.");
   const date = isoDate(safeDate(input.attendanceDate, new Date()));
   const label = item.subjectLabel ?? item.documentLabel;
+  const curriculumAreaKey = resolveCurriculumAreaKey(item.curriculumAreaKey, label);
   const [entry] = await db.insert(attendanceEntries).values({
     profileId: input.profileId,
     learningYearId: item.learningYearId,
@@ -667,11 +825,12 @@ export async function recordPlanItemAttendance(input: {
     activityType: "lesson",
     subjectKey: planSubjectKey({ subjectId: item.subjectId, subjectLabel: label }),
     subjectLabel: label,
+    curriculumAreaKey,
     title: item.itemLabel,
     createdByUserId: input.parentUserId
   }).onConflictDoUpdate({
     target: [attendanceEntries.profileId, attendanceEntries.weeklyPlanItemId, attendanceEntries.attendanceDate],
-    set: { title: item.itemLabel, subjectLabel: label }
+    set: { title: item.itemLabel, subjectLabel: label, curriculumAreaKey }
   }).returning();
   if (item.nativeWorkbookVersionId && item.sourceUnitId) {
     await upsertWorkbookUnitProgress({
@@ -697,16 +856,86 @@ export async function createManualAttendanceEntry(input: {
   const student = await verifyStudent(input.parentUserId, input.profileId);
   const actor = await getAccountMemberContext(input.parentUserId);
   const fields = normalizeManualAttendanceFields(input);
-  const label = fields.subjectLabel;
+  const learningYearId = input.learningYearId || null;
+  if (learningYearId) {
+    const [year] = await db
+      .select({ id: learningYears.id })
+      .from(learningYears)
+      .where(
+        and(
+          eq(learningYears.id, learningYearId),
+          eq(learningYears.profileId, input.profileId),
+        ),
+      )
+      .limit(1);
+    if (!year) throw new Error("Choose a valid school year.");
+  }
+  if ((fields.customElectiveId || fields.customElectiveName) && !learningYearId) {
+    throw new Error("Choose a school year before adding a custom elective.");
+  }
   const entry = await db.transaction(async (tx) => {
+    let subjectKey = fields.curriculumAreaKey
+      ? `area:${fields.curriculumAreaKey}`
+      : null;
+    let subjectLabel = fields.subjectLabel;
+    let customElectiveId: string | null = null;
+    if (fields.customElectiveId) {
+      const [elective] = await tx
+        .select({
+          id: learningYearCustomElectives.id,
+          label: learningYearCustomElectives.label,
+        })
+        .from(learningYearCustomElectives)
+        .where(
+          and(
+            eq(learningYearCustomElectives.id, fields.customElectiveId),
+            eq(learningYearCustomElectives.learningYearId, learningYearId!),
+            eq(learningYearCustomElectives.active, true),
+          ),
+        )
+        .limit(1);
+      if (!elective) throw new Error("Choose a valid custom elective.");
+      customElectiveId = elective.id;
+      subjectKey = `${CUSTOM_ELECTIVE_PREFIX}${elective.id}`;
+      subjectLabel = elective.label;
+    } else if (fields.customElectiveName) {
+      const [elective] = await tx
+        .insert(learningYearCustomElectives)
+        .values({
+          learningYearId: learningYearId!,
+          label: fields.customElectiveName,
+          normalizedLabel: normalizedCustomElectiveLabel(fields.customElectiveName),
+          createdByUserId: input.parentUserId,
+        })
+        .onConflictDoUpdate({
+          target: [
+            learningYearCustomElectives.learningYearId,
+            learningYearCustomElectives.normalizedLabel,
+          ],
+          set: {
+            label: fields.customElectiveName,
+            active: true,
+            updatedAt: new Date(),
+          },
+        })
+        .returning({
+          id: learningYearCustomElectives.id,
+          label: learningYearCustomElectives.label,
+        });
+      if (!elective) throw new Error("The custom elective could not be saved.");
+      customElectiveId = elective.id;
+      subjectKey = `${CUSTOM_ELECTIVE_PREFIX}${elective.id}`;
+      subjectLabel = elective.label;
+    }
     const [savedEntry] = await tx.insert(attendanceEntries).values({
       profileId: input.profileId,
-      learningYearId: input.learningYearId || null,
+      learningYearId,
       attendanceDate: fields.attendanceDate,
       entryKind: "manual",
       activityType: fields.activityType,
-      subjectKey: label ? planSubjectKey({ subjectLabel: label }) : null,
-      subjectLabel: label,
+      subjectKey,
+      subjectLabel,
+      curriculumAreaKey: fields.curriculumAreaKey,
       title: fields.title,
       notes: fields.notes,
       minutes: fields.minutes,
@@ -725,11 +954,13 @@ export async function createManualAttendanceEntry(input: {
       studentProfileId: input.profileId,
       eventType: "attendance_manual",
       subjectKey: savedEntry.subjectKey,
-      subjectLabel: label,
+      subjectLabel,
       metadata: {
         attendanceEntryId: savedEntry.id,
         attendanceDate: fields.attendanceDate,
         activityType: fields.activityType,
+        curriculumAreaKey: fields.curriculumAreaKey,
+        customElectiveId,
         activityTitle: fields.title,
         minutes: fields.minutes,
         extraCreditPoints: fields.extraCreditPoints
@@ -748,11 +979,11 @@ export async function updateManualAttendanceEntry(input: {
 } & ManualAttendanceFields) {
   await verifyStudent(input.parentUserId, input.profileId);
   const fields = normalizeManualAttendanceFields(input);
-  const label = fields.subjectLabel;
   const updatedEntry = await db.transaction(async (tx) => {
     const [existing] = await tx.select({
       id: attendanceEntries.id,
-      entryKind: attendanceEntries.entryKind
+      entryKind: attendanceEntries.entryKind,
+      learningYearId: attendanceEntries.learningYearId,
     }).from(attendanceEntries)
       .where(and(
         eq(attendanceEntries.id, input.entryId),
@@ -763,13 +994,76 @@ export async function updateManualAttendanceEntry(input: {
     if (existing.entryKind !== "manual") {
       throw new Error("Only other learning records can be edited.");
     }
+    if (
+      (fields.customElectiveId || fields.customElectiveName) &&
+      !existing.learningYearId
+    ) {
+      throw new Error("Choose a school year before adding a custom elective.");
+    }
+    let subjectKey = fields.curriculumAreaKey
+      ? `area:${fields.curriculumAreaKey}`
+      : null;
+    let subjectLabel = fields.subjectLabel;
+    let customElectiveId: string | null = null;
+    if (fields.customElectiveId) {
+      const [elective] = await tx
+        .select({
+          id: learningYearCustomElectives.id,
+          label: learningYearCustomElectives.label,
+        })
+        .from(learningYearCustomElectives)
+        .where(
+          and(
+            eq(learningYearCustomElectives.id, fields.customElectiveId),
+            eq(
+              learningYearCustomElectives.learningYearId,
+              existing.learningYearId!,
+            ),
+            eq(learningYearCustomElectives.active, true),
+          ),
+        )
+        .limit(1);
+      if (!elective) throw new Error("Choose a valid custom elective.");
+      customElectiveId = elective.id;
+      subjectKey = `${CUSTOM_ELECTIVE_PREFIX}${elective.id}`;
+      subjectLabel = elective.label;
+    } else if (fields.customElectiveName) {
+      const [elective] = await tx
+        .insert(learningYearCustomElectives)
+        .values({
+          learningYearId: existing.learningYearId!,
+          label: fields.customElectiveName,
+          normalizedLabel: normalizedCustomElectiveLabel(fields.customElectiveName),
+          createdByUserId: input.parentUserId,
+        })
+        .onConflictDoUpdate({
+          target: [
+            learningYearCustomElectives.learningYearId,
+            learningYearCustomElectives.normalizedLabel,
+          ],
+          set: {
+            label: fields.customElectiveName,
+            active: true,
+            updatedAt: new Date(),
+          },
+        })
+        .returning({
+          id: learningYearCustomElectives.id,
+          label: learningYearCustomElectives.label,
+        });
+      if (!elective) throw new Error("The custom elective could not be saved.");
+      customElectiveId = elective.id;
+      subjectKey = `${CUSTOM_ELECTIVE_PREFIX}${elective.id}`;
+      subjectLabel = elective.label;
+    }
 
     const [saved] = await tx.update(attendanceEntries)
       .set({
         attendanceDate: fields.attendanceDate,
         activityType: fields.activityType,
-        subjectKey: label ? planSubjectKey({ subjectLabel: label }) : null,
-        subjectLabel: label,
+        subjectKey,
+        subjectLabel,
+        curriculumAreaKey: fields.curriculumAreaKey,
         title: fields.title,
         notes: fields.notes,
         minutes: fields.minutes,
@@ -797,6 +1091,8 @@ export async function updateManualAttendanceEntry(input: {
             ...event.metadata,
             attendanceDate: fields.attendanceDate,
             activityType: fields.activityType,
+            curriculumAreaKey: fields.curriculumAreaKey,
+            customElectiveId,
             activityTitle: fields.title,
             minutes: fields.minutes,
             extraCreditPoints: fields.extraCreditPoints

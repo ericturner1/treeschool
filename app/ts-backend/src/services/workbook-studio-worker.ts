@@ -644,7 +644,7 @@ async function executeThemeCascadeJob(job: WorkbookStudioJobRow) {
     renderRunId: renderRun.id,
     releaseMode: "edition",
     editionLabel,
-    catalog: {
+    catalog: workbookStudioCatalogInputSchema.parse({
       description: catalog.description,
       curriculumAreaKey: catalog.curriculumAreaKey,
       type: catalog.type,
@@ -652,7 +652,7 @@ async function executeThemeCascadeJob(job: WorkbookStudioJobRow) {
       currencyCode: catalog.currencyCode,
       coverageTags: catalog.coverageTags,
       prerequisiteWorkbookId: catalog.prerequisiteWorkbookId,
-    },
+    }),
   });
 }
 

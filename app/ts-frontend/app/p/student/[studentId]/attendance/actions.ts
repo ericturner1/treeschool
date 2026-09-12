@@ -15,6 +15,32 @@ import {
 function value(formData: FormData, name: string) { return String(formData.get(name) ?? "").trim(); }
 function pagePath(profileId: string) { return `/p/student/${profileId}/attendance`; }
 
+function attendanceSubject(formData: FormData) {
+  const selection = value(formData, "subjectSelection");
+  if (selection.startsWith("area:")) {
+    return {
+      curriculumAreaKey: selection.slice("area:".length),
+      customElectiveId: null,
+      customElectiveName: null,
+    };
+  }
+  if (selection.startsWith("custom_elective:")) {
+    return {
+      curriculumAreaKey: null,
+      customElectiveId: selection.slice("custom_elective:".length),
+      customElectiveName: null,
+    };
+  }
+  if (selection === "new_custom") {
+    return {
+      curriculumAreaKey: null,
+      customElectiveId: null,
+      customElectiveName: value(formData, "customElectiveName"),
+    };
+  }
+  throw new Error("Choose what this learning activity counts toward.");
+}
+
 async function userId() {
   const user = await getCurrentUser();
   if (!user?.id) redirect("/signin");
@@ -25,13 +51,14 @@ export async function addManualAttendanceAction(formData: FormData) {
   const profileId = value(formData, "profileId");
   const path = pagePath(profileId);
   try {
+    const subject = attendanceSubject(formData);
     await createManualAttendance({
       parentUserId: await userId(),
       profileId,
       learningYearId: value(formData, "learningYearId") || null,
       attendanceDate: value(formData, "attendanceDate"),
       activityType: value(formData, "activityType"),
-      subjectLabel: value(formData, "subjectLabel") || null,
+      ...subject,
       title: value(formData, "title"),
       notes: value(formData, "notes") || null,
       minutes: Number(value(formData, "minutes")) || null,
@@ -119,13 +146,14 @@ export async function updateManualAttendanceAction(formData: FormData) {
   const profileId = value(formData, "profileId");
   const path = pagePath(profileId);
   try {
+    const subject = attendanceSubject(formData);
     await updateManualAttendance({
       parentUserId: await userId(),
       profileId,
       entryId: value(formData, "entryId"),
       attendanceDate: value(formData, "attendanceDate"),
       activityType: value(formData, "activityType"),
-      subjectLabel: value(formData, "subjectLabel") || null,
+      ...subject,
       title: value(formData, "title"),
       notes: value(formData, "notes") || null,
       minutes: Number(value(formData, "minutes")) || null,

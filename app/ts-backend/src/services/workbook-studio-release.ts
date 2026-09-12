@@ -34,12 +34,13 @@ import {
   parseWorkbookContent,
 } from "./workbook-studio-model";
 import { validateWorkbookForScope } from "./workbook-studio-validation";
+import { CURRICULUM_AREA_KEYS } from "./native-workbook-taxonomy";
 
 const uuidSchema = z.string().uuid();
 
 export const workbookStudioCatalogInputSchema = z.object({
   description: z.string().trim().min(1).max(3_000),
-  curriculumAreaKey: z.string().trim().min(1).max(80),
+  curriculumAreaKey: z.enum(CURRICULUM_AREA_KEYS),
   type: z.enum(["core", "elective"]),
   priceInCents: z.number().int().min(0).max(1_000_000),
   currencyCode: z.string().trim().length(3).default("USD"),
@@ -98,6 +99,7 @@ async function resolveReleasePlan(input: {
       academicStandardKey: sql<string>`coalesce(${workbookCourses.academicStandardOverrideKey}, ${workbookCurricula.academicStandardKey}, ${curriculumSubjects.academicStandardKey})`,
       subjectKey: curriculumSubjects.key,
       subjectLabel: curriculumSubjects.label,
+      curriculumAreaKey: curriculumSubjects.curriculumAreaKey,
     })
     .from(workbookProjects)
     .innerJoin(workbookCourses, eq(workbookCourses.id, workbookProjects.courseId))
@@ -236,6 +238,11 @@ export async function queueWorkbookStudioRelease(input: {
     contentRevisionId,
     forceNewEdition: input.forceNewEdition === true,
   });
+  if (catalog.curriculumAreaKey !== plan.project.curriculumAreaKey) {
+    throw new Error(
+      "The release subject area must match the Workbook Studio course.",
+    );
+  }
 
   return db.transaction(async (tx) => {
     const [batch] = await tx
@@ -340,6 +347,7 @@ export async function publishCompletedWorkbookStudioRender(input: {
       curriculumId: workbookCourses.curriculumId,
       academicStandardKey: sql<string>`coalesce(${workbookCourses.academicStandardOverrideKey}, ${workbookCurricula.academicStandardKey}, ${curriculumSubjects.academicStandardKey})`,
       subjectLabel: curriculumSubjects.label,
+      curriculumAreaKey: curriculumSubjects.curriculumAreaKey,
       render: workbookRenderRuns,
       revision: workbookContentRevisions,
     })
@@ -372,6 +380,11 @@ export async function publishCompletedWorkbookStudioRender(input: {
     throw new Error("The release PDF has not finished rendering.");
   }
   const catalog = workbookStudioCatalogInputSchema.parse(input.catalog);
+  if (catalog.curriculumAreaKey !== row.curriculumAreaKey) {
+    throw new Error(
+      "The release subject area must match the Workbook Studio course.",
+    );
+  }
   const artifact = {
     projectId: row.project.id,
     contentRevisionId: row.revision.id,

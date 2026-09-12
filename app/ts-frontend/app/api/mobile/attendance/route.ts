@@ -35,6 +35,9 @@ export async function POST(request: Request) {
     learningYearId?: unknown;
     attendanceDate?: unknown;
     activityType?: unknown;
+    curriculumAreaKey?: unknown;
+    customElectiveId?: unknown;
+    customElectiveName?: unknown;
     subjectLabel?: unknown;
     title?: unknown;
     notes?: unknown;
@@ -64,6 +67,9 @@ export async function POST(request: Request) {
       learningYearId,
       attendanceDate: typeof body?.attendanceDate === "string" ? body.attendanceDate : "",
       activityType: typeof body?.activityType === "string" ? body.activityType : "",
+      curriculumAreaKey: optionalText(body?.curriculumAreaKey),
+      customElectiveId: optionalText(body?.customElectiveId),
+      customElectiveName: optionalText(body?.customElectiveName),
       subjectLabel: optionalText(body?.subjectLabel),
       title: typeof body?.title === "string" ? body.title : "",
       notes: optionalText(body?.notes),

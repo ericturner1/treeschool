@@ -11,10 +11,22 @@ export type StudentAttendancePayload = {
   dateTo: string;
   summary: { learningDays: number; activities: number; estimatedMinutes: number };
   days: Array<{ date: string; count: number; minutes: number }>;
-  subjects: Array<{ subjectKey: string; subjectLabel: string; learningDays: number; activities: number }>;
+  subjectOptions: {
+    masterSubjects: Array<{ curriculumAreaKey: string; subjectLabel: string }>;
+    customElectives: Array<{ id: string; label: string }>;
+  };
+  subjects: Array<{
+    subjectKey: string;
+    curriculumAreaKey: string | null;
+    subjectLabel: string;
+    subjectKind: "master" | "custom_elective";
+    learningDays: number;
+    activities: number;
+  }>;
   entries: Array<{
-    id: string; date: string; entryKind: string; activityType: string; subjectLabel: string | null;
-    subjectLabels: string[]; weeklyPlanDayNumber: number | null;
+    id: string; date: string; entryKind: string; activityType: string; curriculumAreaKey: string | null;
+    subjectKey: string | null; subjectLabel: string | null; subjectLabels: string[]; subjectAreaLabels: string[];
+    weeklyPlanDayNumber: number | null;
     title: string; notes: string | null; minutes: number | null; estimatedMinutes: number | null;
     extraCreditPoints: number | null;
   }>;

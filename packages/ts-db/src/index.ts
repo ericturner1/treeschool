@@ -76,6 +76,7 @@ export {
   lessonStatusEnum,
   lessons,
   learningActivityEvents,
+  learningYearCustomElectives,
   learningYearMaterialSets,
   learningYearSubjectPreferences,
   learningYears,

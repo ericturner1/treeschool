@@ -1,7 +1,10 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import {
   attendanceEntries,
+  contentDocuments,
   learningYears,
+  nativeWorkbooks,
+  nativeWorkbookVersions,
   weeklyPlanDaySubjectGrades,
   weeklyPlans,
   weeklyPlanSubjectGrades
@@ -9,9 +12,39 @@ import {
 import { db } from "../db";
 import { getManageableStudentProfile } from "./accounts";
 import { requirePremiumFeatureAccess } from "./entitlements";
-import { averageWithExtraCredit, resolveExtraCreditSubjectKey } from "./grade-average";
+import { averageWithExtraCredit } from "./grade-average";
+import {
+  curriculumAreaLabel,
+  resolveCurriculumAreaKey,
+} from "./native-workbook-taxonomy";
+import { planSubjectKey } from "./plan-subject-key";
 
 type GradingSchemeId = "us" | "jp";
+const CUSTOM_ELECTIVE_PREFIX = "custom_elective:";
+
+function attendanceGradeSubject(input: {
+  subjectKey?: string | null;
+  subjectLabel?: string | null;
+  curriculumAreaKey?: string | null;
+}) {
+  if (
+    input.subjectKey?.startsWith(CUSTOM_ELECTIVE_PREFIX) &&
+    input.subjectLabel
+  ) {
+    return {
+      subjectKey: input.subjectKey,
+      subjectLabel: input.subjectLabel,
+    };
+  }
+  const curriculumAreaKey = resolveCurriculumAreaKey(
+    input.curriculumAreaKey,
+    input.subjectLabel,
+  );
+  return {
+    subjectKey: `area:${curriculumAreaKey}`,
+    subjectLabel: curriculumAreaLabel(curriculumAreaKey),
+  };
+}
 
 const gradingSchemes = {
   us: {
@@ -55,6 +88,36 @@ export async function getStudentGrades(input: {
     .orderBy(desc(learningYears.startDate), desc(learningYears.createdAt));
 
   const selectedYear = yearRows.find((year) => year.id === input.yearId) ?? yearRows[0] ?? null;
+  const documentSubjects = yearRows.length === 0
+    ? []
+    : await db.select({
+        yearId: contentDocuments.learningYearId,
+        subjectId: contentDocuments.subjectId,
+        subjectLabel: contentDocuments.subjectLabel,
+        documentLabel: contentDocuments.label,
+        curriculumAreaKey: nativeWorkbooks.curriculumAreaKey,
+      })
+      .from(contentDocuments)
+      .leftJoin(
+        nativeWorkbookVersions,
+        eq(nativeWorkbookVersions.id, contentDocuments.nativeWorkbookVersionId),
+      )
+      .leftJoin(
+        nativeWorkbooks,
+        eq(nativeWorkbooks.id, nativeWorkbookVersions.workbookId),
+      )
+      .where(inArray(contentDocuments.learningYearId, yearRows.map((year) => year.id)));
+  const curriculumAreaByYearAndSubject = new Map<string, string>();
+  for (const document of documentSubjects) {
+    const subjectLabel = document.subjectLabel ?? document.documentLabel;
+    curriculumAreaByYearAndSubject.set(
+      `${document.yearId}:${planSubjectKey({
+        subjectId: document.subjectId,
+        subjectLabel,
+      })}`,
+      resolveCurriculumAreaKey(document.curriculumAreaKey, subjectLabel),
+    );
+  }
   const legacyRows = await db
     .select({
       yearId: learningYears.id,
@@ -102,6 +165,7 @@ export async function getStudentGrades(input: {
     yearId: attendanceEntries.learningYearId,
     subjectKey: attendanceEntries.subjectKey,
     subjectLabel: attendanceEntries.subjectLabel,
+    curriculumAreaKey: attendanceEntries.curriculumAreaKey,
     title: attendanceEntries.title,
     points: attendanceEntries.extraCreditPoints,
     attendanceDate: attendanceEntries.attendanceDate
@@ -112,7 +176,7 @@ export async function getStudentGrades(input: {
     ))
     .orderBy(asc(attendanceEntries.attendanceDate), asc(attendanceEntries.createdAt));
   const dayGradeKeys = new Set(dayRows.map((row) => `${row.weeklyPlanId}:${row.subjectKey}`));
-  const allRows = [
+  const detailedRows = [
     ...dayRows.map((row) => ({ ...row, source: "day" as const })),
     ...legacyRows
       .filter((row) => !dayGradeKeys.has(`${row.weeklyPlanId}:${row.subjectKey}`))
@@ -123,10 +187,27 @@ export async function getStudentGrades(input: {
         source: "legacy" as const
       }))
   ];
+  const allRows = detailedRows.map((row) => {
+    const curriculumAreaKey = resolveCurriculumAreaKey(
+      curriculumAreaByYearAndSubject.get(`${row.yearId}:${row.subjectKey}`),
+      row.subjectLabel,
+    );
+    return {
+      ...row,
+      curriculumAreaKey,
+      subjectKey: `area:${curriculumAreaKey}`,
+      subjectLabel: curriculumAreaLabel(curriculumAreaKey),
+    };
+  });
 
   const rowsForYear = selectedYear ? allRows.filter((row) => row.yearId === selectedYear.id) : [];
   const extraCreditForYear = selectedYear
-    ? extraCreditRows.filter((row) => row.yearId === selectedYear.id && row.points != null && row.subjectLabel)
+    ? extraCreditRows.filter(
+        (row) =>
+          row.yearId === selectedYear.id &&
+          row.points != null &&
+          (row.subjectKey || row.curriculumAreaKey || row.subjectLabel),
+      )
     : [];
   const subjectMap = new Map<string, {
     subjectId: string | null;
@@ -137,7 +218,7 @@ export async function getStudentGrades(input: {
   }>();
   for (const row of rowsForYear) {
     const current = subjectMap.get(row.subjectKey) ?? {
-      subjectId: row.subjectId,
+      subjectId: null,
       subjectKey: row.subjectKey,
       subjectLabel: row.subjectLabel,
       scores: [],
@@ -148,15 +229,12 @@ export async function getStudentGrades(input: {
   }
   const extraCreditSubjectKeys = new Map<string, string>();
   for (const row of extraCreditForYear) {
-    const subjectKey = resolveExtraCreditSubjectKey(
-      { subjectKey: row.subjectKey, subjectLabel: row.subjectLabel! },
-      Array.from(subjectMap.values())
-    );
+    const { subjectKey, subjectLabel } = attendanceGradeSubject(row);
     extraCreditSubjectKeys.set(row.id, subjectKey);
     const current = subjectMap.get(subjectKey) ?? {
       subjectId: null,
       subjectKey,
-      subjectLabel: row.subjectLabel!,
+      subjectLabel,
       scores: [],
       extraCreditPoints: []
     };
@@ -221,6 +299,7 @@ export async function getStudentGrades(input: {
   const extraCreditEntries = extraCreditForYear
     .map((row) => {
       const subjectKey = extraCreditSubjectKeys.get(row.id)!;
+      const { subjectLabel } = attendanceGradeSubject(row);
       return {
         entryId: row.id,
         weeklyPlanId: null,
@@ -232,7 +311,7 @@ export async function getStudentGrades(input: {
         weekStatus: "recorded",
         subjectId: null,
         subjectKey,
-        subjectLabel: row.subjectLabel!,
+        subjectLabel,
         planTitle: row.title,
         assessmentRecommended: false,
         score: null,

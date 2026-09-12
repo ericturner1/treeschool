@@ -22,6 +22,7 @@ import type {
   WorkbookStudioSummary,
 } from "../../../../lib/workbook-studio/server";
 import { moveItemAtInsertionPoint } from "../../../../lib/editor-drag";
+import { curriculumAreaLabel } from "../../../../lib/native-workbooks/curriculum-areas";
 import {
   queueWorkbookStudioReleaseAction,
   queueWorkbookStudioRenderAction,
@@ -4657,6 +4658,7 @@ export function WorkbookStudioEditor({
         <ReleaseDialog
           projectId={detail.project.id}
           title={detail.project.title}
+          curriculumAreaKey={detail.project.curriculumAreaKey}
           onClose={() => setReleaseOpen(false)}
           onDone={(message) => {
             setReleaseOpen(false);
@@ -4813,11 +4815,13 @@ export function WorkbookStudioEditor({
 function ReleaseDialog({
   projectId,
   title,
+  curriculumAreaKey,
   onClose,
   onDone,
 }: {
   projectId: string;
   title: string;
+  curriculumAreaKey: string;
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
@@ -4887,20 +4891,20 @@ function ReleaseDialog({
             />
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-1 text-sm font-bold">
-              Curriculum area
-              <select
+            <div className="grid gap-1 text-sm font-bold">
+              Master subject
+              <input
                 name="curriculumAreaKey"
-                className="rounded-[12px] border border-[#d8c8ae] bg-white px-3 py-2.5 font-normal"
-              >
-                <option value="mathematics">Mathematics</option>
-                <option value="language_arts">Language arts</option>
-                <option value="science">Science</option>
-                <option value="social_studies">Social studies</option>
-                <option value="arts">Arts</option>
-                <option value="other">Other</option>
-              </select>
-            </label>
+                type="hidden"
+                value={curriculumAreaKey}
+              />
+              <div className="rounded-[12px] border border-[#d8c8ae] bg-[#f6f1e8] px-3 py-2.5 font-normal">
+                {curriculumAreaLabel(curriculumAreaKey)}
+              </div>
+              <span className="font-normal leading-5 text-ink/50">
+                Inherited from the workbook&apos;s course.
+              </span>
+            </div>
             <label className="grid gap-1 text-sm font-bold">
               Catalog role
               <select
