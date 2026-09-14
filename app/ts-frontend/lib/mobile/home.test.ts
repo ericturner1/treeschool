@@ -50,6 +50,9 @@ describe("mobile home payload", () => {
         pointsReason: "Great reading",
         pointSingularName: "point",
         pointPluralName: "points",
+        activityType: null,
+        attendanceDate: null,
+        minutes: null,
         occurredAt: "2026-09-02T11:30:00.000Z",
       }],
       pacing: {
@@ -296,6 +299,9 @@ describe("mobile home payload", () => {
         pointsReason: "Great reading",
         pointSingularName: "point",
         pointPluralName: "points",
+        activityType: null,
+        attendanceDate: null,
+        minutes: null,
         occurredAt: "2026-09-02T11:30:00.000Z",
       }],
     });

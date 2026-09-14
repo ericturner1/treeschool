@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   gradeSaveChangesValue,
   isLessonCompletionActivity,
+  recentAccountActivityEventTypes,
   selectDistinctRecentActivityEvents,
   summarizeTeacherActivityEvents
 } from "./teacher-activity-model";
@@ -30,6 +31,11 @@ describe("teacher activity summary", () => {
 });
 
 describe("recent account activity", () => {
+  test("only includes other learning for clients that support it", () => {
+    expect(recentAccountActivityEventTypes()).not.toContain("attendance_manual");
+    expect(recentAccountActivityEventTypes(true)).toContain("attendance_manual");
+  });
+
   test("does not audit an idempotent repeat grade save", () => {
     expect(gradeSaveChangesValue(null, 90)).toBe(true);
     expect(gradeSaveChangesValue(80, 90)).toBe(true);

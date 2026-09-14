@@ -101,7 +101,7 @@ export type TeacherActivity = {
 export type RecentAccountActivity = {
   events: Array<{
     id: string;
-    type: "lesson_completed" | "points_awarded" | "points_used" | "week_pdf_downloaded";
+    type: "lesson_completed" | "points_awarded" | "points_used" | "week_pdf_downloaded" | "other_learning_recorded";
     actorName: string;
     studentName: string;
     subjectLabel: string | null;
@@ -114,6 +114,9 @@ export type RecentAccountActivity = {
     pointsReason: string | null;
     pointSingularName: string | null;
     pointPluralName: string | null;
+    activityType: string | null;
+    attendanceDate: string | null;
+    minutes: number | null;
     occurredAt: string;
   }>;
 };
@@ -281,12 +284,14 @@ export async function getRecentAccountActivity(input: {
   profileId: string;
   limit?: number;
   includePdfDownloads?: boolean;
+  includeOtherLearning?: boolean;
 }) {
   const params = new URLSearchParams({
     userId: input.userId,
     profileId: input.profileId,
     limit: String(input.limit ?? 10),
-    ...(input.includePdfDownloads ? { includePdfDownloads: "1" } : {})
+    ...(input.includePdfDownloads ? { includePdfDownloads: "1" } : {}),
+    ...(input.includeOtherLearning ? { includeOtherLearning: "1" } : {})
   });
   const response = await backendFetch(
     `${getBackendUrl()}/internal/accounts/activity/recent?${params.toString()}`,

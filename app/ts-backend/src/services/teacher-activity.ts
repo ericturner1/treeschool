@@ -11,6 +11,7 @@ import {
 import { db } from "../db";
 import {
   isLessonCompletionActivity,
+  recentAccountActivityEventTypes,
   selectDistinctRecentActivityEvents,
   summarizeTeacherActivityEvents,
   type TeacherActivityEventType
@@ -215,6 +216,7 @@ export async function getRecentAccountActivity(input: {
   studentProfileId: string;
   limit?: number;
   includePdfDownloads?: boolean;
+  includeOtherLearning?: boolean;
 }) {
   const requester = await accountMemberForUser(input.requesterUserId);
   const [student] = await db.select({
@@ -232,12 +234,10 @@ export async function getRecentAccountActivity(input: {
   const teacherCandidates = await db.select().from(teacherActivityEvents).where(and(
     eq(teacherActivityEvents.accountId, requester.accountId),
     eq(teacherActivityEvents.studentProfileId, input.studentProfileId),
-    inArray(teacherActivityEvents.eventType, [
-      "lesson_completed",
-      "grade_saved",
-      "points_awarded",
-      "points_used"
-    ])
+    inArray(
+      teacherActivityEvents.eventType,
+      recentAccountActivityEventTypes(input.includeOtherLearning)
+    )
   )).orderBy(desc(teacherActivityEvents.occurredAt)).limit(Math.max(50, limit * 5));
   const downloadRows = input.includePdfDownloads
     ? await db.select({
@@ -347,7 +347,11 @@ export async function getRecentAccountActivity(input: {
       const subjectAreaLabel = event.subjectLabel;
       return {
         id: event.id,
-        type: event.eventType === "grade_saved" ? "lesson_completed" : event.eventType,
+        type: event.eventType === "grade_saved"
+          ? "lesson_completed"
+          : event.eventType === "attendance_manual"
+            ? "other_learning_recorded"
+            : event.eventType,
         actorName: event.actorProfileId
           ? actorNames.get(event.actorProfileId) ?? "A teacher"
           : event.actorUserId
@@ -376,6 +380,15 @@ export async function getRecentAccountActivity(input: {
           : null,
         pointPluralName: typeof event.metadata?.pointPluralName === "string"
           ? event.metadata.pointPluralName
+          : null,
+        activityType: typeof event.metadata?.activityType === "string"
+          ? event.metadata.activityType
+          : null,
+        attendanceDate: typeof event.metadata?.attendanceDate === "string"
+          ? event.metadata.attendanceDate
+          : null,
+        minutes: typeof event.metadata?.minutes === "number"
+          ? event.metadata.minutes
           : null,
         occurredAt: event.occurredAt.toISOString()
       };

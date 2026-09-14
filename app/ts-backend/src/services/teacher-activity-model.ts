@@ -29,6 +29,17 @@ export function isLessonCompletionActivity(event: {
     (event.eventType === "grade_saved" && event.metadata.previousScore == null);
 }
 
+export function recentAccountActivityEventTypes(includeOtherLearning = false) {
+  const eventTypes: TeacherActivityEventType[] = [
+    "lesson_completed",
+    "grade_saved",
+    "points_awarded",
+    "points_used"
+  ];
+  if (includeOtherLearning) eventTypes.push("attendance_manual");
+  return eventTypes;
+}
+
 export function selectDistinctRecentActivityEvents<
   T extends RecentActivityCandidate
 >(events: T[], limit = 10) {

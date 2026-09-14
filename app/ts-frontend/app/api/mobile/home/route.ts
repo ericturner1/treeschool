@@ -18,7 +18,9 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const requestedProfileId = url.searchParams.get("profileId")?.trim();
     // Older installed builds reject activity types they do not recognize.
-    const includePdfDownloads = Number(url.searchParams.get("activityVersion")) >= 2;
+    const activityVersion = Number(url.searchParams.get("activityVersion"));
+    const includePdfDownloads = activityVersion >= 2;
+    const includeOtherLearning = activityVersion >= 3;
     const students = (await listHouseholdProfiles(currentUser.id)).filter(
       (profile) => profile.role === "STUDENT",
     );
@@ -54,6 +56,7 @@ export async function GET(request: Request) {
         profileId: selected.id,
         limit: 10,
         includePdfDownloads,
+        includeOtherLearning,
       }),
       getStudentOverviewMetrics({
         parentUserId: currentUser.id,
