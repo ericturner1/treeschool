@@ -1,7 +1,30 @@
 import { describe, expect, test } from "bun:test";
-import { buildMobileHomePayload, mobileSchoolDayStatus } from "./home";
+import { buildMobileHomePayload, mobileSchoolDayStatus, selectMobileCurrentWeek } from "./home";
 
 describe("mobile home payload", () => {
+  test("shows the latest worked week even when an earlier week remains unfinished", () => {
+    const weeks = [
+      { weekNumber: 10, status: "in_progress" as const },
+      { weekNumber: 11, status: "in_progress" as const },
+      { weekNumber: 12, status: "completed" as const },
+      { weekNumber: 13, status: "planned" as const },
+    ];
+
+    expect(selectMobileCurrentWeek(weeks)?.weekNumber).toBe(12);
+  });
+
+  test("keeps the current in-progress week or advances to the next planned week", () => {
+    expect(selectMobileCurrentWeek([
+      { weekNumber: 11, status: "completed" },
+      { weekNumber: 12, status: "in_progress" },
+      { weekNumber: 13, status: "planned" },
+    ])?.weekNumber).toBe(12);
+    expect(selectMobileCurrentWeek([
+      { weekNumber: 11, status: "completed" },
+      { weekNumber: 12, status: "planned" },
+    ])?.weekNumber).toBe(12);
+  });
+
   test("returns every incomplete week and defaults to the next unstarted undownloaded week", () => {
     const payload = buildMobileHomePayload({
       students: [

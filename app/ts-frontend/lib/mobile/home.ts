@@ -1,7 +1,7 @@
 import type { HouseholdProfile } from "../accounts/server";
 import type { RecentAccountActivity } from "../accounts/server";
 import type { StudentSchoolCalendarPayload } from "../attendance/server";
-import type { PaperPlan } from "../paper-plans/server";
+import type { PaperPlan, PaperPlanWeek } from "../paper-plans/server";
 import { shouldShowStreakWarning } from "../student-overview/streak-warning";
 
 function dateKeyInTimeZone(date: Date, timeZone: string) {
@@ -36,6 +36,26 @@ export function mobileSchoolDayStatus(
   };
 }
 
+export function selectMobileCurrentWeek<T extends Pick<PaperPlanWeek, "weekNumber" | "status">>(
+  weeks: T[],
+): T | undefined {
+  const orderedWeeks = [...weeks].sort((left, right) => left.weekNumber - right.weekNumber);
+  const latestInProgress = [...orderedWeeks].reverse().find(
+    (week) => week.status === "in_progress",
+  );
+  const latestCompleted = [...orderedWeeks].reverse().find(
+    (week) => week.status === "completed",
+  );
+  // A newer completed week represents more recent schoolwork than an older
+  // week that remains unfinished. Keep the unfinished week available elsewhere.
+  if (latestInProgress && latestCompleted && latestCompleted.weekNumber > latestInProgress.weekNumber) {
+    return latestCompleted;
+  }
+  return latestInProgress ?? orderedWeeks.find(
+    (week) => week.status === "planned",
+  ) ?? latestCompleted;
+}
+
 export function buildMobileHomePayload(input: {
   students: HouseholdProfile[];
   selectedProfileId: string;
@@ -65,13 +85,7 @@ export function buildMobileHomePayload(input: {
   const incompleteWeeks = orderedWeeks.filter(
     (week) => week.status !== "completed" && week.status !== "skipped",
   );
-  const currentWeek = [...orderedWeeks].reverse().find(
-    (week) => week.status === "in_progress",
-  ) ?? orderedWeeks.find(
-    (week) => week.status === "planned",
-  ) ?? [...orderedWeeks].reverse().find(
-    (week) => week.status === "completed",
-  );
+  const currentWeek = selectMobileCurrentWeek(orderedWeeks);
   const dayProgressValues = orderedWeeks.flatMap((week) =>
     week.days.map((day) => day.attendanceProgress)
   );
