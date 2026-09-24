@@ -3714,6 +3714,7 @@ const server = Bun.serve({
         learningYearId?: string | null;
         attendanceDate?: string;
         activityType?: string;
+        masterSubjectKey?: string | null;
         curriculumAreaKey?: string | null;
         customElectiveId?: string | null;
         customElectiveName?: string | null;
@@ -3774,6 +3775,7 @@ const server = Bun.serve({
           learningYearId: body.learningYearId,
           attendanceDate: body.attendanceDate ?? new Date().toISOString().slice(0, 10),
           activityType: body.activityType ?? "other",
+          masterSubjectKey: body.masterSubjectKey,
           curriculumAreaKey: body.curriculumAreaKey,
           customElectiveId: body.customElectiveId,
           customElectiveName: body.customElectiveName,
@@ -3811,6 +3813,7 @@ const server = Bun.serve({
         entryId?: string;
         attendanceDate?: string;
         activityType?: string;
+        masterSubjectKey?: string | null;
         curriculumAreaKey?: string | null;
         customElectiveId?: string | null;
         customElectiveName?: string | null;
@@ -3840,6 +3843,7 @@ const server = Bun.serve({
           entryId: body.entryId,
           attendanceDate: body.attendanceDate,
           activityType: body.activityType,
+          masterSubjectKey: body.masterSubjectKey,
           curriculumAreaKey: body.curriculumAreaKey,
           customElectiveId: body.customElectiveId,
           customElectiveName: body.customElectiveName,

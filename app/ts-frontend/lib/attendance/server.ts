@@ -12,7 +12,13 @@ export type StudentAttendancePayload = {
   summary: { learningDays: number; activities: number; estimatedMinutes: number };
   days: Array<{ date: string; count: number; minutes: number }>;
   subjectOptions: {
-    masterSubjects: Array<{ curriculumAreaKey: string; subjectLabel: string }>;
+    masterSubjects: Array<{
+      curriculumSubjectId: string;
+      subjectKey: string;
+      catalogSubjectKey: string;
+      curriculumAreaKey: string;
+      subjectLabel: string;
+    }>;
     customElectives: Array<{ id: string; label: string }>;
   };
   subjects: Array<{

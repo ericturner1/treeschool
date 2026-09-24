@@ -17,8 +17,17 @@ function pagePath(profileId: string) { return `/p/student/${profileId}/attendanc
 
 function attendanceSubject(formData: FormData) {
   const selection = value(formData, "subjectSelection");
+  if (selection.startsWith("master_subject:")) {
+    return {
+      masterSubjectKey: selection,
+      curriculumAreaKey: null,
+      customElectiveId: null,
+      customElectiveName: null,
+    };
+  }
   if (selection.startsWith("area:")) {
     return {
+      masterSubjectKey: null,
       curriculumAreaKey: selection.slice("area:".length),
       customElectiveId: null,
       customElectiveName: null,
@@ -26,6 +35,7 @@ function attendanceSubject(formData: FormData) {
   }
   if (selection.startsWith("custom_elective:")) {
     return {
+      masterSubjectKey: null,
       curriculumAreaKey: null,
       customElectiveId: selection.slice("custom_elective:".length),
       customElectiveName: null,
@@ -33,6 +43,7 @@ function attendanceSubject(formData: FormData) {
   }
   if (selection === "new_custom") {
     return {
+      masterSubjectKey: null,
       curriculumAreaKey: null,
       customElectiveId: null,
       customElectiveName: value(formData, "customElectiveName"),

@@ -6,7 +6,7 @@ describe("manual attendance editing", () => {
     expect(normalizeManualAttendanceFields({
       attendanceDate: "2026-07-27",
       activityType: "field_trip",
-      curriculumAreaKey: "science",
+      masterSubjectKey: "master_subject:us:science",
       title: "  Visited the natural history museum  ",
       notes: "  Studied dinosaur fossils.  ",
       minutes: 90,
@@ -14,14 +14,30 @@ describe("manual attendance editing", () => {
     })).toEqual({
       attendanceDate: "2026-07-27",
       activityType: "field_trip",
-      curriculumAreaKey: "science",
+      masterSubjectKey: "master_subject:us:science",
+      curriculumAreaKey: null,
       customElectiveId: null,
       customElectiveName: null,
-      subjectLabel: "Science",
+      subjectLabel: null,
       title: "Visited the natural history museum",
       notes: "Studied dinosaur fossils.",
       minutes: 90,
       extraCreditPoints: 5
+    });
+  });
+
+  test("accepts a stable workbook master subject", () => {
+    expect(normalizeManualAttendanceFields({
+      attendanceDate: "2026-07-27",
+      activityType: "subject",
+      masterSubjectKey: "master_subject:japan:kokugo",
+      title: "Kanji practice",
+    })).toMatchObject({
+      masterSubjectKey: "master_subject:japan:kokugo",
+      curriculumAreaKey: null,
+      customElectiveId: null,
+      customElectiveName: null,
+      subjectLabel: null,
     });
   });
 
@@ -33,6 +49,7 @@ describe("manual attendance editing", () => {
       title: "Piano practice"
     })).toMatchObject({
       curriculumAreaKey: null,
+      masterSubjectKey: null,
       customElectiveId: "1aab2716-a14d-4aa3-98cb-7dd0076fa2d1",
       customElectiveName: null,
       subjectLabel: null
@@ -44,6 +61,7 @@ describe("manual attendance editing", () => {
       title: "Piano practice"
     })).toMatchObject({
       curriculumAreaKey: null,
+      masterSubjectKey: null,
       customElectiveId: null,
       customElectiveName: "Piano",
       subjectLabel: "Piano"
@@ -58,6 +76,19 @@ describe("manual attendance editing", () => {
       customElectiveName: "Piano",
       title: "Piano practice"
     })).toThrow("Choose one subject");
+    expect(() => normalizeManualAttendanceFields({
+      attendanceDate: "2026-07-27",
+      activityType: "subject",
+      masterSubjectKey: "master_subject:japan:kokugo",
+      customElectiveName: "Piano",
+      title: "Piano practice"
+    })).toThrow("Choose one subject");
+    expect(() => normalizeManualAttendanceFields({
+      attendanceDate: "2026-07-27",
+      activityType: "subject",
+      masterSubjectKey: "not-a-master-subject",
+      title: "Learning"
+    })).toThrow("Choose a valid workbook subject");
     expect(() => normalizeManualAttendanceFields({
       attendanceDate: "2026-07-27",
       activityType: "subject",

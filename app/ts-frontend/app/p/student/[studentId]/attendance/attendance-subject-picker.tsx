@@ -3,7 +3,13 @@
 import { useId, useState } from "react";
 
 type Props = {
-  masterSubjects: Array<{ curriculumAreaKey: string; subjectLabel: string }>;
+  masterSubjects: Array<{
+    curriculumSubjectId: string;
+    subjectKey: string;
+    catalogSubjectKey: string;
+    curriculumAreaKey: string;
+    subjectLabel: string;
+  }>;
   customElectives: Array<{ id: string; label: string }>;
   defaultSelection?: string;
   defaultLabel?: string | null;
@@ -19,7 +25,7 @@ export function AttendanceSubjectPicker({
   const customNameId = useId();
   const [selection, setSelection] = useState(defaultSelection);
   const availableSelections = new Set([
-    ...masterSubjects.map((subject) => `area:${subject.curriculumAreaKey}`),
+    ...masterSubjects.map((subject) => subject.subjectKey),
     ...customElectives.map((elective) => `custom_elective:${elective.id}`),
   ]);
   const previousSelection = defaultSelection && !availableSelections.has(defaultSelection)
@@ -41,7 +47,7 @@ export function AttendanceSubjectPicker({
         {masterSubjects.length > 0 ? (
           <optgroup label="Current workbook subjects">
             {masterSubjects.map((subject) => (
-              <option key={subject.curriculumAreaKey} value={`area:${subject.curriculumAreaKey}`}>
+              <option key={subject.subjectKey} value={subject.subjectKey}>
                 {subject.subjectLabel}
               </option>
             ))}

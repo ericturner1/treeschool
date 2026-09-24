@@ -189,7 +189,11 @@ export default async function AttendancePage(props: Props) {
                             <AttendanceSubjectPicker
                               masterSubjects={attendance.subjectOptions.masterSubjects}
                               customElectives={attendance.subjectOptions.customElectives}
-                              defaultSelection={entry.subjectKey?.startsWith("custom_elective:") ? entry.subjectKey : entry.curriculumAreaKey ? `area:${entry.curriculumAreaKey}` : ""}
+                              defaultSelection={entry.subjectKey?.startsWith("master_subject:") || entry.subjectKey?.startsWith("custom_elective:")
+                                ? entry.subjectKey
+                                : entry.curriculumAreaKey
+                                  ? `area:${entry.curriculumAreaKey}`
+                                  : ""}
                               defaultLabel={entry.subjectLabel}
                             />
                             <label className="text-sm font-semibold text-ink">Minutes <span className="font-normal text-ink/45">(optional)</span><input name="minutes" type="number" min="1" max="1440" defaultValue={entry.minutes ?? ""} placeholder="90" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label>

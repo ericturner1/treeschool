@@ -3,6 +3,7 @@ import {
   inferCurriculumAreaKey,
   normalizeCurriculumAreaKey
 } from "./native-workbook-taxonomy";
+import { parseMasterSubjectStorageKey } from "./master-subject";
 
 const MANUAL_ACTIVITY_TYPES = new Set([
   "field_trip",
@@ -17,10 +18,11 @@ const MANUAL_ACTIVITY_TYPES = new Set([
 export type ManualAttendanceFields = {
   attendanceDate: string;
   activityType: string;
+  masterSubjectKey?: string | null;
   curriculumAreaKey?: string | null;
   customElectiveId?: string | null;
   customElectiveName?: string | null;
-  /** Kept for older mobile clients; new clients should send curriculumAreaKey. */
+  /** Kept for older mobile clients; new clients should send masterSubjectKey. */
   subjectLabel?: string | null;
   title: string;
   notes?: string | null;
@@ -76,6 +78,10 @@ export function normalizeManualAttendanceFields(input: ManualAttendanceFields) {
   if (title.length > 240) throw new Error("The learning activity description is too long.");
 
   const legacySubjectLabel = trimmedOptional(input.subjectLabel, 120, "The subject");
+  const masterSubjectKey = trimmedOptional(input.masterSubjectKey, 200, "The subject");
+  if (masterSubjectKey && !parseMasterSubjectStorageKey(masterSubjectKey)) {
+    throw new Error("Choose a valid workbook subject.");
+  }
   const customElectiveId = trimmedOptional(
     input.customElectiveId,
     36,
@@ -98,10 +104,16 @@ export function normalizeManualAttendanceFields(input: ManualAttendanceFields) {
   if (customElectiveId && customElectiveName) {
     throw new Error("Choose an existing custom elective or add a new one.");
   }
-  if ((customElectiveId || customElectiveName) && input.curriculumAreaKey) {
+  if (
+    [
+      Boolean(masterSubjectKey),
+      Boolean(input.curriculumAreaKey),
+      Boolean(customElectiveId || customElectiveName),
+    ].filter(Boolean).length > 1
+  ) {
     throw new Error("Choose one subject for this learning activity.");
   }
-  const curriculumAreaKey = customElectiveId || customElectiveName
+  const curriculumAreaKey = masterSubjectKey || customElectiveId || customElectiveName
     ? null
     : input.curriculumAreaKey
       ? normalizeCurriculumAreaKey(input.curriculumAreaKey)
@@ -114,6 +126,7 @@ export function normalizeManualAttendanceFields(input: ManualAttendanceFields) {
   return {
     attendanceDate: attendanceDate(input.attendanceDate),
     activityType: activityType(input.activityType),
+    masterSubjectKey,
     curriculumAreaKey,
     customElectiveId,
     customElectiveName,
