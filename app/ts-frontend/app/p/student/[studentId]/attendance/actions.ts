@@ -14,6 +14,12 @@ import {
 
 function value(formData: FormData, name: string) { return String(formData.get(name) ?? "").trim(); }
 function pagePath(profileId: string) { return `/p/student/${profileId}/attendance`; }
+function revalidateAttendanceViews(profileId: string) {
+  const attendancePath = pagePath(profileId);
+  revalidatePath(attendancePath);
+  revalidatePath(`${attendancePath}/calendar`);
+  revalidatePath(`/p/student/${profileId}`);
+}
 
 function attendanceSubject(formData: FormData) {
   const selection = value(formData, "subjectSelection");
@@ -78,7 +84,7 @@ export async function addManualAttendanceAction(formData: FormData) {
   } catch (error) {
     redirect(`${path}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not save attendance.")}`);
   }
-  revalidatePath(path);
+  revalidateAttendanceViews(profileId);
   redirect(`${path}?message=${encodeURIComponent("Learning activity recorded.")}`);
 }
 
@@ -149,7 +155,7 @@ export async function deleteAttendanceAction(formData: FormData) {
   } catch (error) {
     redirect(`${path}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not remove attendance.")}`);
   }
-  revalidatePath(path);
+  revalidateAttendanceViews(profileId);
   redirect(`${path}?message=${encodeURIComponent("Attendance entry removed.")}`);
 }
 
@@ -173,6 +179,6 @@ export async function updateManualAttendanceAction(formData: FormData) {
   } catch (error) {
     redirect(`${path}?error=${encodeURIComponent(error instanceof Error ? error.message : "Could not update attendance.")}`);
   }
-  revalidatePath(path);
+  revalidateAttendanceViews(profileId);
   redirect(`${path}?message=${encodeURIComponent("Learning activity updated.")}`);
 }

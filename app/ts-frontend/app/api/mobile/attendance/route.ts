@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { createManualAttendance, getStudentAttendance } from "../../../../lib/attendance/server";
+import {
+  createManualAttendance,
+  getStudentAttendance,
+  updateManualAttendance,
+} from "../../../../lib/attendance/server";
 import { getRequestUser } from "../../../../lib/auth/request-user";
 import { publicErrorMessage } from "../../../../lib/security/request-guards";
 
@@ -82,6 +86,66 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json(
       { error: publicErrorMessage(error, "Could not record learning activity.") },
+      { status: 400 },
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  const currentUser = await getRequestUser(request);
+  if (!currentUser?.id) {
+    return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
+  }
+  const body = (await request.json().catch(() => null)) as {
+    profileId?: unknown;
+    entryId?: unknown;
+    attendanceDate?: unknown;
+    activityType?: unknown;
+    masterSubjectKey?: unknown;
+    curriculumAreaKey?: unknown;
+    customElectiveId?: unknown;
+    customElectiveName?: unknown;
+    subjectLabel?: unknown;
+    title?: unknown;
+    notes?: unknown;
+    minutes?: unknown;
+    extraCreditPoints?: unknown;
+  } | null;
+  const text = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : null;
+  const profileId = text(body?.profileId);
+  const entryId = text(body?.entryId);
+  if (!profileId || !entryId) {
+    return NextResponse.json(
+      { error: "Student profile and learning record are required." },
+      { status: 400 },
+    );
+  }
+
+  try {
+    await updateManualAttendance({
+      parentUserId: currentUser.id,
+      profileId,
+      entryId,
+      attendanceDate: text(body?.attendanceDate) ?? "",
+      activityType: text(body?.activityType) ?? "",
+      masterSubjectKey: text(body?.masterSubjectKey),
+      curriculumAreaKey: text(body?.curriculumAreaKey),
+      customElectiveId: text(body?.customElectiveId),
+      customElectiveName: text(body?.customElectiveName),
+      subjectLabel: text(body?.subjectLabel),
+      title: text(body?.title) ?? "",
+      notes: text(body?.notes),
+      minutes: typeof body?.minutes === "number" ? body.minutes : null,
+      extraCreditPoints:
+        typeof body?.extraCreditPoints === "number"
+          ? body.extraCreditPoints
+          : null,
+    });
+    return NextResponse.json({ updated: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: publicErrorMessage(error, "Could not update learning activity.") },
       { status: 400 },
     );
   }

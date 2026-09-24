@@ -175,8 +175,9 @@ export default async function AttendancePage(props: Props) {
                       </div>
                       {entry.entryKind === "manual" ? (
                         <details className="group mt-4 border-t border-[#e2d2b8] pt-4">
-                          <summary className="cursor-pointer list-none text-sm font-semibold text-[#4d6a39] underline underline-offset-4 marker:hidden">
-                            Edit learning record
+                          <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-full border border-[#aac295] bg-[#f2f8eb] px-3 py-2 text-sm font-semibold text-[#3f622e] shadow-[0_2px_0_#d8e6cc] transition hover:-translate-y-px hover:bg-[#eaf4e1] marker:hidden">
+                            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12.8 3.2a2 2 0 0 1 2.8 2.8L7 14.6 3.5 15.5l.9-3.5 8.4-8.8Z" /><path d="m11.5 4.5 4 4" /></svg>
+                            Edit date or details
                           </summary>
                           <form action={updateManualAttendanceAction} className="mt-4 grid gap-4 rounded-[16px] border border-[#d8c8ae] bg-white p-4">
                             <input type="hidden" name="profileId" value={student.id} />
@@ -199,6 +200,7 @@ export default async function AttendancePage(props: Props) {
                             <label className="text-sm font-semibold text-ink">Minutes <span className="font-normal text-ink/45">(optional)</span><input name="minutes" type="number" min="1" max="1440" defaultValue={entry.minutes ?? ""} placeholder="90" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label>
                             <label className="text-sm font-semibold text-ink">Extra credit points <span className="font-normal text-ink/45">(optional)</span><input name="extraCreditPoints" type="number" min="1" max="100" step="1" defaultValue={entry.extraCreditPoints ?? ""} placeholder="5" className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /><span className="mt-1.5 block text-xs font-normal leading-5 text-ink/50">Adds bonus points to the selected subject’s grade average.</span></label>
                             <label className="text-sm font-semibold text-ink">Notes <span className="font-normal text-ink/45">(optional)</span><textarea name="notes" rows={3} defaultValue={entry.notes ?? ""} className="mt-1.5 w-full rounded-[13px] border border-[#dcc8aa] bg-white px-3 py-2.5" /></label>
+                            <p className="text-xs leading-5 text-ink/55">Changing the date updates attendance totals, the calendar, and the student’s streak automatically.</p>
                             <button type="submit" className="cta-button cta-button--light cta-button--small justify-self-start">Save changes</button>
                           </form>
                         </details>
