@@ -17,7 +17,7 @@ test("rejects an unsafe request from another origin", () => {
   expect(hasTrustedRequestOrigin(request, "/api/student-points/award")).toBe(false);
 });
 
-test("allows same-origin mutations and Stripe webhooks", () => {
+test("allows same-origin mutations and verified billing webhooks", () => {
   const sameOrigin = new Request("https://www.treehomeschool.com/api/student-points/award", {
     method: "POST",
     headers: { origin: "https://www.treehomeschool.com" }
@@ -26,8 +26,13 @@ test("allows same-origin mutations and Stripe webhooks", () => {
     method: "POST",
     headers: { origin: "https://stripe.example" }
   });
+  const appleWebhook = new Request("https://www.treehomeschool.com/api/billing/apple-notifications", {
+    method: "POST",
+    headers: { origin: "https://apple.example" }
+  });
   expect(hasTrustedRequestOrigin(sameOrigin, "/api/student-points/award")).toBe(true);
   expect(hasTrustedRequestOrigin(webhook, "/api/billing/stripe-webhook")).toBe(true);
+  expect(hasTrustedRequestOrigin(appleWebhook, "/api/billing/apple-notifications")).toBe(true);
 });
 
 test("allows mutations from the HTTPS local-development proxy", () => {

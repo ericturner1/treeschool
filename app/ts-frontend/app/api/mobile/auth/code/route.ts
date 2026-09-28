@@ -8,6 +8,7 @@ import { publicErrorMessage } from "../../../../../lib/security/request-guards";
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     email?: unknown;
+    mode?: unknown;
   } | null;
   const email = normalizeMobileSignInEmail(body?.email);
   if (!email) {
@@ -20,6 +21,7 @@ export async function POST(request: Request) {
   try {
     const result = await requestMobileSignInCode({
       email,
+      mode: body?.mode === "sign_up" ? "sign_up" : "sign_in",
     });
     return result.ok
       ? NextResponse.json({ sent: true })

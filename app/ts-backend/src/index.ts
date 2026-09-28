@@ -11,6 +11,7 @@ import {
   completeStudentProfilePhotoUpload,
   createAccountInvitation,
   discardStudentProfilePhotoUpload,
+  ensureProvisionalParentAccountForEmail,
   ensureParentProfile,
   getLocalDevUserByEmail,
   listAccountPeople,
@@ -50,6 +51,11 @@ import {
   handleStripeWebhook,
   listElectiveCatalog
 } from "./services/billing";
+import {
+  getMobileMembership,
+  handleAppleSubscriptionNotification,
+  verifyApplePurchase
+} from "./services/apple-subscriptions";
 import {
   getCurriculumTreeBySubjectSlug,
   getNodeBySlug,
@@ -2647,6 +2653,22 @@ const server = Bun.serve({
       return Response.json(parentProfile);
     }
 
+    if (url.pathname === "/internal/accounts/provisional-parent" && request.method === "POST") {
+      const body = (await request.json()) as { email?: string };
+      if (!body.email) {
+        return Response.json({ error: "email is required." }, { status: 400 });
+      }
+      try {
+        const parent = await ensureProvisionalParentAccountForEmail(body.email);
+        return Response.json({ accountId: parent.accountId });
+      } catch (error) {
+        return Response.json(
+          { error: publicErrorMessage(error, "Could not prepare this Treeschool account.") },
+          { status: 400 }
+        );
+      }
+    }
+
     if (url.pathname === "/internal/accounts/local-dev-user" && request.method === "GET") {
       const email = url.searchParams.get("email");
 
@@ -2863,6 +2885,52 @@ const server = Bun.serve({
       }
 
       return Response.json(await getBillingOverview(userId));
+    }
+
+    if (url.pathname === "/internal/billing/apple/membership" && request.method === "GET") {
+      const userId = url.searchParams.get("userId");
+      if (!userId) return Response.json({ error: "userId is required." }, { status: 400 });
+      try {
+        return Response.json(await getMobileMembership(userId));
+      } catch (error) {
+        return Response.json(
+          { error: publicErrorMessage(error, "Could not load the App Store membership.") },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/billing/apple/verify" && request.method === "POST") {
+      const body = (await request.json()) as { userId?: string; signedTransaction?: string };
+      if (!body.userId || !body.signedTransaction) {
+        return Response.json({ error: "userId and signedTransaction are required." }, { status: 400 });
+      }
+      try {
+        return Response.json(await verifyApplePurchase({
+          userId: body.userId,
+          signedTransaction: body.signedTransaction
+        }));
+      } catch (error) {
+        return Response.json(
+          { error: publicErrorMessage(error, "Could not verify this App Store purchase.") },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (url.pathname === "/internal/billing/apple-notifications" && request.method === "POST") {
+      const body = (await request.json()) as { signedPayload?: string };
+      if (!body.signedPayload) {
+        return Response.json({ error: "signedPayload is required." }, { status: 400 });
+      }
+      try {
+        return Response.json(await handleAppleSubscriptionNotification(body.signedPayload));
+      } catch (error) {
+        return Response.json(
+          { error: publicErrorMessage(error, "Could not process the App Store notification.") },
+          { status: 400 }
+        );
+      }
     }
 
     if (url.pathname === "/internal/billing/checkout" && request.method === "POST") {

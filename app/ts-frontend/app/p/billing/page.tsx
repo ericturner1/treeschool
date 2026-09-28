@@ -64,13 +64,16 @@ export default async function ParentBillingPage(props: ParentBillingPageProps) {
   const hasCurrentSubscription = Boolean(
     billing.subscription && ["trialing", "active", "past_due"].includes(billing.subscription.status)
   );
+  const isAppleSubscription = billing.subscription?.billingProvider === "apple";
   const planName = billing.subscription?.planTier === "single"
     ? "Single"
     : billing.subscription?.planTier === "standard"
       ? "Standard"
       : null;
   const monthlyRenewalPrice = billing.subscription?.planTier === "single" ? "$14" : "$20";
-  const currentMembershipCopy = billing.subscription?.planTier === "single"
+  const currentMembershipCopy = isAppleSubscription
+    ? `Standard ${billing.subscription?.billingInterval === "yearly" ? "yearly" : "monthly"} membership, billed by Apple`
+    : billing.subscription?.planTier === "single"
     ? billing.subscription.billingInterval === "yearly"
       ? "$140/year for one student"
       : "$14/month for one student"
@@ -134,7 +137,11 @@ export default async function ParentBillingPage(props: ParentBillingPageProps) {
                       : dashboard.billing.freePlan}
                   </h2>
                   <p className="mt-3 text-base leading-[1.75] text-ink/75">
-                    {billing.displayStatus === "active_canceling"
+                    {isAppleSubscription
+                      ? billing.displayStatus === "active_canceling"
+                        ? "Your Apple membership remains active through the current billing period."
+                        : "This membership is billed and managed through Apple."
+                      : billing.displayStatus === "active_canceling"
                       ? dashboard.billing.cancelAtPeriodEnd
                       : billing.subscription?.introductoryMonth && billing.subscription.currentPeriodEnd
                         ? `First month: $6. Renews at ${monthlyRenewalPrice}/month on ${formatDate(billing.subscription.currentPeriodEnd, locale)}.`
@@ -152,7 +159,7 @@ export default async function ParentBillingPage(props: ParentBillingPageProps) {
               </div> : null}
 
               <div className="mt-4 flex flex-wrap gap-3">
-                {billing.subscription?.planTier === "single" ? (
+                {!isAppleSubscription && billing.subscription?.planTier === "single" ? (
                   <form action={changeMembershipPlanAction}>
                     <input type="hidden" name="planTier" value="standard" />
                     <button type="submit" className="cta-button cta-button--light cta-button--small">
@@ -160,7 +167,7 @@ export default async function ParentBillingPage(props: ParentBillingPageProps) {
                     </button>
                   </form>
                 ) : null}
-                {billing.subscription?.planTier === "standard" ? (
+                {!isAppleSubscription && billing.subscription?.planTier === "standard" ? (
                   billing.studentSeats.active > 1 ? (
                     <div className="rounded-[16px] border border-[#dcc8aa] bg-[#fffaf2] px-4 py-3 text-sm font-semibold leading-6 text-ink/66">
                       Remove {billing.studentSeats.active - 1} student {billing.studentSeats.active - 1 === 1 ? "profile" : "profiles"} before switching to Single.
@@ -174,11 +181,20 @@ export default async function ParentBillingPage(props: ParentBillingPageProps) {
                     </form>
                   )
                 ) : null}
-                <form action={openBillingPortalAction}>
-                  <button type="submit" className="cta-button cta-button--outline cta-button--small">
-                    {dashboard.billing.manageBilling}
-                  </button>
-                </form>
+                {isAppleSubscription ? (
+                  <a
+                    href="https://apps.apple.com/account/subscriptions"
+                    className="cta-button cta-button--outline cta-button--small"
+                  >
+                    Manage with Apple
+                  </a>
+                ) : (
+                  <form action={openBillingPortalAction}>
+                    <button type="submit" className="cta-button cta-button--outline cta-button--small">
+                      {dashboard.billing.manageBilling}
+                    </button>
+                  </form>
+                )}
               </div>
 
               <div className="mt-8 rounded-[22px] border border-[#dcc8aa] bg-[#fffaf2] px-5 py-5">
@@ -219,7 +235,13 @@ export default async function ParentBillingPage(props: ParentBillingPageProps) {
                     {currentMembershipCopy}
                   </dd>
                 </div>
-                {billing.subscription?.planTier === "standard" ? (
+                {isAppleSubscription ? (
+                  <div className="flex items-start justify-between gap-4">
+                    <dt>Billing provider</dt>
+                    <dd className="max-w-sm text-right font-semibold text-ink">Apple App Store</dd>
+                  </div>
+                ) : null}
+                {!isAppleSubscription && billing.subscription?.planTier === "standard" ? (
                   <div className="flex items-start justify-between gap-4">
                     <dt>Single eligibility</dt>
                     <dd className="max-w-sm text-right text-ink/70">

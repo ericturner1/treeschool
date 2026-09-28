@@ -61,6 +61,10 @@ export const subscriptionPlanTierEnum = pgEnum("subscription_plan_tier", [
   "single",
   "standard"
 ]);
+export const subscriptionBillingProviderEnum = pgEnum("subscription_billing_provider", [
+  "stripe",
+  "apple"
+]);
 export const billingSubjectTypeEnum = pgEnum("billing_subject_type", ["core", "elective"]);
 
 export const profileRoleEnum = pgEnum("profile_role", ["PARENT", "STUDENT"]);
@@ -154,8 +158,13 @@ export const subscriptions = pgTable("subscriptions", {
     }),
   status: subscriptionStatusEnum("status").notNull().default("trialing"),
   planTier: subscriptionPlanTierEnum("plan_tier").notNull().default("standard"),
+  billingProvider: subscriptionBillingProviderEnum("billing_provider").notNull().default("stripe"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  appleOriginalTransactionId: text("apple_original_transaction_id").unique(),
+  appleLastTransactionId: text("apple_last_transaction_id"),
+  appleProductId: text("apple_product_id"),
+  appleEnvironment: text("apple_environment"),
   billingInterval: text("billing_interval"),
   introductoryOffer: text("introductory_offer"),
   introductoryOfferEndsAt: timestamp("introductory_offer_ends_at", { withTimezone: true }),
@@ -166,6 +175,46 @@ export const subscriptions = pgTable("subscriptions", {
   cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+export const appleSubscriptionTransactions = pgTable(
+  "apple_subscription_transactions",
+  {
+    transactionId: text("transaction_id").primaryKey(),
+    originalTransactionId: text("original_transaction_id").notNull(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    productId: text("product_id").notNull(),
+    environment: text("environment").notNull(),
+    purchaseDate: timestamp("purchase_date", { withTimezone: true }),
+    expiresDate: timestamp("expires_date", { withTimezone: true }),
+    revocationDate: timestamp("revocation_date", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    originalTransactionIndex: index("apple_subscription_transactions_original_idx").on(
+      table.originalTransactionId
+    ),
+    accountIndex: index("apple_subscription_transactions_account_idx").on(table.accountId)
+  })
+);
+
+export const appleSubscriptionNotifications = pgTable(
+  "apple_subscription_notifications",
+  {
+    notificationUuid: text("notification_uuid").primaryKey(),
+    notificationType: text("notification_type").notNull(),
+    subtype: text("subtype"),
+    originalTransactionId: text("original_transaction_id"),
+    signedAt: timestamp("signed_at", { withTimezone: true }),
+    processedAt: timestamp("processed_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    originalTransactionIndex: index("apple_subscription_notifications_original_idx").on(
+      table.originalTransactionId
+    )
+  })
+);
 
 export const currencies = pgTable("currencies", {
   code: varchar("code", { length: 3 }).primaryKey(),

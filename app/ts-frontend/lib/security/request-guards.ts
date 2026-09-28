@@ -64,6 +64,9 @@ function rateLimitRule(method: string, pathname: string): RateLimitRule | null {
   if (pathname === "/auth/session") {
     return { key: "auth-session", limit: 20, windowMs: 15 * 60_000 };
   }
+  if (pathname === "/api/mobile/auth/code") {
+    return { key: "mobile-auth-code", limit: 10, windowMs: 15 * 60_000 };
+  }
   if (pathname === "/api/funnels/leads") {
     return { key: "funnel-lead", limit: 15, windowMs: 10 * 60_000 };
   }
@@ -79,6 +82,9 @@ function rateLimitRule(method: string, pathname: string): RateLimitRule | null {
   if (pathname === "/api/plan-pack/complete") {
     return { key: "plan-pack-upload", limit: 10, windowMs: 60 * 60_000 };
   }
+  if (pathname === "/api/billing/apple-notifications") {
+    return { key: "apple-notification", limit: 240, windowMs: 60_000 };
+  }
   if (
     pathname === "/api/plan-pack/uploads/prepare" ||
     pathname === "/api/plan-pack/uploads/complete"
@@ -90,6 +96,8 @@ function rateLimitRule(method: string, pathname: string): RateLimitRule | null {
 
 function requestBodyLimit(pathname: string) {
   if (pathname === "/auth/session") return 64 * 1024;
+  if (pathname === "/api/mobile/auth/code") return 16 * 1024;
+  if (pathname === "/api/billing/apple-notifications") return 128 * 1024;
   if (
     pathname === "/api/funnels/leads" ||
     pathname === "/api/funnels/events" ||
@@ -154,7 +162,10 @@ export function checkRequestRateLimit(
 
 export function hasTrustedRequestOrigin(request: Request, pathname: string) {
   if (!UNSAFE_METHODS.has(request.method.toUpperCase())) return true;
-  if (pathname === "/api/billing/stripe-webhook") return true;
+  if (
+    pathname === "/api/billing/stripe-webhook" ||
+    pathname === "/api/billing/apple-notifications"
+  ) return true;
 
   const origin = request.headers.get("origin");
   if (origin) {

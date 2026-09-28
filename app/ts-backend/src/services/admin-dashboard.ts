@@ -27,6 +27,11 @@ async function requireAdmin(userId: string) {
 }
 
 function monthlyRecurringCents(subscription: typeof subscriptions.$inferSelect, now: Date) {
+  if (subscription.billingProvider === "apple") {
+    return subscription.billingInterval === "yearly"
+      ? Math.round(29999 / 12)
+      : 2999;
+  }
   const plan = getMembershipPlan(subscription.planTier);
   const additionalStudents = Math.max(0, subscription.additionalStudentQuantity);
   if (isIntroductoryOfferActive(subscription, now)) {

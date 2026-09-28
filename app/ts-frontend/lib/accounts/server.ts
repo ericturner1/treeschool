@@ -217,6 +217,20 @@ export async function bootstrapParentAccount(input: {
   return response.json();
 }
 
+export async function ensureProvisionalParentAccount(email: string) {
+  const response = await backendFetch(`${getBackendUrl()}/internal/accounts/provisional-parent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(payload?.error ?? "Could not prepare this Treeschool account.");
+  }
+  return (await response.json()) as { accountId: string };
+}
+
 export async function canSignInWithParentEmail(email: string) {
   const response = await backendFetch(
     `${getBackendUrl()}/internal/accounts/sign-in-eligibility?email=${encodeURIComponent(email)}`,

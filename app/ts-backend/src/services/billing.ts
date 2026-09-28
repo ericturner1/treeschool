@@ -482,6 +482,7 @@ export async function getBillingOverview(userId: string) {
     .select({
       status: subscriptions.status,
       planTier: subscriptions.planTier,
+      billingProvider: subscriptions.billingProvider,
       billingInterval: subscriptions.billingInterval,
       introductoryOffer: subscriptions.introductoryOffer,
       introductoryOfferEndsAt: subscriptions.introductoryOfferEndsAt,
@@ -526,6 +527,7 @@ export async function getBillingOverview(userId: string) {
       ? {
           status: subscription.status,
           planTier: subscription.planTier,
+          billingProvider: subscription.billingProvider,
           billingInterval: subscription.billingInterval,
           introductoryOffer: subscription.introductoryOffer,
           introductoryMonth: isIntroductoryOfferActive(subscription),
@@ -903,12 +905,16 @@ export async function createCustomerPortalSession(input: {
   const context = await getParentAccountContext(input.userId);
   const [subscription] = await db
     .select({
-      stripeCustomerId: subscriptions.stripeCustomerId
+      stripeCustomerId: subscriptions.stripeCustomerId,
+      billingProvider: subscriptions.billingProvider
     })
     .from(subscriptions)
     .where(eq(subscriptions.accountId, context.accountId))
     .limit(1);
 
+  if (subscription?.billingProvider === "apple") {
+    throw new Error("This membership is managed through Apple.");
+  }
   if (!subscription?.stripeCustomerId) {
     throw new Error("No Stripe customer exists yet.");
   }
@@ -1043,6 +1049,7 @@ export async function createMembershipPlanChangeSession(input: {
     .select({
       status: subscriptions.status,
       planTier: subscriptions.planTier,
+      billingProvider: subscriptions.billingProvider,
       stripeCustomerId: subscriptions.stripeCustomerId,
       stripeSubscriptionId: subscriptions.stripeSubscriptionId,
       additionalStudentQuantity: subscriptions.additionalStudentQuantity
@@ -1051,6 +1058,7 @@ export async function createMembershipPlanChangeSession(input: {
     .where(eq(subscriptions.accountId, context.accountId))
     .limit(1);
   if (
+    subscription?.billingProvider === "apple" ||
     !subscription?.stripeCustomerId ||
     !subscription.stripeSubscriptionId ||
     !["trialing", "active"].includes(subscription.status)
@@ -1177,6 +1185,16 @@ async function upsertSubscriptionFromStripeSubscription(subscription: Stripe.Sub
     ? billing.currentPeriodEnd
     : null;
 
+  const [existingSubscription] = await db.select({
+    billingProvider: subscriptions.billingProvider,
+    status: subscriptions.status,
+    currentPeriodEnd: subscriptions.currentPeriodEnd
+  }).from(subscriptions).where(eq(subscriptions.accountId, accountId)).limit(1);
+  const activeAppleSubscription = existingSubscription?.billingProvider === "apple" &&
+    ["trialing", "active", "past_due"].includes(existingSubscription.status) &&
+    (!existingSubscription.currentPeriodEnd || existingSubscription.currentPeriodEnd > new Date());
+  if (activeAppleSubscription) return;
+
   await db.transaction(async (tx) => {
     await tx
       .insert(subscriptions)
@@ -1184,8 +1202,13 @@ async function upsertSubscriptionFromStripeSubscription(subscription: Stripe.Sub
         accountId,
         status,
         planTier: billing.planTier,
+        billingProvider: "stripe",
         stripeCustomerId: customerId,
         stripeSubscriptionId: subscription.id,
+        appleOriginalTransactionId: null,
+        appleLastTransactionId: null,
+        appleProductId: null,
+        appleEnvironment: null,
         billingInterval: billing.billingInterval,
         introductoryOffer,
         introductoryOfferEndsAt,
@@ -1201,8 +1224,13 @@ async function upsertSubscriptionFromStripeSubscription(subscription: Stripe.Sub
         set: {
           status,
           planTier: billing.planTier,
+          billingProvider: "stripe",
           stripeCustomerId: customerId,
           stripeSubscriptionId: subscription.id,
+          appleOriginalTransactionId: null,
+          appleLastTransactionId: null,
+          appleProductId: null,
+          appleEnvironment: null,
           billingInterval: billing.billingInterval,
           introductoryOffer,
           introductoryOfferEndsAt: sql`coalesce(
@@ -1414,6 +1442,7 @@ export async function createStudentProfileWithBilling(input: {
     .select({
       status: subscriptions.status,
       planTier: subscriptions.planTier,
+      billingProvider: subscriptions.billingProvider,
       stripeCustomerId: subscriptions.stripeCustomerId,
       stripeSubscriptionId: subscriptions.stripeSubscriptionId,
       billingInterval: subscriptions.billingInterval,
@@ -1431,6 +1460,9 @@ export async function createStudentProfileWithBilling(input: {
 
   const membership = getMembershipPlan(subscription?.planTier ?? "standard");
   const paidStudentCapacity = membership.includedStudentCount + (subscription?.additionalStudentQuantity ?? 0);
+  if (subscription?.billingProvider === "apple" && studentCount >= paidStudentCapacity) {
+    throw new Error("Your Apple membership includes up to three students.");
+  }
   if (!subscription?.stripeSubscriptionId || studentCount < paidStudentCapacity) {
     const profile = await createStudentProfile({
       ...input.student,

@@ -29,6 +29,7 @@ export async function getParentBillingOverview(input: { userId: string }) {
     subscription: null | {
       status: "trialing" | "active" | "past_due" | "canceled";
       planTier: "single" | "standard";
+      billingProvider: "stripe" | "apple";
       billingInterval: "monthly" | "yearly" | null;
       introductoryOffer: string | null;
       introductoryMonth: boolean;
